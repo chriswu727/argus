@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+argus-reports/
+*.png
+.env
+test-reports/
+CLAUDE.md
+docs/

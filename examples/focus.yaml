@@ -1,0 +1,39 @@
+# Argus focus configuration example
+# Tells the agent which areas to prioritize during exploration.
+
+url: http://localhost:3000
+
+focus_areas:
+  - name: Authentication
+    description: Test login and registration flows with valid and invalid inputs
+    paths:
+      - /login
+      - /register
+      - /forgot-password
+    actions:
+      - Try empty form submission
+      - Try SQL injection in email field
+      - Try extremely long password (1000+ chars)
+      - Test with special characters in username
+
+  - name: Checkout Flow
+    description: Walk through the entire checkout process and test edge cases
+    paths:
+      - /cart
+      - /checkout
+    actions:
+      - Add items then remove all and try to checkout
+      - Try negative quantities
+      - Submit payment with missing fields
+
+  - name: Navigation
+    description: Verify all navigation links work and pages load correctly
+    actions:
+      - Click every nav menu item
+      - Test back/forward browser buttons
+      - Check for 404 pages
+
+max_steps: 80
+headless: true
+screenshot_on_error: true
+output_dir: ./argus-reports

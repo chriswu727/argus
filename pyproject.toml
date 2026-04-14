@@ -1,0 +1,38 @@
+[project]
+name = "argus-testing"
+version = "0.4.0"
+description = "AI-powered exploratory testing agent that discovers bugs like a real user"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Yichen Wu", email = "yichenwujob@gmail.com"}]
+urls = {Homepage = "https://github.com/chriswu727/argus", Repository = "https://github.com/chriswu727/argus"}
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Testing",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+]
+keywords = ["testing", "qa", "ai", "playwright", "agent", "exploratory-testing", "mcp", "claude-code"]
+dependencies = [
+    "playwright>=1.40.0",
+    "litellm>=1.40.0",
+    "mcp[cli]>=1.0.0",
+    "click>=8.0.0",
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0",
+    "rich>=13.0.0",
+    "jinja2>=3.0.0",
+]
+
+[project.scripts]
+argus = "argus.cli:main"
+argus-mcp = "argus.mcp_server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["argus"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
