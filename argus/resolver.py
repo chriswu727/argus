@@ -200,3 +200,123 @@ def describe(el: InteractiveElement) -> str:
         if ctx and ctx not in (label or ""):
             parts.append(f"(near: {ctx!r})")
     return " ".join(parts)
+
+
+# ── Screen-mode resolver ────────────────────────────────────────────
+#
+# ScreenElement (defined in argus.screen.backend) is shaped differently
+# from InteractiveElement — it carries an AX role string, screen-coords,
+# and a path of parent labels rather than DOM-style placeholder/href/etc.
+# The scoring strategy is the same in spirit: match the description
+# against text-like attributes, prefer interactive AX roles when a kind
+# hint is given, fall back to the parent path for context. We keep the
+# implementations parallel rather than trying to unify the two shapes —
+# the difference between DOM and AX is a real difference, not noise.
+
+# Map AX role strings to the resolver's coarse "kind" categories.
+_AX_ROLE_TO_KIND = {
+    "AXButton": "button",
+    "AXLink": "link",
+    "AXTextField": "input",
+    "AXTextArea": "input",
+    "AXCheckBox": "checkbox",
+    "AXRadioButton": "radio",
+    "AXPopUpButton": "select",
+    "AXComboBox": "select",
+    "AXMenuItem": "menuitem",
+    "AXMenuBarItem": "menuitem",
+    "AXTab": "tab",
+    "AXSlider": "slider",
+    "AXStaticText": "text",
+    "AXImage": "image",
+}
+
+
+def _ax_kind(role: str) -> str:
+    return _AX_ROLE_TO_KIND.get(role, "")
+
+
+def _score_screen(el, core: str) -> int:
+    """Score a ScreenElement against a description core. Mirrors `_score`."""
+    if not core:
+        return 0
+    title = (el.title or "").lower().strip()
+    value = (el.value or "").lower().strip()
+    desc = (el.description or "").lower().strip()
+    role_desc = (el.role_description or "").lower().strip()
+    # Path is a list of ancestor labels — useful for disambiguation.
+    path_text = " ".join(p.lower() for p in (el.path or []) if p)
+
+    if title == core or value == core:
+        return 110
+    if desc == core or role_desc == core:
+        return 100
+
+    score = 0
+    for hay, base in ((title, 70), (value, 65), (desc, 60), (role_desc, 50)):
+        if hay and core in hay:
+            score = max(score, base + min(20, len(core)))
+
+    haystack = " ".join([title, value, desc, role_desc, path_text])
+    core_words = [w for w in core.split() if len(w) >= 2]
+    if core_words and all(w in haystack for w in core_words):
+        score = max(score, 50)
+
+    if path_text and core in path_text:
+        score = max(score, 30)
+
+    return score
+
+
+def resolve_screen_element(
+    description: str,
+    elements: list,
+    kind_filter: Optional[str] = None,
+):
+    """Pick the screen element best matching `description`.
+
+    Returns a ResolveResult with the same semantics as resolve_element
+    but operating on ScreenElement records (from argus.screen.backend).
+    """
+    if not elements:
+        return ResolveResult(found=None, candidates=[], reason="no_elements")
+
+    core, hinted_kind = split_description(description)
+    effective_kind = kind_filter or hinted_kind
+
+    pool = elements
+    if effective_kind:
+        filtered = [el for el in elements if _ax_kind(el.role) == effective_kind]
+        pool = filtered or elements
+
+    scored = []
+    for el in pool:
+        s = _score_screen(el, core)
+        if s > 0:
+            scored.append((s, el))
+
+    if not scored:
+        return ResolveResult(found=None, candidates=[], reason="no_match")
+
+    scored.sort(key=lambda pair: -pair[0])
+    top_score = scored[0][0]
+    runner_up = scored[1][0] if len(scored) > 1 else 0
+
+    if len(scored) == 1 or top_score >= runner_up + 15:
+        return ResolveResult(found=scored[0][1], candidates=scored[:3], reason="unique")
+
+    return ResolveResult(found=None, candidates=scored[:5], reason="ambiguous")
+
+
+def describe_screen(el) -> str:
+    """Render a ScreenElement for an ambiguous-resolution shortlist."""
+    parts = [el.role]
+    label = el.title or el.value or el.description or el.role_description
+    if label:
+        parts.append(f'"{label[:60]}"')
+    parts.append(f"@ ({el.x},{el.y}) {el.width}x{el.height}")
+    if el.path and len(el.path) > 1:
+        ctx = " / ".join(p for p in el.path[-2:] if p)[:50]
+        if ctx:
+            parts.append(f"(in: {ctx})")
+    return " ".join(parts)
