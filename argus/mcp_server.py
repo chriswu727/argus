@@ -30,8 +30,12 @@ from .detector import Detector
 from .differ import compute_changes
 from .models import Bug, BugType, ExplorationResult, InteractiveElement, PageState, Screenshot, Severity
 from .reporter import Reporter
-from .resolver import describe as describe_element
-from .resolver import resolve_element
+from .resolver import (
+    describe as describe_element,
+    describe_screen as describe_screen_element,
+    resolve_element,
+    resolve_screen_element,
+)
 
 mcp = FastMCP(
     "argus",
@@ -121,10 +125,19 @@ you stay in the tester seat — use that.""",
 
 
 class Session:
-    """Holds the state for one testing session."""
+    """Holds the state for one testing session.
+
+    A session has a `mode` of either "web" (BrowserDriver) or "screen"
+    (ScreenBackend). Tools that span both modes (record_bug,
+    end_session) check `mode`; tools that are mode-specific (observe
+    vs screen_observe) live as separate tools so the contract stays
+    honest about what each mode can do.
+    """
 
     def __init__(self):
+        self.mode: Optional[str] = None  # "web" | "screen" | None
         self.browser: Optional[BrowserDriver] = None
+        self.screen = None  # type: Optional["ScreenBackend"]
         self.detector = Detector()
         self.bugs: List[Bug] = []
         self.steps: List[str] = []
@@ -134,11 +147,12 @@ class Session:
         self.url: Optional[str] = None
         self.focus_areas: List[str] = []
         self._last_elements = []
+        self._last_screen_elements = []
         self._screenshot_counter = 0
 
     @property
     def active(self) -> bool:
-        return self.browser is not None
+        return self.browser is not None or self.screen is not None
 
 
 _session = Session()
@@ -146,7 +160,10 @@ _session = Session()
 
 def _require_session() -> Session:
     if not _session.active:
-        raise RuntimeError("No active session. Call start_session(url) first.")
+        raise RuntimeError(
+            "No active session. Call start_session(url) for web mode "
+            "or start_screen_session() for screen mode first."
+        )
     return _session
 
 
@@ -155,12 +172,31 @@ def _output_dir() -> str:
 
 
 async def _auto_screenshot(s: Session, name: str, step: str) -> str:
-    """Take a screenshot and register it in the session."""
+    """Take a screenshot and register it in the session.
+
+    Mode-aware: web-mode goes through Playwright; screen-mode shells
+    out to `screencapture`. Both produce a PNG at the same output
+    location and append a Screenshot record with the correct URL.
+    """
     s._screenshot_counter += 1
     safe_name = f"{s._screenshot_counter:03d}_{name}"
     path = str(Path(_output_dir()) / "screenshots" / f"{safe_name}.png")
-    await s.browser.screenshot(path)
-    url = s.browser._page.url if s.browser._page else ""
+
+    if s.mode == "web" and s.browser is not None:
+        await s.browser.screenshot(path)
+        url = s.browser._page.url if s.browser._page else ""
+    elif s.mode == "screen" and s.screen is not None:
+        # Shell out for the same convention used elsewhere.
+        import subprocess as _sp
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        try:
+            _sp.run(["screencapture", "-t", "png", "-x", path], capture_output=True, timeout=5, check=True)
+        except Exception:
+            pass
+        url = f"screen://{s.screen._app_name or 'unknown'}"
+    else:
+        url = ""
+
     s.screenshots.append(Screenshot(
         path=path, name=safe_name, step=step, url=url,
     ))
@@ -222,6 +258,7 @@ async def start_session(
         await _session.browser.stop()
 
     _session = Session()
+    _session.mode = "web"
     _session.url = url
     _session.start_time = asyncio.get_event_loop().time()
     _session.browser = BrowserDriver(
@@ -238,11 +275,79 @@ async def start_session(
     element_count = len(state.elements)
 
     return (
-        f"Session started.\n"
+        f"Web session started.\n"
         f"Page: {state.title}\n"
         f"URL: {state.url}\n"
         f"Found {element_count} interactive elements. "
-        f"Call get_page_state() to see them."
+        f"Call observe() to see them."
+    )
+
+
+@mcp.tool()
+async def start_screen_session(target_app: str = "") -> str:
+    """Start a macOS screen-mode testing session.
+
+    Argus will probe the user's actual screen — whatever app is foreground
+    (or `target_app` if given) becomes the system under test. Use this
+    when the thing you're testing is not a web app, or when you want to
+    test a web app through its real browser chrome rather than a headless
+    Playwright instance.
+
+    Requires Screen Recording and Accessibility grants. Run
+    `argus-mcp --doctor` first if you haven't.
+
+    Args:
+        target_app: Localised app name (e.g. "Safari", "Notes", "Cursor").
+                    If empty, binds to whatever is foreground at the
+                    moment of the call.
+    """
+    global _session
+
+    try:
+        from .screen.permissions import gate_screen_mode
+        from .screen.backend import ScreenBackend
+    except ImportError as exc:
+        return (
+            f"start_screen_session: screen-mode dependencies not installed.\n"
+            f"  pip install argus-testing[mac]\n"
+            f"  ({exc})"
+        )
+
+    missing = gate_screen_mode()
+    if missing:
+        lines = ["start_screen_session: missing macOS grants:"]
+        for c in missing:
+            lines.append(f"  - {c.name}: {c.detail}")
+            lines.append(f"    Open: {c.settings_url}")
+        lines.append("")
+        lines.append("Run `argus-mcp --doctor` for full details, then re-try.")
+        return "\n".join(lines)
+
+    if _session.active:
+        if _session.browser is not None:
+            await _session.browser.stop()
+        if _session.screen is not None:
+            await _session.screen.stop()
+
+    _session = Session()
+    _session.mode = "screen"
+    _session.start_time = asyncio.get_event_loop().time()
+    _session.screen = ScreenBackend()
+    try:
+        obs = await _session.screen.start(target_app=target_app or None)
+    except Exception as exc:
+        return f"start_screen_session: failed to start — {exc}"
+
+    _session._last_screen_elements = obs.elements
+
+    return (
+        f"Screen session started.\n"
+        f"Foreground app: {obs.foreground_app} (pid {obs.foreground_pid})\n"
+        f"Window: {obs.foreground_window_title!r}\n"
+        f"Screen: {obs.screen_width}x{obs.screen_height}\n"
+        f"AX-tree elements: {len(obs.elements)}\n"
+        f"Initial screenshot: {obs.screenshot_path}\n"
+        f"Call screen_observe() to see what's on screen."
     )
 
 
@@ -398,6 +503,193 @@ async def observe() -> str:
     if state.url not in s.pages_visited:
         s.pages_visited.append(state.url)
     return _format_observation(state)
+
+
+def _format_screen_observation(obs) -> str:
+    """Render a ScreenObservation into the same vibe as web-mode observe()."""
+    lines = [
+        f"App: {obs.foreground_app}  (pid {obs.foreground_pid})",
+        f"Window: {obs.foreground_window_title!r}",
+        f"Screen: {obs.screen_width}x{obs.screen_height}",
+        f"Screenshot: {obs.screenshot_path or '(capture failed)'}",
+        "",
+        "Interactive elements (AX tree, capped):",
+    ]
+    if not obs.elements:
+        lines.append("  (none — the app may be unresponsive or AX-blind)")
+    else:
+        for el in obs.elements:
+            label = el.title or el.value or el.description or el.role_description or el.role
+            bits = [el.role]
+            if label:
+                bits.append(f'"{label[:60]}"')
+            if el.path and len(el.path) > 1:
+                # Last 1-2 ancestors give useful disambiguating context.
+                ctx = " / ".join(p for p in el.path[-2:] if p)[:60]
+                if ctx:
+                    bits.append(f"(in: {ctx})")
+            bits.append(f"@ ({el.x},{el.y}) {el.width}x{el.height}")
+            if not el.enabled:
+                bits.append("[disabled]")
+            if el.focused:
+                bits.append("[focused]")
+            lines.append(f"  - {' '.join(bits)}")
+    lines.append("")
+    lines.append(
+        "Argus does not auto-judge content quality on screen mode either. "
+        "Decide what's a bug from this output and call record_bug."
+    )
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def screen_observe() -> str:
+    """Re-snapshot the screen — fresh screenshot + fresh AX tree of the
+    foreground (or target) app.
+
+    Same role as observe() but for screen mode. Returns the foreground
+    app name, the focused window's title, the AX-tree elements with
+    screen coordinates, and the path to a fresh screenshot.
+
+    Argus does not auto-flag UX issues here. The screenshot is yours
+    to look at; the AX tree is yours to reason about; call record_bug
+    when you've confirmed something real.
+    """
+    s = _require_session()
+    if s.mode != "screen" or s.screen is None:
+        return (
+            "screen_observe: this session is in web mode "
+            f"(mode={s.mode!r}). End this session and call "
+            "start_screen_session() to switch."
+        )
+    obs = await s.screen.observe()
+    s._last_screen_elements = obs.elements
+    if obs.screenshot_path:
+        s._screenshot_counter += 1
+        s.screenshots.append(Screenshot(
+            path=obs.screenshot_path,
+            name=f"screen_{s._screenshot_counter:03d}",
+            step="screen_observe",
+            url=f"screen://{obs.foreground_app}",
+        ))
+    return _format_screen_observation(obs)
+
+
+def _resolve_screen_or_error(s, description: str, kind_filter=None):
+    """Resolve a description against the cached AX-tree elements.
+
+    Mirrors `_resolve_or_error` for screen mode. Returns
+    (element, None) on success or (None, error_message) when the
+    description doesn't pin down a single element.
+    """
+    result = resolve_screen_element(
+        description, s._last_screen_elements, kind_filter=kind_filter,
+    )
+    if result.reason == "unique" and result.found is not None:
+        return result.found, None
+    if result.reason == "no_elements":
+        return None, (
+            "screen_observe() first — Argus has no AX snapshot yet."
+        )
+    if result.reason == "no_match":
+        return None, (
+            f"No AX element matches {description!r}. Call screen_observe() "
+            f"to see what's actually exposed; the AX tree changes when the "
+            f"foreground app changes or new windows open."
+        )
+    lines = [f"Description {description!r} is ambiguous in screen mode:"]
+    for score, el in result.candidates:
+        lines.append(f"  ({score}) {describe_screen_element(el)}")
+    lines.append(
+        "\nPick a more specific description (use the AX role, the "
+        "containing window/section, or unique substring of the label)."
+    )
+    return None, "\n".join(lines)
+
+
+@mcp.tool()
+async def screen_click_what(description: str) -> str:
+    """Click a screen element matched by natural-language description.
+
+    Resolves against the most-recent screen_observe() snapshot. Tries
+    the AX press action first (atomic, no mouse hijack), falls back to
+    a coordinate click via cliclick at the element's centre. After the
+    click, you'll typically want to call screen_observe() to see what
+    changed.
+
+    Example: screen_click_what("Save button"),
+             screen_click_what("Cancel in the Confirm dialog")
+    """
+    s = _require_session()
+    if s.mode != "screen" or s.screen is None:
+        return (
+            "screen_click_what: this session is in web mode "
+            "(use click_what for web). End and start a screen session first."
+        )
+    el, err = _resolve_screen_or_error(s, description)
+    if err:
+        return err
+
+    label = el.title or el.value or el.description or el.role
+    s.steps.append(f'screen_click_what({description!r}) -> {el.role} {label[:40]!r}')
+    ok, method = s.screen.click(el)
+    if not ok:
+        return (
+            f"screen_click_what({description!r}) — click failed via {method}.\n"
+            f"The element may not implement the press action and cliclick "
+            f"isn't installed (brew install cliclick), or the element moved."
+        )
+    return (
+        f'Clicked {el.role} "{label[:60]}" via {method}.\n'
+        f"Call screen_observe() to see what changed."
+    )
+
+
+@mcp.tool()
+async def screen_type_into(description: str, text: str) -> str:
+    """Type `text` into a screen text field matched by description.
+
+    Tries setting AXValue directly first (cleanest for native text
+    controls). If refused, focuses the element and synthesises
+    keystrokes via cliclick.
+    """
+    s = _require_session()
+    if s.mode != "screen" or s.screen is None:
+        return (
+            "screen_type_into: this session is in web mode "
+            "(use type_into for web)."
+        )
+    el, err = _resolve_screen_or_error(s, description, kind_filter="input")
+    if err:
+        return err
+
+    label = el.title or el.value or el.description or el.role
+    s.steps.append(f'screen_type_into({description!r}, ...) -> {label[:40]!r}')
+    ok, method = s.screen.type_into(el, text)
+    if not ok:
+        return (
+            f"screen_type_into({description!r}) — typing failed via {method}.\n"
+            f"The element may be read-only, or cliclick isn't installed."
+        )
+    return f'Typed into "{label[:60]}" via {method}.'
+
+
+@mcp.tool()
+async def screen_press_key(key: str) -> str:
+    """Press a single key. Pass a cliclick key name: 'return', 'esc',
+    'space', 'tab', 'arrow-up', 'cmd-s' (combined), etc.
+
+    Useful for: submitting a focused form (return), dismissing a modal
+    (esc), navigating menus (arrow keys), keyboard shortcuts (cmd-s).
+    """
+    s = _require_session()
+    if s.mode != "screen" or s.screen is None:
+        return "screen_press_key: this session is in web mode."
+    s.steps.append(f"screen_press_key({key!r})")
+    ok, method = s.screen.press_key(key)
+    if not ok:
+        return f"screen_press_key({key!r}) failed: {method}"
+    return f"Pressed {key} via {method}."
 
 
 @mcp.tool()
@@ -937,7 +1229,14 @@ async def record_bug(
     ev = evidence or {}
     description = ev.get("description") or title
     steps = ev.get("steps") or list(s.steps)
-    url = ev.get("url") or (s.browser._page.url if s.browser._page else "")
+    if ev.get("url"):
+        url = ev["url"]
+    elif s.mode == "web" and s.browser is not None and s.browser._page is not None:
+        url = s.browser._page.url
+    elif s.mode == "screen" and s.screen is not None and s.screen._app_name:
+        url = f"screen://{s.screen._app_name}"
+    else:
+        url = ""
 
     type_key = (ev.get("bug_type") or "ux_issue").strip().lower()
     if type_key not in _BUG_TYPE_BY_NAME:
@@ -1501,29 +1800,32 @@ async def end_session() -> str:
     """
     s = _require_session()
 
-    # Final error drain
-    console_errs, network_errs = s.browser.drain_errors()
-    current_url = s.browser._page.url if s.browser._page else ""
-    final_bugs = s.detector.process_console_errors(
-        console_errs, current_url, s.steps
-    )
-    final_bugs.extend(s.detector.process_network_errors(
-        network_errs, current_url, s.steps
-    ))
-    if final_bugs:
-        ss_path = await _auto_screenshot(
-            s, "final_errors", f"Final errors on {current_url}"
+    if s.mode == "web" and s.browser is not None:
+        # Final error drain (web mode only — console/network are web concepts).
+        console_errs, network_errs = s.browser.drain_errors()
+        current_url = s.browser._page.url if s.browser._page else ""
+        final_bugs = s.detector.process_console_errors(
+            console_errs, current_url, s.steps
         )
-        for bug in final_bugs:
-            bug.screenshot_path = ss_path
-    s.bugs.extend(final_bugs)
-
-    await s.browser.stop()
+        final_bugs.extend(s.detector.process_network_errors(
+            network_errs, current_url, s.steps
+        ))
+        if final_bugs:
+            ss_path = await _auto_screenshot(
+                s, "final_errors", f"Final errors on {current_url}"
+            )
+            for bug in final_bugs:
+                bug.screenshot_path = ss_path
+        s.bugs.extend(final_bugs)
+        await s.browser.stop()
+    elif s.mode == "screen" and s.screen is not None:
+        await s.screen.stop()
 
     duration = asyncio.get_event_loop().time() - (s.start_time or 0)
 
+    target = s.url if s.mode == "web" else f"screen://{s.mode}"
     result = ExplorationResult(
-        url=s.url or "",
+        url=target or "",
         bugs=s.bugs,
         pages_visited=s.pages_visited,
         actions_taken=len(s.steps),
@@ -1563,16 +1865,26 @@ async def end_session() -> str:
 def main():
     """Entry point for argus-mcp command.
 
-    Pass --unsafe (or set ARGUS_UNSAFE_EVAL=1) to enable the eval_js
-    tool, which lets the agent run arbitrary JS in the page context.
-    Off by default because it can read cookies, mutate state, and
-    fetch arbitrary URLs. Useful for fixture introspection / reset and
-    for probing edge-case state that the standard tools can't reach.
+    Flags:
+      --unsafe       Enable eval_js (off by default; can read cookies,
+                     mutate state, and fetch arbitrary URLs from the
+                     page context).
+      --doctor       Run the macOS screen-mode permission check and
+                     exit. Use this before launching screen mode for
+                     the first time.
+
+    Without flags, just runs the MCP server over stdio.
     """
     import sys as _sys
+
+    if "--doctor" in _sys.argv:
+        from .screen.permissions import main as _doctor
+        _sys.exit(_doctor())
+
     if "--unsafe" in _sys.argv:
         os.environ["ARGUS_UNSAFE_EVAL"] = "1"
         _sys.argv = [a for a in _sys.argv if a != "--unsafe"]
+
     mcp.run()
 
 

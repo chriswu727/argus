@@ -122,3 +122,75 @@ def test_describe_renders_useful_label():
     assert "button" in text
     assert "Delete" in text
     assert "near:" in text
+
+
+# ── Screen-mode resolver tests ───────────────────────────────────────
+
+
+def _screen_element(role, title="", value="", description="", x=0, y=0, w=10, h=10, path=None):
+    """Lightweight ScreenElement-shaped object for tests (no PyObjC needed)."""
+    class _SE:
+        pass
+    se = _SE()
+    se.role = role
+    se.role_description = role
+    se.title = title
+    se.value = value
+    se.description = description
+    se.enabled = True
+    se.focused = False
+    se.x = x
+    se.y = y
+    se.width = w
+    se.height = h
+    se.path = path or []
+    se._ax_ref = None
+    return se
+
+
+def test_screen_resolve_button_via_kind_hint():
+    from argus.resolver import resolve_screen_element
+    elements = [
+        _screen_element("AXStaticText", title="Save"),
+        _screen_element("AXButton", title="Save"),
+    ]
+    r = resolve_screen_element("Save button", elements)
+    assert r.reason == "unique"
+    assert r.found.role == "AXButton"
+
+
+def test_screen_resolve_text_field_via_field_hint():
+    from argus.resolver import resolve_screen_element
+    elements = [
+        _screen_element("AXButton", title="email"),
+        _screen_element("AXTextField", description="Email", value=""),
+    ]
+    r = resolve_screen_element("email field", elements)
+    assert r.reason == "unique"
+    assert r.found.role == "AXTextField"
+
+
+def test_screen_resolve_uses_path_for_disambiguation():
+    from argus.resolver import resolve_screen_element
+    elements = [
+        _screen_element("AXButton", title="Submit", path=["Login dialog"]),
+        _screen_element("AXButton", title="Submit", path=["Comment box"]),
+    ]
+    # No qualifier: ambiguous.
+    r = resolve_screen_element("Submit", elements)
+    assert r.reason == "ambiguous"
+    # With path word: unique.
+    r = resolve_screen_element("Submit Login", elements)
+    assert r.reason == "unique"
+    assert r.found.path == ["Login dialog"]
+
+
+def test_describe_screen_includes_role_and_coords():
+    from argus.resolver import describe_screen
+    el = _screen_element("AXButton", title="Save", x=120, y=80, w=80, h=30,
+                         path=["Settings", "General"])
+    out = describe_screen(el)
+    assert "AXButton" in out
+    assert "Save" in out
+    assert "120" in out and "80" in out
+    assert "Settings" in out or "General" in out
