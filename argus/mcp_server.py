@@ -1116,6 +1116,99 @@ async def screen_type_at(x: int, y: int, text: str) -> str:
 
 
 @mcp.tool()
+async def screen_wait_for_stable(
+    timeout_s: float = 5.0,
+    threshold_pct: float = 0.5,
+    stable_window_ms: int = 400,
+    poll_ms: int = 150,
+) -> str:
+    """Wait until the target window stops changing visually.
+
+    Use this between an action and the observation that follows it.
+    After clicking "New Game", the screen is in motion: loading
+    spinner, scene transition, animation. Sleeping for an arbitrary
+    N ms is brittle. This tool polls a screenshot every `poll_ms` and
+    returns once `stable_window_ms` worth of consecutive frames stay
+    below `threshold_pct` pixel difference. If `timeout_s` fires first
+    you get a clear "timeout" verdict with the last frame so you can
+    still inspect what the agent saw.
+
+    Args:
+        timeout_s: hard cap on wall-clock waiting.
+        threshold_pct: per-frame pixel-difference threshold for "stable"
+                       (0.5 means 0.5% of pixels can flicker).
+        stable_window_ms: how long the page must stay below threshold
+                          before we declare it settled.
+        poll_ms: how often to take a fresh screenshot.
+    """
+    s = _require_session()
+    if s.mode != "screen" or s.screen is None:
+        return "screen_wait_for_stable: this session is in web mode."
+    err = _safety_or_error(s)
+    if err:
+        return err
+
+    from .screen import safety as screen_safety
+    target = (
+        f"timeout={timeout_s}s threshold={threshold_pct}% "
+        f"stable={stable_window_ms}ms poll={poll_ms}ms"
+    )
+    s.steps.append(f"screen_wait_for_stable({target})")
+
+    try:
+        settled, reason, final_path, stats = await screen_safety.with_timeout(
+            lambda: s.screen.wait_for_stable(
+                timeout_s=timeout_s,
+                threshold_pct=threshold_pct,
+                stable_window_ms=stable_window_ms,
+                poll_ms=poll_ms,
+            ),
+            # Allow the wait itself to hit its own internal timeout, then
+            # add a small grace before the safety wrapper trips.
+            timeout_s=timeout_s + 5.0,
+        )
+    except asyncio.TimeoutError:
+        screen_safety.record_action(
+            s._safety, "screen_wait_for_stable", target, "outer-timeout",
+            success=False, error="outer asyncio timeout fired",
+        )
+        return f"screen_wait_for_stable hit the outer safety timeout."
+
+    screen_safety.record_action(
+        s._safety, "screen_wait_for_stable", target,
+        f"settled={settled}/{reason}", success=settled,
+        post_screenshot=final_path,
+        error=None if settled else reason,
+    )
+    if final_path:
+        s._screenshot_counter += 1
+        s.screenshots.append(Screenshot(
+            path=final_path,
+            name=f"screen_wait_{s._screenshot_counter:03d}",
+            step=f"wait_for_stable: {reason}",
+            url=f"screen://{s.screen._app_name or 'unknown'}",
+        ))
+
+    if settled:
+        return (
+            f"Settled after {stats.get('frames', '?')} frames "
+            f"(last diff {stats.get('last_diff_pct', '?')}%).\n"
+            f"  final: {final_path}"
+        )
+    if reason == "timeout":
+        return (
+            f"screen_wait_for_stable: timed out after {timeout_s}s, "
+            f"page still moving (last diff {stats.get('last_diff_pct', '?')}%, "
+            f"stable streak {stats.get('stable_for_ms', 0)}ms / "
+            f"required {stable_window_ms}ms).\n"
+            f"  final: {final_path}\n"
+            f"  Either bump timeout_s, lower stable_window_ms, or accept that "
+            f"this surface is intentionally animated."
+        )
+    return f"screen_wait_for_stable: {reason}.\n  final: {final_path}"
+
+
+@mcp.tool()
 async def screen_session_status() -> str:
     """Show how the current screen-mode session is doing: time used vs
     session cap, action count, abort-file state, recent action trail.
