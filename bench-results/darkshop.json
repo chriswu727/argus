@@ -1,9 +1,9 @@
 {
   "target": "darkshop",
   "fixture": "http://127.0.0.1:5556",
-  "started_at": 1777531006.76245,
-  "finished_at": 1777531015.0729759,
-  "duration_s": 8.31,
+  "started_at": 1777533676.400936,
+  "finished_at": 1777533684.749351,
+  "duration_s": 8.35,
   "caught": 12,
   "total": 12,
   "recall_pct": 100.0,
@@ -14,7 +14,7 @@
       "caught": true,
       "method": "agent-record",
       "notes": "",
-      "elapsed_s": 0.54
+      "elapsed_s": 0.55
     },
     {
       "bug_id": 2,
@@ -22,7 +22,7 @@
       "caught": true,
       "method": "agent-record",
       "notes": "",
-      "elapsed_s": 0.53
+      "elapsed_s": 0.54
     },
     {
       "bug_id": 3,
@@ -30,7 +30,7 @@
       "caught": true,
       "method": "agent-record",
       "notes": "",
-      "elapsed_s": 1.06
+      "elapsed_s": 1.07
     },
     {
       "bug_id": 4,
@@ -38,7 +38,7 @@
       "caught": true,
       "method": "agent-record",
       "notes": "",
-      "elapsed_s": 0.52
+      "elapsed_s": 0.53
     },
     {
       "bug_id": 5,
@@ -46,7 +46,7 @@
       "caught": true,
       "method": "agent-record",
       "notes": "",
-      "elapsed_s": 0.53
+      "elapsed_s": 0.54
     },
     {
       "bug_id": 6,
@@ -62,7 +62,7 @@
       "caught": true,
       "method": "agent-record",
       "notes": "",
-      "elapsed_s": 0.53
+      "elapsed_s": 0.54
     },
     {
       "bug_id": 8,
@@ -86,7 +86,7 @@
       "caught": true,
       "method": "agent-record",
       "notes": "",
-      "elapsed_s": 0.53
+      "elapsed_s": 0.54
     },
     {
       "bug_id": 11,
