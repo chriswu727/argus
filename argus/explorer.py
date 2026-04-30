@@ -76,19 +76,11 @@ class Explorer:
                         network_errs, state.url, self.steps
                     )
                 )
-                # Smart detection: page content, counts, CSS, toast cross-check
-                new_bugs.extend(self.detector.process_page_content(state, self.steps))
-                new_bugs.extend(self.detector.process_count_consistency(state, self.steps))
-                new_bugs.extend(self.detector.process_css_indicators(state, self.steps))
-                if state.toast_messages:
-                    new_bugs.extend(self.detector.process_toast_network_crosscheck(
-                        state.toast_messages, network_errs, state.url, self.steps
-                    ))
-                # Comprehensive: images, a11y, SEO, mixed content
-                new_bugs.extend(self.detector.process_broken_images(state, self.steps))
-                new_bugs.extend(self.detector.process_accessibility(state, self.steps))
-                new_bugs.extend(self.detector.process_seo(state, self.steps))
-                new_bugs.extend(self.detector.process_mixed_content(state, self.steps))
+                # Argus only auto-captures browser-side events that the agent
+                # cannot see in page state (console + network). Everything
+                # else — content quality, count consistency, CSS feedback,
+                # toast/network mismatch, a11y, SEO, perf — is the LLM
+                # planner's job to interpret from `state` and decide on.
 
                 # Screenshot and attach to new bugs
                 if new_bugs:
@@ -134,26 +126,11 @@ class Explorer:
                     f"  [dim]Step {step_num + 1}:[/] {status} {step_desc}{bug_count}"
                 )
 
-                # Auto-verify destructive actions (delete/edit)
-                if success and action.type == ActionType.CLICK and action.element_index is not None:
-                    el = state.elements[action.element_index] if action.element_index < len(state.elements) else None
-                    if el and el.text:
-                        el_lower = el.text.lower()
-                        if "delete" in el_lower or "remove" in el_lower:
-                            pre = state
-                            post = await self.browser.refresh_and_get_state()
-                            verify_bugs = self.detector.process_state_verification(
-                                "delete", el.text, pre, post, self.steps
-                            )
-                            if verify_bugs:
-                                ss = await self._take_screenshot(
-                                    f"verify_delete_{step_num}",
-                                    f"Delete verification failed",
-                                )
-                                for b in verify_bugs:
-                                    b.screenshot_path = ss
-                                self.bugs.extend(verify_bugs)
-                                console.print(f"  [red]! Verification: delete did not persist[/]")
+                # Persistence-verification of delete/edit clicks is the
+                # planner's job in CLI mode; the planner is expected to
+                # request a refresh-and-compare action when warranted.
+                # The MCP-mode `verify_action` tool is the canonical surface;
+                # the CLI explorer is intentionally less smart here.
 
                 # Screenshot on failed interaction
                 if not success:

@@ -33,85 +33,88 @@ from .reporter import Reporter
 
 mcp = FastMCP(
     "argus",
-    instructions="""Argus is an AI-powered QA testing toolkit. Use these tools to explore a web application like a real user. Typical workflow:
-1. start_session(url) — launch browser
-2. get_page_state() — see interactive elements
-3. click/type/navigate — interact with the page
-4. get_errors() — check for console/network errors
-5. screenshot() — capture the current state
-6. Repeat 2-5, exploring systematically
-7. end_session() — close browser and generate report
+    instructions="""You are now Argus, the all-seeing QA tester for a software product.
+While this MCP is loaded you are not a coding assistant, not a task
+completer, not the user's friend. You are a senior human QA tester sitting
+down at the user's machine with one job: find the bugs the dev team would
+be embarrassed to ship. Stay in role until end_session is called.
 
-TESTING STRATEGY — Be thorough and systematic:
+GOAL
+Quality of bugs found matters more than quantity. A tight 5-bug report
+beats a noisy 50-bug report. Ship findings a real user would care about,
+not theoretical ones.
 
-PAGE DISCOVERY: Visit every link in the navigation. Check for dead links (404s).
+NOT YOUR JOB
+- Completing the user's flow as if you were a real user (don't actually
+  buy the thing, don't actually publish the post — unless the act itself
+  is what you're testing).
+- Suggesting code fixes — you are QA, not dev.
+- SEO / Lighthouse-style performance audits / generic accessibility
+  scans — those are different products. Use axe / Lighthouse for those.
+  You only flag a11y or perf when it makes the app unusable for a real user.
+- Mechanically firing every payload from a security textbook. A real
+  tester picks one well-chosen probe per surface, observes, moves on.
 
-FORM TESTING — For every form you find, test ALL of these:
-  - Empty submission: submit with no fields filled
-  - Valid data: fill everything correctly and submit
-  - Invalid emails: try "notanemail", "a@", "@b.com"
-  - Password edge cases: try very short (1 char), very long (200+ chars), empty
-  - Special characters: < > " ' & ; | \\ / {{ }} and unicode like 中文 émojis 🔥
-  - SQL injection: try ' OR 1=1 -- and "; DROP TABLE users; --
-  - XSS payloads: try <script>alert('xss')</script> and <img onerror=alert(1) src=x>
-  - Very long input: paste 500+ characters into fields
-  - Mismatched fields: if there's "confirm password", make them different
-  - Boundary values: 0, -1, 999999999 for numeric fields
-  - Required field bypass: fill some fields but skip required ones
+THE TESTER'S RITUAL — return to this on every tool call
 
-NAVIGATION TESTING:
-  - Click every navigation link
-  - Try browser back/forward
-  - Try navigating to pages directly by URL
-  - Check what happens when accessing authenticated pages without login
+1. MAP         What does this app let a user do? Identify the 3-5 user
+               goals before testing anything specific.
+2. HYPOTHESIZE For each surface, name 2-3 specific ways it could fail.
+               Not "the form might break" — "I bet validation runs only
+               client-side and the server accepts garbage".
+3. ACT         One probe per tool call. Resist testing five things in
+               one click.
+4. OBSERVE     After every action, read what came back: state diff,
+               console, network, visible feedback. Compare expected vs
+               actual. Take a screenshot when something looks off.
+5. VERIFY      For any destructive or persistence-changing action
+               (delete, save, edit, submit, toggle, payment), call
+               verify_action. UIs lie. The "Saved!" toast is the single
+               most common reason real users lose data.
+6. RECORD      When you've confirmed a real bug, call record_bug with
+               severity + reproducible steps + evidence (URL, element,
+               screenshot index). Don't record speculation. Don't record
+               polish nits.
+7. COVER       Before ending the session, ask "which user goals did I
+               never exercise?" — go test those.
 
-INTERACTION TESTING:
-  - Click every button, even ones that look decorative
-  - Try double-clicking
-  - Try actions in unexpected order (e.g., submit before filling form)
-  - Try the same action multiple times rapidly
+WHAT MAKES A REAL BUG (the bar)
+- Reproducible — someone following your steps will see it too.
+- User-affecting — causes data loss, security risk, blocked flow, real
+  confusion, or trust damage.
+- Persistent — not a one-off page-load race unless you can re-trigger it.
 
-Always call get_errors() after form submissions and page navigations.
-Always call screenshot() after important interactions to document findings.
-Take a screenshot of EVERY page you visit and every error state you find.
+THE THINGS HUMANS NOTICE THAT MACHINES MISS — your hunting ground
+- The success toast is a lie — operation didn't actually persist.
+- Cross-page state inconsistency — same datum displayed differently
+  across pages, or one page updates and another doesn't.
+- Empty states aren't designed (says "Loading..." forever, or just blank).
+- Long values silently truncated with no indication.
+- Validation messages are engineer-speak, not user-speak ("Field 'foo'
+  invalid" — what is foo, what should I do?).
+- A workflow has no back / cancel / recover path — user is trapped.
+- Visual hierarchy inverted — destructive button is the prominent one;
+  primary CTA is the dim one.
+- Dark patterns — fake urgency, hidden cost, hard-to-cancel, deceptive
+  consent, sneaky charges.
+- After auth, navigation/UI doesn't reflect logged-in state.
+- Form errors clear the user's input — they have to retype everything.
+- The same action via two paths gives different results.
+- Inputs accept what should be rejected (auth bypass, bypassed
+  validation, accepted out-of-range numbers, accepted whitespace where
+  content is required).
 
-VERIFICATION — After destructive actions, ALWAYS verify:
-  - After DELETE: call verify_action("delete", "item text", verify_url="/list-page") to confirm item is gone
-  - After EDIT/SAVE: call verify_action("edit", "new value", verify_url="/edit-page") to confirm changes persisted
-  - The verify_url should be the page where you can SEE the data (e.g., the list page for delete, the edit form for edit)
-  - After seeing a success toast: call get_errors() immediately to check for hidden server errors
+SEVERITY CALIBRATION
+- HIGH    data loss, security, payment, blocked primary flow
+- MEDIUM  workflow friction, confusing UX, deceptive feedback,
+          cross-page inconsistency
+- LOW     polish, copy, suggestion-grade
 
-CONTENT ANALYSIS — get_page_state() now returns:
-  - Full page text (check for "Loading...", "NaN", broken dates)
-  - Visible toast messages
-  - Displayed counts (compare against actual item counts)
-  - CSS state indicators
-
-Look for these patterns:
-  - "Loading..." text on a page that should have loaded
-  - Numbers with decimals in dates ("1.52 days ago")
-  - Count mismatches between totals and actual items
-  - Success messages alongside server errors
-  - Red/alarming styling on zero-remaining states
-
-COMPREHENSIVE CHECKS — These run automatically with get_errors():
-  - Broken images (failed to load)
-  - Missing alt text on images
-  - Form inputs without labels
-  - Buttons/links with no accessible name
-  - Missing meta description, OG tags
-  - Heading hierarchy issues
-  - Mixed content (HTTP on HTTPS)
-
-COMPOUND TOOLS (preferred — do more per call):
-  - test_action(index, description): Click + auto-verify. Captures before/after state, diffs, detects bugs.
-  - test_form(fields, submit_text): Fill form + submit + verify result. One call replaces 5+ low-level calls.
-  - test_crud(create_url, list_url, item_data): Full create/edit/delete cycle with auto-verification.
-
-ON-DEMAND CHECKS:
-  - check_links(): Crawl all internal links, find 404s/5xx
-  - check_performance(): Measure load time, find large resources
-  - crawl_site(): Auto-visit all pages and run all detectors""",
+OPERATING RHYTHM
+After every tool call, ask yourself: was that a tester move, or did I
+slip into being a regular user / a developer / a wandering agent? If
+you slipped, return to the ritual. The MCP is loaded specifically so
+you stay in the tester seat — use that.""",
 )
 
 
@@ -181,24 +184,19 @@ def _text_in_state(text: str, state: PageState) -> bool:
     return False
 
 
-async def _run_all_detectors(
+async def _capture_browser_events(
     s: Session, state: PageState, console_errs: list, network_errs: list
 ) -> list:
-    """Run all passive detectors and return new bugs."""
-    new_bugs = s.detector.process_console_errors(console_errs, state.url, s.steps)
-    new_bugs.extend(s.detector.process_network_errors(network_errs, state.url, s.steps))
-    new_bugs.extend(s.detector.process_page_content(state, s.steps))
-    new_bugs.extend(s.detector.process_count_consistency(state, s.steps))
-    new_bugs.extend(s.detector.process_css_indicators(state, s.steps))
-    new_bugs.extend(s.detector.process_broken_images(state, s.steps))
-    new_bugs.extend(s.detector.process_accessibility(state, s.steps))
-    new_bugs.extend(s.detector.process_seo(state, s.steps))
-    new_bugs.extend(s.detector.process_mixed_content(state, s.steps))
-    if state.toast_messages:
-        new_bugs.extend(s.detector.process_toast_network_crosscheck(
-            state.toast_messages, network_errs, state.url, s.steps
-        ))
-    return new_bugs
+    """Capture browser-side events the agent cannot see directly.
+
+    Console messages and HTTP-layer 4xx/5xx do not surface in page state —
+    they only appear via Playwright event listeners. We turn those into Bug
+    records so they show up in the session report. Everything else (page
+    text, counts, CSS state, toasts) is the agent's job to interpret.
+    """
+    bugs = s.detector.process_console_errors(console_errs, state.url, s.steps)
+    bugs.extend(s.detector.process_network_errors(network_errs, state.url, s.steps))
+    return bugs
 
 
 @mcp.tool()
@@ -439,11 +437,16 @@ async def screenshot(name: str = "screenshot") -> str:
 
 @mcp.tool()
 async def get_errors() -> str:
-    """Get all console errors and network failures captured since the last check.
+    """Drain captured browser events (console errors, HTTP 4xx/5xx) since
+    the last call.
 
-    Returns any JavaScript errors, unhandled exceptions, and HTTP 4xx/5xx
-    responses detected during interaction. These are automatically recorded
-    as bugs in the session report.
+    These two channels are not visible to you through page state, so Argus
+    captures them as Bug records automatically. Use this after any action
+    that might have triggered a JS error or backend failure.
+
+    For everything else (visual issues, copy problems, missed validation,
+    cross-page inconsistency), read the page state yourself and call
+    record_bug when you've confirmed something is a real bug.
     """
     s = _require_session()
     console_errs, network_errs = s.browser.drain_errors()
@@ -456,23 +459,6 @@ async def get_errors() -> str:
         network_errs, current_url, s.steps
     ))
 
-    # Smart detection: page content, counts, CSS, toast cross-check
-    state = await s.browser.get_state()
-    s._last_elements = state.elements
-    new_bugs.extend(s.detector.process_page_content(state, s.steps))
-    new_bugs.extend(s.detector.process_count_consistency(state, s.steps))
-    new_bugs.extend(s.detector.process_css_indicators(state, s.steps))
-    if state.toast_messages:
-        new_bugs.extend(s.detector.process_toast_network_crosscheck(
-            state.toast_messages, network_errs, current_url, s.steps
-        ))
-    # Comprehensive detection: images, a11y, SEO, mixed content
-    new_bugs.extend(s.detector.process_broken_images(state, s.steps))
-    new_bugs.extend(s.detector.process_accessibility(state, s.steps))
-    new_bugs.extend(s.detector.process_seo(state, s.steps))
-    new_bugs.extend(s.detector.process_mixed_content(state, s.steps))
-
-    # Auto-screenshot for new bugs and attach to them
     if new_bugs:
         ss_path = await _auto_screenshot(
             s, f"error_{len(s.bugs) + 1}", f"Error detected on {current_url}"
@@ -482,86 +468,194 @@ async def get_errors() -> str:
 
     s.bugs.extend(new_bugs)
 
-    if not new_bugs:
-        return f"No new errors. Total bugs in session: {len(s.bugs)}"
+    if not new_bugs and not console_errs and not network_errs:
+        return f"No new console or network events. Total bugs in session: {len(s.bugs)}"
 
     lines = []
     for err in console_errs:
         lines.append(f"[CONSOLE {err['type'].upper()}] {err['text']}")
     for err in network_errs:
         lines.append(f"[HTTP {err['status']}] {err['method']} {err['url']}")
-    for bug in new_bugs:
-        if bug.type not in (BugType.CONSOLE_ERROR, BugType.NETWORK_ERROR):
-            lines.append(f"[{bug.type.value.upper()}] {bug.title}")
-    lines.append(f"\nTotal bugs in session: {len(s.bugs)}")
+    if new_bugs:
+        lines.append(f"\nCaptured {len(new_bugs)} new event-bug(s).")
+    lines.append(f"Total bugs in session: {len(s.bugs)}")
 
     return "\n".join(lines)
 
 
-@mcp.tool()
-async def verify_action(action_type: str, target_text: str, verify_url: str = "") -> str:
-    """Verify that a destructive action actually persisted by navigating to a page and checking.
+_SEVERITY_BY_NAME = {s.value: s for s in Severity}
+_BUG_TYPE_BY_NAME = {t.value: t for t in BugType}
 
-    Call this AFTER performing a delete, edit, or toggle and seeing a success message.
-    Navigates to verify_url (or the current page via GET) and checks whether the
-    expected change is reflected in the page content.
+
+@mcp.tool()
+async def record_bug(
+    title: str,
+    severity: str,
+    evidence: Optional[dict] = None,
+) -> str:
+    """Record a confirmed bug you have identified during testing.
+
+    Call this only after you have observed something that meets the bug
+    bar: reproducible, user-affecting, persistent. Do not record
+    speculation or polish nits. The session report is built from these
+    records — be specific.
 
     Args:
-        action_type: One of "delete", "edit", or "toggle"
-        target_text: For delete: the text of the deleted item. For edit: the NEW value you entered.
-        verify_url: URL to navigate to for verification (e.g. the list page or edit page). If empty, navigates to the current URL via GET.
+        title: One-line headline, specific. Bad: "Form has issues."
+               Good: "Login form accepts any password — no authentication."
+        severity: "critical" | "high" | "medium" | "low" | "info".
+                  HIGH = data loss / security / payment / blocked flow.
+                  MEDIUM = workflow friction / confusing UX / cross-page bug.
+                  LOW = polish / suggestion-grade.
+        evidence: Optional dict with extra context. Recommended keys:
+            description (str): Longer explanation including user impact.
+                Default = same as title.
+            steps (list[str]): Reproduction steps. Default = current
+                session step log (everything you did so far).
+            url (str): Page or screen URL. Default = current page URL.
+            screenshot (str): One of "auto" (default — take one now and
+                attach), "skip" (no screenshot), or a label to use as
+                the screenshot filename. Pre-existing screenshot paths
+                are also accepted.
+            bug_type (str): A category for the report. Default
+                "ux_issue". One of: console_error, network_error,
+                visual_anomaly, ux_issue, crash, broken_link,
+                form_error, state_verification, misleading_success,
+                count_mismatch, text_anomaly, broken_image, seo_issue,
+                accessibility, performance, mixed_content.
     """
     s = _require_session()
-    s.steps.append(f'Verify {action_type}: "{target_text}"')
 
-    # Navigate to verify URL (GET request, not reload which may re-POST)
+    sev_key = (severity or "").strip().lower()
+    if sev_key not in _SEVERITY_BY_NAME:
+        return (
+            f"record_bug: invalid severity {severity!r}. "
+            f"Use one of: {', '.join(_SEVERITY_BY_NAME)}."
+        )
+    sev = _SEVERITY_BY_NAME[sev_key]
+
+    ev = evidence or {}
+    description = ev.get("description") or title
+    steps = ev.get("steps") or list(s.steps)
+    url = ev.get("url") or (s.browser._page.url if s.browser._page else "")
+
+    type_key = (ev.get("bug_type") or "ux_issue").strip().lower()
+    if type_key not in _BUG_TYPE_BY_NAME:
+        return (
+            f"record_bug: invalid bug_type {type_key!r}. "
+            f"Use one of: {', '.join(_BUG_TYPE_BY_NAME)}."
+        )
+    bug_type = _BUG_TYPE_BY_NAME[type_key]
+
+    screenshot_directive = ev.get("screenshot", "auto")
+    screenshot_path: Optional[str] = None
+    if screenshot_directive == "skip":
+        pass
+    elif screenshot_directive in ("auto", "", None):
+        label = "bug_" + "".join(c if c.isalnum() else "_" for c in title.lower())[:40]
+        screenshot_path = await _auto_screenshot(s, label, f"record_bug: {title[:60]}")
+    elif "/" in screenshot_directive or screenshot_directive.endswith(".png"):
+        # Treat as an existing path
+        screenshot_path = screenshot_directive
+    else:
+        # Treat as a label for a fresh screenshot
+        label = "".join(c if c.isalnum() else "_" for c in screenshot_directive.lower())[:40]
+        screenshot_path = await _auto_screenshot(s, label, f"record_bug: {title[:60]}")
+
+    bug = Bug(
+        type=bug_type,
+        severity=sev,
+        title=title,
+        description=description,
+        url=url,
+        steps_to_reproduce=list(steps),
+        screenshot_path=screenshot_path,
+    )
+    s.bugs.append(bug)
+    s.steps.append(f"record_bug: [{sev.value}] {title}")
+
+    out = [
+        f"Recorded bug [{sev.value.upper()}] {title}",
+        f"  url: {url}",
+        f"  type: {bug_type.value}",
+        f"  steps: {len(steps)} step(s)",
+    ]
+    if screenshot_path:
+        out.append(f"  screenshot: {screenshot_path}")
+    out.append(f"  total bugs in session: {len(s.bugs)}")
+    return "\n".join(out)
+
+
+@mcp.tool()
+async def verify_action(action_type: str, target_text: str, verify_url: str = "") -> str:
+    """Force a fresh GET on the page where a persistence-changing action
+    should have taken effect, then report whether `target_text` is present.
+
+    Use this after any delete / edit / save / toggle / submit. The
+    success toast is not proof of persistence — only a fresh page load is.
+
+    Argus does not auto-record a bug here. You read the result and
+    decide. If `delete` says target_text is still present, that's a real
+    bug — call record_bug. If `edit` says the new value is missing,
+    that's a real bug — call record_bug.
+
+    Args:
+        action_type: "delete" | "edit" | "toggle". Used only for the
+                     human-readable result string.
+        target_text: For delete — text of the item that should be gone.
+                     For edit — the NEW value that should now be present.
+        verify_url: Page to fetch fresh and inspect. Defaults to current URL.
+    """
+    s = _require_session()
+    s.steps.append(f'verify_action({action_type}, "{target_text[:60]}")')
+
     current_url = s.browser._page.url if s.browser._page else ""
     nav_url = verify_url or current_url
     await s.browser.goto(nav_url)
     after_state = await s.browser.get_state()
     s._last_elements = after_state.elements
 
-    # For before_state, we use a minimal PageState since we already navigated away
-    from .models import PageState
-    before_state = PageState(url=current_url, title="", elements=[], page_text="")
+    present = _text_in_state(target_text, after_state)
 
-    bugs = s.detector.process_state_verification(
-        action_type, target_text, before_state, after_state, s.steps
-    )
-
-    if bugs:
-        ss_path = await _auto_screenshot(
-            s, f"verify_{action_type}", f"Verification failed: {action_type}"
+    if action_type == "delete":
+        verdict = (
+            f"Target text STILL PRESENT after refresh — delete did not persist."
+            if present else
+            f"Target text gone — delete persisted."
         )
-        for bug in bugs:
-            bug.screenshot_path = ss_path
-        s.bugs.extend(bugs)
-        bug_msgs = [f"  [{b.severity.value.upper()}] {b.title}" for b in bugs]
-        return "VERIFICATION FAILED:\n" + "\n".join(bug_msgs) + f"\n\nTotal bugs: {len(s.bugs)}"
+    elif action_type == "edit":
+        verdict = (
+            f"New value PRESENT after refresh — edit persisted."
+            if present else
+            f"New value NOT FOUND after refresh — edit did not persist."
+        )
+    else:
+        verdict = (
+            f"Target text {'present' if present else 'absent'} after refresh."
+        )
 
-    return f"Verification passed: {action_type} on '{target_text}' persisted correctly."
+    return (
+        f"verify_action({action_type}) on '{target_text[:60]}' @ {nav_url}\n"
+        f"  {verdict}\n"
+        f"  Decide: is this a bug? If so, call record_bug with the appropriate\n"
+        f"  severity and steps. Argus does not infer bugs from this output."
+    )
 
 
 @mcp.tool()
 async def check_links() -> str:
-    """Crawl all internal links on the current page and check for dead links (404/5xx).
+    """Probe every internal link on the current page (HEAD with GET fallback)
+    and return raw status-code results.
 
-    Sends HEAD requests to each internal link found on the page.
-    This can take several seconds on pages with many links.
+    Argus does not auto-record bugs here. You read the dead-link list and
+    decide. A handful of dead anchor links is rarely shippable; the
+    severity depends on context. Call record_bug for the ones that matter.
     """
     s = _require_session()
     state = await s.browser.get_state()
     s._last_elements = state.elements
 
     link_results = await s.browser.check_links(state.links)
-    new_bugs = s.detector.process_dead_links(link_results, state.url, s.steps)
-
-    if new_bugs:
-        ss_path = await _auto_screenshot(s, "dead_links", f"Dead links on {state.url}")
-        for bug in new_bugs:
-            bug.screenshot_path = ss_path
-    s.bugs.extend(new_bugs)
-
     dead = [r for r in link_results if not r["ok"]]
     alive = [r for r in link_results if r["ok"]]
     external = [l for l in state.links if not l.get("isInternal")]
@@ -574,26 +668,24 @@ async def check_links() -> str:
         lines.append("")
         for r in dead:
             lines.append(f"  [HTTP {r['status']}] {r['href']}")
-    lines.append(f"\nTotal bugs in session: {len(s.bugs)}")
+        lines.append("")
+        lines.append("Decide: are any of these real bugs? Call record_bug if so.")
     return "\n".join(lines)
 
 
 @mcp.tool()
 async def check_performance() -> str:
-    """Measure page performance: load time, resource count, large resources.
+    """Read raw performance metrics from the browser's Performance API
+    (load time, TTFB, request count, large resources).
 
-    Uses the browser's Performance API. Best called right after navigating to a page.
+    Argus does not auto-record bugs here — Lighthouse already owns the
+    performance-audit space. Only call record_bug if the page is so slow
+    or so heavy that it materially blocks a real user (multi-second TTFB
+    on a primary flow, multi-MB hero asset, etc).
     """
     s = _require_session()
     current_url = s.browser._page.url if s.browser._page else ""
     perf_data = await s.browser.get_performance()
-    new_bugs = s.detector.process_performance(perf_data, current_url, s.steps)
-
-    if new_bugs:
-        ss_path = await _auto_screenshot(s, "performance", f"Perf issues on {current_url}")
-        for bug in new_bugs:
-            bug.screenshot_path = ss_path
-    s.bugs.extend(new_bugs)
 
     nav = perf_data.get("navigation", {})
     summary = perf_data.get("summary", {})
@@ -609,7 +701,6 @@ async def check_performance() -> str:
         lines.append(f"  Large resources (>500KB):")
         for r in large:
             lines.append(f"    {r['size']/1024:.0f}KB — {r['name'][:80]}")
-    lines.append(f"\nTotal bugs in session: {len(s.bugs)}")
     return "\n".join(lines)
 
 
@@ -656,41 +747,16 @@ async def crawl_site(max_pages: int = 20) -> str:
         if state.url not in s.pages_visited:
             s.pages_visited.append(state.url)
 
-        # Check if page is blocked (403/error page with no real content)
+        # Capture only what the agent cannot see directly: console + network events.
         console_errs, network_errs = s.browser.drain_errors()
-        page_blocked = any(
-            e.get("status") in (403, 401) and e.get("url", "").rstrip("/") == url.rstrip("/")
-            for e in network_errs
-        )
-
-        # Run all passive detectors
         new_bugs = s.detector.process_console_errors(console_errs, state.url, s.steps)
         new_bugs.extend(s.detector.process_network_errors(network_errs, state.url, s.steps))
 
-        # Only run content-level detectors if page loaded successfully
-        if not page_blocked:
-            new_bugs.extend(s.detector.process_page_content(state, s.steps))
-            new_bugs.extend(s.detector.process_count_consistency(state, s.steps))
-            new_bugs.extend(s.detector.process_css_indicators(state, s.steps))
-            new_bugs.extend(s.detector.process_broken_images(state, s.steps))
-            new_bugs.extend(s.detector.process_accessibility(state, s.steps))
-            new_bugs.extend(s.detector.process_seo(state, s.steps))
-            new_bugs.extend(s.detector.process_mixed_content(state, s.steps))
-
-        if state.toast_messages:
-            new_bugs.extend(s.detector.process_toast_network_crosscheck(
-                state.toast_messages, network_errs, state.url, s.steps
-            ))
-
-        # Check links
+        # Probe links once (raw probe, no auto-bug — agent decides).
         link_results = await s.browser.check_links(state.links)
-        new_bugs.extend(s.detector.process_dead_links(link_results, state.url, s.steps))
+        dead = [r for r in link_results if not r["ok"]]
 
-        # Performance
-        perf = await s.browser.get_performance()
-        new_bugs.extend(s.detector.process_performance(perf, state.url, s.steps))
-
-        # Screenshot
+        # Screenshot when console/network captured something.
         if new_bugs:
             page_name = state.url.split("/")[-1] or "index"
             ss_path = await _auto_screenshot(s, f"crawl_{page_name}", f"Crawl: {state.url}")
@@ -698,7 +764,7 @@ async def crawl_site(max_pages: int = 20) -> str:
                 bug.screenshot_path = ss_path
 
         s.bugs.extend(new_bugs)
-        page_results.append((state.url, len(new_bugs)))
+        page_results.append((state.url, len(new_bugs), len(dead)))
 
         # Discover new internal links to visit (deduplicated by path)
         for link in state.links:
@@ -706,12 +772,19 @@ async def crawl_site(max_pages: int = 20) -> str:
             if link.get("isInternal") and _normalize(href) not in visited_paths and href not in to_visit:
                 to_visit.append(href)
 
-    lines = [f"Crawl complete: {len(visited)} pages visited, {len(s.bugs)} total bugs"]
+    lines = [f"Crawl complete: {len(visited)} pages visited, {len(s.bugs)} event-bugs captured"]
     lines.append("")
-    for url, count in page_results:
-        marker = f" ({count} bugs)" if count else ""
+    for url, bug_count, dead_count in page_results:
+        markers = []
+        if bug_count:
+            markers.append(f"{bug_count} event-bug(s)")
+        if dead_count:
+            markers.append(f"{dead_count} dead link(s)")
+        marker = f"  ({', '.join(markers)})" if markers else ""
         lines.append(f"  {url}{marker}")
-    lines.append(f"\nTotal bugs in session: {len(s.bugs)}")
+    lines.append("")
+    lines.append("Crawl auto-records only console/network events. For everything")
+    lines.append("else, observe the pages yourself and call record_bug.")
     return "\n".join(lines)
 
 
@@ -762,7 +835,7 @@ async def test_action(element_index: int, action_description: str) -> str:
     console_errs, network_errs = s.browser.drain_errors()
 
     # Run detectors
-    new_bugs = await _run_all_detectors(s, after, console_errs, network_errs)
+    new_bugs = await _capture_browser_events(s, after, console_errs, network_errs)
 
     # Compute diff
     changes = compute_changes(before, after, action_description)
@@ -926,7 +999,7 @@ async def test_form(
         s.pages_visited.append(after.url)
 
     console_errs, network_errs = s.browser.drain_errors()
-    new_bugs = await _run_all_detectors(s, after, console_errs, network_errs)
+    new_bugs = await _capture_browser_events(s, after, console_errs, network_errs)
     changes = compute_changes(before, after, "form submission")
 
     # Analyze result
@@ -949,16 +1022,16 @@ async def test_form(
         if redirected or has_success_toast:
             outcome = "CONFIRMED — success indicators detected"
         elif server_error:
-            outcome = "FAILED — server returned error"
+            outcome = "FAILED — server returned error (call record_bug if this is a real bug)"
         elif has_error_text:
-            outcome = "FAILED — error messages visible on page"
+            outcome = "FAILED — error messages visible on page (call record_bug if this is a real bug)"
         else:
             outcome = "UNCLEAR — no obvious success or error indicators"
     elif expected_result == "validation_error":
         if has_error_text or has_error_toast:
             outcome = "CONFIRMED — validation errors shown"
         elif redirected or has_success_toast:
-            outcome = "UNEXPECTED — form accepted input that should have been rejected"
+            outcome = "UNEXPECTED — form accepted input that should have been rejected (call record_bug if this is a real bug)"
         else:
             outcome = "UNCLEAR — no obvious validation feedback"
     else:
