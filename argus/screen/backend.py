@@ -411,9 +411,14 @@ class ScreenBackend:
             return None
 
         try:
+            # Note: kCGWindowListOptionIncludingWindow returns None for some
+            # apps' background / non-foreground windows (empirically observed
+            # on macOS 14 with Notes & Unity Editor). kCGWindowListOptionAll
+            # combined with the explicit window id reliably resolves to the
+            # target window's pixels regardless of focus state.
             cg_image = Quartz.CGWindowListCreateImage(
                 Quartz.CGRectNull,
-                Quartz.kCGWindowListOptionIncludingWindow,
+                Quartz.kCGWindowListOptionAll,
                 int(win_id),
                 Quartz.kCGWindowImageBoundsIgnoreFraming,
             )
@@ -666,3 +671,104 @@ class ScreenBackend:
             return False, "cliclick-missing (brew install cliclick)"
         except Exception as exc:
             return False, f"type_at-error: {exc}"
+
+    # ── visual settle detection ────────────────────────────────────
+
+    def wait_for_stable(
+        self,
+        timeout_s: float = 5.0,
+        threshold_pct: float = 0.5,
+        stable_window_ms: int = 400,
+        poll_ms: int = 150,
+        screenshot_dir: Optional[str] = None,
+    ) -> Tuple[bool, str, Optional[str], dict]:
+        """Poll the target window until it stops changing.
+
+        Returns (settled, reason, final_screenshot_path, stats).
+
+        After an action (click / drag / launch), the screen is usually
+        in motion: loading spinner, animation, layout reflow. The
+        agent's job is to wait until the dust settles before reading
+        the result. Sleeping for an arbitrary N ms is brittle — fast
+        machines waste time, slow machines fire too early. `wait_for_stable`
+        polls a screenshot every `poll_ms` and computes a Pillow pixel
+        diff against the previous frame; once `stable_window_ms` worth
+        of consecutive frames stay below `threshold_pct`, the page is
+        considered settled.
+
+        Falls back gracefully:
+        - if PIL isn't available, returns (False, "no-pil", None, {})
+        - if the target window can't be found at all, returns
+          (False, "no-window", None, {})
+        - if the timeout fires before stability is observed, returns
+          (False, "timeout", last_screenshot, {...frames, last_diff})
+        """
+        from PIL import Image, ImageChops
+
+        deadline = time.time() + timeout_s
+        last_path = None
+        last_image = None
+        stable_for_ms = 0
+        frames = 0
+        last_diff_pct = 0.0
+
+        # Take an initial baseline.
+        last_path = self._capture_window(self._app_pid or -1, screenshot_dir)
+        if last_path is None or not Path(last_path).exists():
+            # Whole-screen fallback, then continue.
+            last_path = self._capture(screenshot_dir)
+        if last_path is None or not Path(last_path).exists():
+            return False, "no-window", None, {}
+
+        try:
+            last_image = Image.open(last_path).convert("RGB")
+        except Exception as exc:
+            return False, f"baseline-open-error: {exc}", last_path, {}
+
+        while time.time() < deadline:
+            time.sleep(poll_ms / 1000.0)
+            frames += 1
+            new_path = self._capture_window(self._app_pid or -1, screenshot_dir)
+            if new_path is None or not Path(new_path).exists():
+                new_path = self._capture(screenshot_dir)
+            if new_path is None:
+                continue
+            try:
+                new_image = Image.open(new_path).convert("RGB")
+            except Exception:
+                continue
+
+            # Resize the smaller to match if window changed size.
+            if new_image.size != last_image.size:
+                target_size = (
+                    min(new_image.size[0], last_image.size[0]),
+                    min(new_image.size[1], last_image.size[1]),
+                )
+                new_image = new_image.resize(target_size)
+                last_image = last_image.resize(target_size)
+
+            diff = ImageChops.difference(new_image, last_image).convert("L")
+            mask = diff.point(lambda v: 255 if v > 25 else 0, mode="L")
+            changed = sum(1 for px in mask.getdata() if px > 0)
+            total = mask.size[0] * mask.size[1]
+            last_diff_pct = (changed / total * 100) if total else 0.0
+
+            if last_diff_pct < threshold_pct:
+                stable_for_ms += poll_ms
+                if stable_for_ms >= stable_window_ms:
+                    return True, "settled", new_path, {
+                        "frames": frames,
+                        "last_diff_pct": round(last_diff_pct, 3),
+                        "elapsed_s": round(time.time() - (deadline - timeout_s), 2),
+                    }
+            else:
+                stable_for_ms = 0
+
+            last_path = new_path
+            last_image = new_image
+
+        return False, "timeout", last_path, {
+            "frames": frames,
+            "last_diff_pct": round(last_diff_pct, 3),
+            "stable_for_ms": stable_for_ms,
+        }
