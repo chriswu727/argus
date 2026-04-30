@@ -1,0 +1,108 @@
+{
+  "target": "darkshop",
+  "fixture": "http://127.0.0.1:5556",
+  "started_at": 1777531006.76245,
+  "finished_at": 1777531015.0729759,
+  "duration_s": 8.31,
+  "caught": 12,
+  "total": 12,
+  "recall_pct": 100.0,
+  "results": [
+    {
+      "bug_id": 1,
+      "name": "Hardcoded 'Only 3 left!' stock label",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 0.54
+    },
+    {
+      "bug_id": 2,
+      "name": "Fake -50% sale badge (original_price == price)",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 0.53
+    },
+    {
+      "bug_id": 3,
+      "name": "Free-shipping banner contradicted by checkout fee",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 1.06
+    },
+    {
+      "bug_id": 4,
+      "name": "Visual hierarchy inverted on product page",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 0.52
+    },
+    {
+      "bug_id": 5,
+      "name": "Misleading rating \u2014 4.8\u2605 huge, '1 review' tiny",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 0.53
+    },
+    {
+      "bug_id": 6,
+      "name": "CVV field ordered before card number",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 0.53
+    },
+    {
+      "bug_id": 7,
+      "name": "Side-panel subtotal vs main-area total mismatch",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 0.53
+    },
+    {
+      "bug_id": 8,
+      "name": "Place Order demoted to a link; Edit Cart is the CTA",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 0.53
+    },
+    {
+      "bug_id": 9,
+      "name": "Legal checkbox '(optional)' carries required-mark",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 0.53
+    },
+    {
+      "bug_id": 10,
+      "name": "Account rename does not update nav greeting",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 0.53
+    },
+    {
+      "bug_id": 11,
+      "name": "Nav cart-count badge stale vs cart contents",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 0.53
+    },
+    {
+      "bug_id": 12,
+      "name": "Discount code field clears silently with no feedback",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 1.05
+    }
+  ]
+}

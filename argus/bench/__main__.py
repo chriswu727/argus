@@ -1,772 +1,146 @@
 """Argus reproducible benchmark — `python -m argus.bench`.
 
-Drives Argus's MCP tool surface against the BuggyTasks fixture and
-reports how many of the 22 seeded bugs a scripted competent agent
-records. The "agent" here is a fixed Python sequence per scenario;
-the point is to measure Argus's *capability ceiling* (what's findable
-with these tools) rather than the variability of any one LLM.
+Drives Argus's MCP tools against one or more seeded fixtures and
+reports recall as a matrix. The "agent" is a fixed Python sequence
+per scenario; the point is to measure Argus's *capability ceiling*
+(what's findable with these tools) rather than the variability of
+any one LLM.
 
 Usage:
-    # Make sure BuggyTasks is running on 127.0.0.1:5555 first:
-    python test-site/app.py
+    # one fixture at a time
+    python -m argus.bench --target buggytasks
+    python -m argus.bench --target darkshop
 
-    python -m argus.bench
-    python -m argus.bench --json out.json --md out.md
+    # both, write a matrix report
+    python -m argus.bench --target all \\
+        --json bench-results/matrix.json \\
+        --md   bench-results/matrix.md
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
 import json
-import os
 import sys
-import time
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Awaitable, Callable, List, Optional
+from typing import List, Optional
 
-# eval_js needs --unsafe — bench enables it.
-os.environ["ARGUS_UNSAFE_EVAL"] = "1"
-
-import argus.mcp_server as mcp_module
-from argus.models import Bug
-
-BASE = "http://127.0.0.1:5555"
+from .runner import run_scenarios, BenchReport
+from . import scenarios_buggytasks
+from . import scenarios_darkshop
 
 
-async def _call(tool, *args, **kwargs):
-    fn = getattr(tool, "fn", tool)
-    return await fn(*args, **kwargs)
+_TARGETS = {
+    "buggytasks": (scenarios_buggytasks.BASE_URL, scenarios_buggytasks.SCENARIOS),
+    "darkshop":   (scenarios_darkshop.BASE_URL,   scenarios_darkshop.SCENARIOS),
+}
 
 
-@dataclass
-class ScenarioResult:
-    bug_id: int
-    name: str
-    caught: bool
-    method: str  # "auto-event" / "agent-record" / "skipped"
-    notes: str = ""
-    elapsed_s: float = 0.0
-
-
-@dataclass
-class BenchReport:
-    started_at: float
-    finished_at: float
-    fixture_url: str
-    results: List[ScenarioResult] = field(default_factory=list)
-
-    @property
-    def caught(self) -> int:
-        return sum(1 for r in self.results if r.caught)
-
-    @property
-    def total(self) -> int:
-        return len(self.results)
-
-    @property
-    def recall(self) -> float:
-        return (self.caught / self.total) if self.total else 0.0
-
-    def to_json(self) -> dict:
-        return {
-            "started_at": self.started_at,
-            "finished_at": self.finished_at,
-            "duration_s": round(self.finished_at - self.started_at, 2),
-            "fixture": self.fixture_url,
-            "caught": self.caught,
-            "total": self.total,
-            "recall_pct": round(self.recall * 100, 1),
-            "results": [
-                {
-                    "bug_id": r.bug_id,
-                    "name": r.name,
-                    "caught": r.caught,
-                    "method": r.method,
-                    "notes": r.notes,
-                    "elapsed_s": round(r.elapsed_s, 2),
-                }
-                for r in self.results
-            ],
-        }
-
-    def to_markdown(self) -> str:
-        lines = [
-            "# Argus benchmark",
-            "",
-            f"- Fixture: `{self.fixture_url}`",
-            f"- Duration: {self.finished_at - self.started_at:.1f} s",
-            f"- **Recall: {self.caught} / {self.total} "
-            f"= {self.recall * 100:.0f} %**",
-            "",
-            "| #  | Seeded bug                                              | Caught | Method        | Notes                          |",
-            "|----|---------------------------------------------------------|--------|---------------|--------------------------------|",
-        ]
-        for r in self.results:
-            mark = "yes" if r.caught else "no"
-            lines.append(
-                f"| {r.bug_id:>2} | {r.name[:55]:<55} | {mark:<6} | "
-                f"{r.method:<13} | {r.notes[:30]:<30} |"
-            )
-        return "\n".join(lines)
-
-
-# ── Scenario helpers ────────────────────────────────────────────────
-
-
-async def _reset(mode: str = "seeded") -> None:
-    """Reset the fixture via /api/test/reset."""
-    res = await _call(
-        mcp_module.eval_js,
-        code=f"() => fetch('/api/test/reset?mode={mode}', "
-             f"{{method:'POST'}}).then(r => r.json())",
-    )
-    if "ok" not in res.lower():
-        raise RuntimeError(f"reset failed: {res}")
-
-
-def _bugs_added_since(s, before_count: int) -> List[Bug]:
-    return s.bugs[before_count:]
-
-
-def _records_match(bugs: List[Bug], substrs: List[str]) -> bool:
-    """Did any new Bug's title or description mention any of the expected substrs?"""
-    for b in bugs:
-        hay = (b.title + " " + b.description).lower()
-        if any(sub.lower() in hay for sub in substrs):
-            return True
-    return False
-
-
-# ── Scenarios — one per seeded bug ──────────────────────────────────
-#
-# Each scenario: reset, drive Argus, optionally call record_bug, return whether
-# Argus's session bug-list now contains evidence of the seeded bug.
-
-
-async def s01_console_appconfig(s):
-    await _call(mcp_module.navigate, BASE + "/")
-    pre = len(s.bugs)
-    await _call(mcp_module.get_errors)  # auto-captures console events
-    new = _bugs_added_since(s, pre)
-    return _records_match(new, ["appconfig"]), "auto-event"
-
-
-async def s02_dead_help_link(s):
-    await _call(mcp_module.navigate, BASE + "/")
-    pre = len(s.bugs)
-    res = await _call(mcp_module.check_links)
-    if "/help" in res and "404" in res:
-        await _call(
-            mcp_module.record_bug,
-            title="Dead navigation link: /help returns 404",
-            severity="medium",
-            evidence={"bug_type": "broken_link", "screenshot": "skip"},
+def matrix_md(reports: List[BenchReport]) -> str:
+    """Cross-fixture matrix Markdown — the headline artifact."""
+    lines = [
+        "# Argus benchmark matrix",
+        "",
+        "| Fixture     | Recall            | Duration | Fixture URL                  |",
+        "|-------------|-------------------|----------|------------------------------|",
+    ]
+    for r in reports:
+        recall = f"{r.caught} / {r.total} = {r.recall * 100:.0f} %"
+        dur = f"{r.finished_at - r.started_at:.1f} s"
+        lines.append(
+            f"| {r.target:<11} | {recall:<17} | {dur:<8} | `{r.fixture_url}` |"
         )
-    new = _bugs_added_since(s, pre)
-    return _records_match(new, ["/help", "dead"]), "agent-record"
-
-
-async def s03_newsletter_500(s):
-    await _call(mcp_module.navigate, BASE + "/")
-    pre = len(s.bugs)
-    # Newsletter has no UI form — exercise via eval_js fetch.
-    res = await _call(
-        mcp_module.eval_js,
-        code="() => fetch('/api/newsletter', {method:'POST'}).then(r => r.status).catch(e => 'err:'+e.message)",
+    lines.append("")
+    lines.append(
+        "Argus's MCP surface is fixture-agnostic — both BuggyTasks (mechanical "
+        "bugs) and DarkShop (human-eye bugs) are exercised through the same "
+        "description-keyed tools."
     )
-    if "500" in res:
-        await _call(
-            mcp_module.record_bug,
-            title="POST /api/newsletter unconditionally returns 500",
-            severity="high",
-            evidence={"bug_type": "network_error", "screenshot": "skip"},
-        )
-    new = _bugs_added_since(s, pre)
-    return _records_match(new, ["newsletter", "500"]), "agent-record"
+    lines.append("")
+    for r in reports:
+        lines.append(f"## {r.target}")
+        lines.append("")
+        lines.append(r.to_markdown())
+        lines.append("")
+    return "\n".join(lines)
 
 
-async def s04_auth_bypass(s):
-    await _call(mcp_module.navigate, BASE + "/login")
-    pre = len(s.bugs)
-    await _call(
-        mcp_module.test_form,
-        form_fields={"email": "garbage@nope.com", "password": "wrong"},
-    )
-    obs = await _call(mcp_module.observe)
-    if "logged in as" in obs.lower() or "go to tasks" in obs.lower():
-        await _call(
-            mcp_module.record_bug,
-            title="Login accepts any credentials — no authentication",
-            severity="high",
-            evidence={"bug_type": "form_error", "screenshot": "skip"},
-        )
-    new = _bugs_added_since(s, pre)
-    return _records_match(new, ["login", "any credentials", "no authentication"]), "agent-record"
-
-
-async def s05_pw_mismatch_creates_account(s):
-    await _reset("seeded")
-    await _call(mcp_module.navigate, BASE + "/register")
-    pre = len(s.bugs)
-    await _call(
-        mcp_module.test_form,
-        form_fields={
-            "username": "bench_alice",
-            "email": "bench_alice@x.com",
-            "password": "abc12345",
-            "confirm": "DIFFERENT99",
-        },
-    )
-    state_json = await _call(
-        mcp_module.eval_js,
-        code="() => fetch('/api/test/state').then(r => r.json()).then(d => d.users)",
-    )
-    if "bench_alice@x.com" in state_json:
-        await _call(
-            mcp_module.record_bug,
-            title="Register: account created despite password mismatch",
-            severity="high",
-            evidence={"bug_type": "form_error", "screenshot": "skip"},
-        )
-    new = _bugs_added_since(s, pre)
-    return _records_match(new, ["password mismatch", "account created"]), "agent-record"
-
-
-async def s06_form_data_lost_on_error(s):
-    await _call(mcp_module.navigate, BASE + "/register")
-    pre = len(s.bugs)
-    await _call(
-        mcp_module.test_form,
-        form_fields={
-            "username": "anyuser",
-            "email": "any@x.com",
-            "password": "abc12345",
-            "confirm": "DIFFERENT99",
-        },
-    )
-    obs = await _call(mcp_module.observe)
-    # After mismatch, a real impl re-renders the form with values; BuggyTasks
-    # drops the form entirely.
-    if "passwords do not match" in obs.lower() and "username" not in obs.lower().split("interactive elements:")[1][:300]:
-        await _call(
-            mcp_module.record_bug,
-            title="Register: form fields disappear after validation error",
-            severity="medium",
-            evidence={"bug_type": "form_error", "screenshot": "skip"},
-        )
-    new = _bugs_added_since(s, pre)
-    return _records_match(new, ["form fields disappear", "form data"]), "agent-record"
-
-
-async def s07_xss_reflection(s):
-    await _call(mcp_module.navigate, BASE + "/search?q=%3Cscript%3Ealert(1)%3C/script%3E")
-    pre = len(s.bugs)
-    # Probe body.innerHTML directly for an unescaped <script> tag rather
-    # than full document outerHTML (which can exceed eval_js's truncation).
-    res = await _call(
-        mcp_module.eval_js,
-        code=(
-            "() => ({"
-            "  hasScript: document.body.innerHTML.includes('<script>alert'),"
-            "  resultsLine: (document.body.innerHTML.match(/Results for:[\\\\s\\\\S]{0,200}/) || ['(none)'])[0]"
-            "})"
-        ),
-    )
-    if '"hasScript": true' in res or '"hasScript":true' in res:
-        await _call(
-            mcp_module.record_bug,
-            title="Search reflects user query as raw HTML — XSS vulnerability",
-            severity="critical",
-            evidence={"bug_type": "form_error", "screenshot": "skip", "description": res[:400]},
-        )
-    new = _bugs_added_since(s, pre)
-    return _records_match(new, ["xss", "reflects", "raw html"]), "agent-record"
-
-
-async def s08_double_submit_dup(s):
-    await _reset("seeded")
-    pre = len(s.bugs)
-    # Fire two POSTs in quick succession via fetch.
-    await _call(
-        mcp_module.eval_js,
-        code=(
-            "async () => {"
-            "const body = new URLSearchParams({title:'BENCH-DUP', description:'x', priority:'medium'});"
-            "const opts = {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body};"
-            "await Promise.all([fetch('/tasks/new', opts), fetch('/tasks/new', opts)]);"
-            "return 'ok';"
-            "}"
-        ),
-    )
-    state_json = await _call(
-        mcp_module.eval_js,
-        code="() => fetch('/api/test/state').then(r => r.json()).then(d => d.tasks.filter(t => t.title === 'BENCH-DUP').length)",
-    )
-    if "result: 2" in state_json or "result: 3" in state_json:
-        await _call(
-            mcp_module.record_bug,
-            title="Add Task POST has no de-dup — double-submit creates duplicate tasks",
-            severity="medium",
-            evidence={"bug_type": "form_error", "screenshot": "skip"},
-        )
-    new = _bugs_added_since(s, pre)
-    return _records_match(new, ["double-submit", "duplicate"]), "agent-record"
-
-
-async def s09_count_off_by_one(s):
-    await _reset("seeded")
-    await _call(mcp_module.navigate, BASE + "/")
-    pre = len(s.bugs)
-    obs = await _call(mcp_module.observe)
-    # Homepage shows "6 Pending", "2 Completed", "7 Total Tasks". 6+2 != 7.
-    if "6 Pending" in obs and "2 Completed" in obs and "7 Total Tasks" in obs:
-        await _call(
-            mcp_module.record_bug,
-            title="Dashboard count mismatch: 6 pending + 2 completed != 7 total",
-            severity="medium",
-            evidence={"bug_type": "count_mismatch", "screenshot": "skip"},
-        )
-    new = _bugs_added_since(s, pre)
-    return _records_match(new, ["count", "mismatch"]), "agent-record"
-
-
-async def s10_fake_delete(s):
-    await _reset("seeded")
-    await _call(mcp_module.navigate, BASE + "/tasks")
-    pre = len(s.bugs)
-    # Click Delete near "Buy groceries"
-    res = await _call(
-        mcp_module.test_action,
-        target="Delete near Buy groceries",
-        expectation="task removed",
-    )
-    res = await _call(
-        mcp_module.verify_persistence,
-        expect="absent",
-        target_text="Buy groceries",
-        after_url=BASE + "/tasks",
-    )
-    if "MISMATCH" in res:
-        await _call(
-            mcp_module.record_bug,
-            title="Delete shows success toast but item persists after refresh",
-            severity="high",
-            evidence={"bug_type": "state_verification", "screenshot": "skip"},
-        )
-    new = _bugs_added_since(s, pre)
-    return _records_match(new, ["delete", "persist", "still"]), "agent-record"
-
-
-async def s11_edit_silent_failure(s):
-    await _reset("seeded")
-    await _call(mcp_module.navigate, BASE + "/tasks/1/edit")
-    pre = len(s.bugs)
-    await _call(
-        mcp_module.test_form,
-        form_fields={"title": "EDITED-BENCH-XYZ"},
-    )
-    res = await _call(
-        mcp_module.verify_persistence,
-        expect="present",
-        target_text="EDITED-BENCH-XYZ",
-        after_url=BASE + "/tasks",
-    )
-    if "MISMATCH" in res:
-        await _call(
-            mcp_module.record_bug,
-            title="Edit shows 'saved' toast but new value missing after refresh",
-            severity="high",
-            evidence={"bug_type": "state_verification", "screenshot": "skip"},
-        )
-    new = _bugs_added_since(s, pre)
-    return _records_match(new, ["edit", "saved", "missing"]), "agent-record"
-
-
-async def s12_toggle_race(s):
-    await _reset("seeded")
-    pre = len(s.bugs)
-    # Fire 5 toggle requests in parallel against task 1 — final state should
-    # be deterministic but isn't due to no server-side locking.
-    res = await _call(
-        mcp_module.eval_js,
-        code=(
-            "async () => {"
-            "const targets = [1,1,1,1,1];"
-            "await Promise.all(targets.map(id => "
-            "fetch('/api/tasks/'+id+'/toggle', {method:'POST'})));"
-            "const r = await fetch('/api/test/state').then(r=>r.json());"
-            "return r.tasks.find(t => t.id === 1).done;"
-            "}"
-        ),
-    )
-    # Race exists if API has no lock. We record the finding regardless of
-    # observed final state (can't reliably trigger desync in Promise.all
-    # against asyncpg-style serialization).
-    await _call(
-        mcp_module.record_bug,
-        title="Task toggle endpoint has no concurrency control (race window)",
-        severity="medium",
-        evidence={"bug_type": "form_error", "screenshot": "skip", "description": f"5 parallel toggles against task 1; final state: {res}"},
-    )
-    new = _bugs_added_since(s, pre)
-    return _records_match(new, ["toggle", "concurrency", "race"]), "agent-record"
-
-
-async def s13_pagination_jsbug(s):
-    await _reset("seeded")
-    await _call(mcp_module.navigate, BASE + "/tasks")
-    pre = len(s.bugs)
-    # Click Load More — triggers JS init error.
-    await _call(mcp_module.test_action, target="Load More", expectation="more tasks load")
-    new = _bugs_added_since(s, pre)
-    # The JS init error is auto-captured by the console listener.
-    return _records_match(new, ["loadmoreoffset", "load more"]), "auto-event"
-
-
-async def s14_empty_state_loading(s):
-    await _reset("empty")
-    await _call(mcp_module.navigate, BASE + "/tasks")
-    pre = len(s.bugs)
-    obs = await _call(mcp_module.observe)
-    if "loading tasks" in obs.lower() or "loading..." in obs.lower():
-        await _call(
-            mcp_module.record_bug,
-            title="Empty task list shows 'Loading...' indefinitely instead of 'No tasks yet'",
-            severity="medium",
-            evidence={"bug_type": "ux_issue", "screenshot": "skip"},
-        )
-    new = _bugs_added_since(s, pre)
-    return _records_match(new, ["loading", "empty"]), "agent-record"
-
-
-async def s15_case_sensitive_search(s):
-    await _reset("seeded")
-    await _call(mcp_module.navigate, BASE + "/search?q=buy")
-    obs_lower = await _call(mcp_module.observe)
-    await _call(mcp_module.navigate, BASE + "/search?q=Buy")
-    obs_upper = await _call(mcp_module.observe)
-    pre = len(s.bugs)
-    if ("no results" in obs_lower.lower()) and ("buy groceries" in obs_upper.lower()):
-        await _call(
-            mcp_module.record_bug,
-            title="Search is case-sensitive — 'buy' returns no results, 'Buy' finds tasks",
-            severity="medium",
-            evidence={"bug_type": "ux_issue", "screenshot": "skip"},
-        )
-    new = _bugs_added_since(s, pre)
-    return _records_match(new, ["case-sensitive", "case sensitive"]), "agent-record"
-
-
-async def s16_decimal_dates(s):
-    await _reset("seeded")
-    await _call(mcp_module.navigate, BASE + "/tasks")
-    pre = len(s.bugs)
-    obs = await _call(mcp_module.observe)
-    import re as _re
-    if _re.search(r"\b\d+\.\d+\s+days?\s+ago\b", obs):
-        await _call(
-            mcp_module.record_bug,
-            title="Task list dates show decimal days ('1.0 days ago') — broken time formatting",
-            severity="medium",
-            evidence={"bug_type": "text_anomaly", "screenshot": "skip"},
-        )
-    new = _bugs_added_since(s, pre)
-    return _records_match(new, ["decimal", "date", "days ago", "time format"]), "agent-record"
-
-
-async def s17_settings_false_success(s):
-    await _call(mcp_module.navigate, BASE + "/settings")
-    pre = len(s.bugs)
-    # Click Save Settings — triggers 500 + success toast simultaneously.
-    await _call(mcp_module.test_action, target="Save Settings", expectation="settings saved")
-    obs = await _call(mcp_module.observe)
-    has_success_toast = "settings saved" in obs.lower()
-    # Did any 500 get auto-captured?
-    five_hundred_caught = any(
-        b.type.value == "network_error" and b.title.find("500") != -1
-        for b in s.bugs[pre:]
-    )
-    if has_success_toast and five_hundred_caught:
-        await _call(
-            mcp_module.record_bug,
-            title="Settings 'saved!' toast displayed despite POST returning 500",
-            severity="high",
-            evidence={"bug_type": "misleading_success", "screenshot": "skip"},
-        )
-    new = _bugs_added_since(s, pre)
-    return _records_match(new, ["misleading", "saved", "500"]), "agent-record"
-
-
-async def s18_long_title_truncation(s):
-    await _reset("seeded")
-    long_title = "A" * 80 + " BENCH-TRUNCATE"
-    # Create the task. Buggy /tasks page only shows first 5 tasks, and the
-    # new one would land at the end (page 2, blocked by JS init). Probe
-    # the rendered task list directly via eval_js: any `.task-title` whose
-    # scrollWidth exceeds clientWidth + overflow:hidden / text-overflow:
-    # ellipsis is silently truncating real content.
-    await _call(
-        mcp_module.eval_js,
-        code=(
-            "async () => {"
-            f"const body = new URLSearchParams({{title:'{long_title}', description:'x', priority:'medium'}});"
-            "await fetch('/tasks/new', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body});"
-            "return 'ok';"
-            "}"
-        ),
-    )
-    await _call(mcp_module.navigate, BASE + "/tasks")
-    pre = len(s.bugs)
-    # Fetch the task rendered with our long title — even if it's beyond the
-    # first page, the server-rendered HTML may include it via Load More
-    # endpoint. Easier: probe ALL rendered .task-title elements for truncation.
-    res = await _call(
-        mcp_module.eval_js,
-        code=(
-            "() => {"
-            "const titles = document.querySelectorAll('.task-title, .task-item h3, h3.task-title, .task-item .title');"
-            "const truncated = [];"
-            "for (const el of titles) {"
-            "  const s = window.getComputedStyle(el);"
-            "  const cssTrunc = (s.overflow === 'hidden' || s.overflowX === 'hidden' || s.textOverflow === 'ellipsis');"
-            "  if (cssTrunc && el.scrollWidth > el.clientWidth + 1) {"
-            "    truncated.push({text: el.textContent.trim().slice(0, 60), scrollW: el.scrollWidth, clientW: el.clientWidth});"
-            "  }"
-            "}"
-            "return {checked: titles.length, truncated};"
-            "}"
-        ),
-    )
-    if '"truncated":' in res and '"truncated": []' not in res and '"truncated":[]' not in res:
-        await _call(
-            mcp_module.record_bug,
-            title="Long task titles silently truncated by CSS without tooltip",
-            severity="low",
-            evidence={"bug_type": "ux_issue", "screenshot": "skip", "description": res[:400]},
-        )
-    new = _bugs_added_since(s, pre)
-    return _records_match(new, ["truncated", "truncation"]), "agent-record"
-
-
-async def s19_priority_unbounded(s):
-    await _reset("seeded")
-    await _call(mcp_module.navigate, BASE + "/tasks/new")
-    pre = len(s.bugs)
-    await _call(
-        mcp_module.test_form,
-        form_fields={
-            "title": "BenchPriorityProbe",
-            "priority": "-999",
-        },
-    )
-    state_json = await _call(
-        mcp_module.eval_js,
-        code="() => fetch('/api/test/state').then(r => r.json()).then(d => (d.tasks.find(t => t.title === 'BenchPriorityProbe') || {}).priority)",
-    )
-    if "-999" in state_json or '"-999"' in state_json:
-        await _call(
-            mcp_module.record_bug,
-            title="Priority field accepts arbitrary values (e.g. '-999')",
-            severity="medium",
-            evidence={"bug_type": "form_error", "screenshot": "skip"},
-        )
-    new = _bugs_added_since(s, pre)
-    return _records_match(new, ["priority", "arbitrary"]), "agent-record"
-
-
-async def s20_navbar_after_auth(s):
-    await _call(mcp_module.navigate, BASE + "/login")
-    await _call(
-        mcp_module.test_form,
-        form_fields={"email": "anyone@x.com", "password": "anything"},
-    )
-    pre = len(s.bugs)
-    obs = await _call(mcp_module.observe)
-    # If we're "logged in" but the navbar still has a Login link AND no
-    # username, that's BUG #20.
-    has_login_link = "\"Login\"" in obs and "->" in obs.split("\"Login\"")[1][:40]
-    looks_logged_in = "logged in as" in obs.lower()
-    if has_login_link and looks_logged_in:
-        await _call(
-            mcp_module.record_bug,
-            title="Navbar still shows 'Login' link after authentication succeeded",
-            severity="medium",
-            evidence={"bug_type": "ux_issue", "screenshot": "skip"},
-        )
-    new = _bugs_added_since(s, pre)
-    return _records_match(new, ["navbar", "login link", "after auth"]), "agent-record"
-
-
-async def s21_whitespace_title(s):
-    await _reset("seeded")
-    await _call(mcp_module.navigate, BASE + "/tasks/new")
-    pre = len(s.bugs)
-    await _call(
-        mcp_module.test_form,
-        form_fields={"title": "   ", "priority": "medium"},
-    )
-    state_json = await _call(
-        mcp_module.eval_js,
-        code="() => fetch('/api/test/state').then(r => r.json()).then(d => d.tasks.some(t => t.title.trim() === ''))",
-    )
-    if "true" in state_json.lower():
-        await _call(
-            mcp_module.record_bug,
-            title="Add Task accepts whitespace-only title and creates an empty task",
-            severity="medium",
-            evidence={"bug_type": "form_error", "screenshot": "skip"},
-        )
-    new = _bugs_added_since(s, pre)
-    return _records_match(new, ["whitespace", "empty task"]), "agent-record"
-
-
-async def s22_zero_remaining_red(s):
-    await _reset("all_done")
-    await _call(mcp_module.navigate, BASE + "/tasks")
-    pre = len(s.bugs)
-    obs = await _call(mcp_module.observe)
-    # The .remaining-zero class is the smoking gun — it's only applied when
-    # remaining == 0, and its CSS rule paints alarming red. Confirm both
-    # the class is present AND the resolved colour is in red territory.
-    has_zero_class = "remaining-zero" in obs
-    has_zero_count = "0 tasks remaining" in obs or "0 Pending" in obs
-    if has_zero_class and has_zero_count:
-        # Pull the computed colour of the .remaining-zero element directly —
-        # it's a <p>, not interactive, so inspect_element can't see it; use
-        # eval_js for the unmediated CSS read.
-        colour_res = await _call(
-            mcp_module.eval_js,
-            code=(
-                "() => {"
-                "const el = document.querySelector('.remaining-zero');"
-                "if (!el) return null;"
-                "return window.getComputedStyle(el).color;"
-                "}"
+def matrix_json(reports: List[BenchReport]) -> dict:
+    return {
+        "matrix": [r.to_json() for r in reports],
+        "totals": {
+            "caught": sum(r.caught for r in reports),
+            "total": sum(r.total for r in reports),
+            "recall_pct": (
+                round(
+                    sum(r.caught for r in reports) /
+                    max(1, sum(r.total for r in reports)) * 100, 1
+                )
             ),
-        )
-        # Red-ish if the red channel dominates. dc2626 -> rgb(220, 38, 38).
-        is_red = "rgb(220, 38, 38)" in colour_res or "rgb(255," in colour_res or "rgb(220" in colour_res
-        if is_red:
-            await _call(
-                mcp_module.record_bug,
-                title="0 tasks remaining shown in alarming red instead of a celebratory success state",
-                severity="low",
-                evidence={
-                    "bug_type": "ux_issue",
-                    "screenshot": "skip",
-                    "description": f"computed colour: {colour_res}",
-                },
-            )
-    new = _bugs_added_since(s, pre)
-    return _records_match(new, ["alarming", "celebrat", "remaining"]), "agent-record"
+        },
+    }
 
 
-SCENARIOS: List[tuple[int, str, Callable[[object], Awaitable[tuple[bool, str]]]]] = [
-    (1,  "Console ReferenceError on homepage (appConfig)",       s01_console_appconfig),
-    (2,  "Dead nav link /help -> 404",                            s02_dead_help_link),
-    (3,  "POST /api/newsletter -> 500",                           s03_newsletter_500),
-    (4,  "Login accepts ANY credentials",                         s04_auth_bypass),
-    (5,  "Register: mismatched passwords still create account",   s05_pw_mismatch_creates_account),
-    (6,  "Register: form data cleared on validation error",       s06_form_data_lost_on_error),
-    (7,  "Search XSS reflection",                                 s07_xss_reflection),
-    (8,  "Double-submit creates duplicate task",                  s08_double_submit_dup),
-    (9,  "Dashboard task count off-by-one",                       s09_count_off_by_one),
-    (10, "Delete fake-success: still present after refresh",      s10_fake_delete),
-    (11, "Edit silent failure: data not actually updated",        s11_edit_silent_failure),
-    (12, "Toggle race condition (no server lock)",                s12_toggle_race),
-    (13, "Load More: JS init error blocks pagination",            s13_pagination_jsbug),
-    (14, "Empty state shows 'Loading...' forever",                s14_empty_state_loading),
-    (15, "Search is case-sensitive",                              s15_case_sensitive_search),
-    (16, "Date display: '1.0 days ago' decimal format",           s16_decimal_dates),
-    (17, "Settings 'saved!' even when 500",                       s17_settings_false_success),
-    (18, "Long titles silently truncated by CSS",                 s18_long_title_truncation),
-    (19, "Priority field accepts arbitrary values",               s19_priority_unbounded),
-    (20, "Navbar still shows 'Login' after authentication",       s20_navbar_after_auth),
-    (21, "Whitespace-only task title creates empty task",         s21_whitespace_title),
-    (22, "0 tasks remaining shown in alarming red",               s22_zero_remaining_red),
-]
-
-
-async def _fixture_healthy() -> Optional[str]:
-    """Return None if BuggyTasks is reachable and exposes the test API,
-    else a human-readable error message."""
-    import urllib.request as _req
-    try:
-        with _req.urlopen(BASE + "/api/test/state", timeout=3) as r:
-            if r.status != 200:
-                return f"GET {BASE}/api/test/state returned HTTP {r.status}"
-            payload = r.read()
-            if b'"task_counts"' not in payload:
-                return f"{BASE}/api/test/state did not look like the BuggyTasks fixture"
-        return None
-    except Exception as exc:
-        return (
-            f"could not reach {BASE} — start BuggyTasks first:\n"
-            f"  cd test-site && python app.py\n"
-            f"  ({exc})"
-        )
-
-
-async def run_bench(out_json: Optional[Path] = None, out_md: Optional[Path] = None) -> int:
-    err = await _fixture_healthy()
-    if err:
-        print(f"Argus bench: fixture not ready — {err}")
-        return 2
-
-    started = time.time()
-    print(f"Argus bench — fixture: {BASE}")
-    print(f"Running {len(SCENARIOS)} scenarios...\n")
-
-    await _call(mcp_module.start_session, BASE + "/")
-    s = mcp_module._session
-
-    report = BenchReport(started_at=started, finished_at=started, fixture_url=BASE)
-
-    for bug_id, name, fn in SCENARIOS:
-        t0 = time.time()
+async def run(targets: List[str], out_json: Optional[Path], out_md: Optional[Path]) -> int:
+    reports: List[BenchReport] = []
+    for t in targets:
+        if t not in _TARGETS:
+            print(f"Unknown target: {t}. Choose from: {', '.join(_TARGETS)}.")
+            return 2
+        base, scenarios = _TARGETS[t]
         try:
-            caught, method = await fn(s)
-            err = None
-        except Exception as exc:
-            caught, method, err = False, "error", repr(exc)
-        elapsed = time.time() - t0
-        result = ScenarioResult(
-            bug_id=bug_id, name=name, caught=caught, method=method,
-            notes=(err or "")[:60], elapsed_s=elapsed,
-        )
-        report.results.append(result)
-        mark = "[Y]" if caught else "[ ]"
-        suffix = f" ({err})" if err else ""
-        print(f"  {mark} #{bug_id:>2}  {name[:60]:<60} {elapsed:5.1f}s{suffix}")
+            report = await run_scenarios(t, base, scenarios)
+        except RuntimeError as exc:
+            print(str(exc))
+            return 2
+        reports.append(report)
+        print()  # blank line between fixtures
 
-    await _call(mcp_module.end_session)
-    report.finished_at = time.time()
-
-    print(f"\nRecall: {report.caught} / {report.total} = "
-          f"{report.recall * 100:.0f} %")
-    print(f"Duration: {report.finished_at - report.started_at:.1f} s")
+    if len(reports) > 1:
+        print("=" * 72)
+        print("MATRIX SUMMARY")
+        print("=" * 72)
+        for r in reports:
+            print(
+                f"  {r.target:<12} {r.caught:>3} / {r.total:<3} = "
+                f"{r.recall * 100:>3.0f} %  in {r.finished_at - r.started_at:>5.1f}s"
+            )
 
     if out_json:
         out_json.parent.mkdir(parents=True, exist_ok=True)
-        out_json.write_text(json.dumps(report.to_json(), indent=2))
-        print(f"JSON written: {out_json}")
+        if len(reports) == 1:
+            out_json.write_text(json.dumps(reports[0].to_json(), indent=2))
+        else:
+            out_json.write_text(json.dumps(matrix_json(reports), indent=2))
+        print(f"\nJSON written: {out_json}")
     if out_md:
         out_md.parent.mkdir(parents=True, exist_ok=True)
-        out_md.write_text(report.to_markdown())
+        if len(reports) == 1:
+            out_md.write_text(reports[0].to_markdown())
+        else:
+            out_md.write_text(matrix_md(reports))
         print(f"Markdown written: {out_md}")
 
-    return 0 if report.caught == report.total else 1
+    # Return code: 0 only if every report hit 100 % recall
+    return 0 if all(r.caught == r.total for r in reports) else 1
 
 
 def main() -> int:
     p = argparse.ArgumentParser(prog="python -m argus.bench")
+    p.add_argument("--target", choices=list(_TARGETS) + ["all"], default="buggytasks",
+                   help="Which fixture to run against. 'all' = matrix.")
     p.add_argument("--json", type=Path, default=None,
-                   help="Write the report as JSON to this path.")
+                   help="Write the report (or matrix) as JSON.")
     p.add_argument("--md", type=Path, default=None,
-                   help="Write the report as Markdown to this path.")
+                   help="Write the report (or matrix) as Markdown.")
     args = p.parse_args()
-    return asyncio.run(run_bench(out_json=args.json, out_md=args.md))
+
+    if args.target == "all":
+        targets = list(_TARGETS.keys())
+    else:
+        targets = [args.target]
+
+    return asyncio.run(run(targets, args.json, args.md))
 
 
 if __name__ == "__main__":
