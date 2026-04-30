@@ -141,6 +141,11 @@ class Session:
         self.detector = Detector()
         self.bugs: List[Bug] = []
         self.steps: List[str] = []
+        # Index into self.steps marking where the *last* record_bug call
+        # snapshotted from. Each Bug's reproducible steps are the delta
+        # since this cursor, so consecutive bug reports don't accumulate
+        # earlier bugs' actions in their repro steps.
+        self._steps_since_last_bug: int = 0
         self.pages_visited: List[str] = []
         self.screenshots: List[Screenshot] = []
         self.start_time: Optional[float] = None
@@ -235,8 +240,9 @@ async def _capture_browser_events(
     records so they show up in the session report. Everything else (page
     text, counts, CSS state, toasts) is the agent's job to interpret.
     """
-    bugs = s.detector.process_console_errors(console_errs, state.url, s.steps)
-    bugs.extend(s.detector.process_network_errors(network_errs, state.url, s.steps))
+    recent = s.steps[s._steps_since_last_bug:]
+    bugs = s.detector.process_console_errors(console_errs, state.url, recent)
+    bugs.extend(s.detector.process_network_errors(network_errs, state.url, recent))
     return bugs
 
 
@@ -1370,11 +1376,12 @@ async def get_errors() -> str:
     console_errs, network_errs = s.browser.drain_errors()
 
     current_url = s.browser._page.url if s.browser._page else ""
+    recent = s.steps[s._steps_since_last_bug:]
     new_bugs = s.detector.process_console_errors(
-        console_errs, current_url, s.steps
+        console_errs, current_url, recent
     )
     new_bugs.extend(s.detector.process_network_errors(
-        network_errs, current_url, s.steps
+        network_errs, current_url, recent
     ))
 
     if new_bugs:
@@ -1454,7 +1461,13 @@ async def record_bug(
 
     ev = evidence or {}
     description = ev.get("description") or title
-    steps = ev.get("steps") or list(s.steps)
+    # Default to the steps taken *since the last record_bug* — otherwise
+    # consecutive bug reports accumulate earlier bugs' actions and the
+    # reproducible-steps section reads as session noise.
+    if ev.get("steps") is not None:
+        steps = list(ev["steps"])
+    else:
+        steps = list(s.steps[s._steps_since_last_bug:])
     if ev.get("url"):
         url = ev["url"]
     elif s.mode == "web" and s.browser is not None and s.browser._page is not None:
@@ -1498,6 +1511,9 @@ async def record_bug(
     )
     s.bugs.append(bug)
     s.steps.append(f"record_bug: [{sev.value}] {title}")
+    # Reset the per-bug step cursor so the *next* record_bug only shows
+    # actions taken between this call and that one.
+    s._steps_since_last_bug = len(s.steps)
 
     out = [
         f"Recorded bug [{sev.value.upper()}] {title}",
@@ -1692,8 +1708,9 @@ async def crawl_site(max_pages: int = 20) -> str:
 
         # Capture only what the agent cannot see directly: console + network events.
         console_errs, network_errs = s.browser.drain_errors()
-        new_bugs = s.detector.process_console_errors(console_errs, state.url, s.steps)
-        new_bugs.extend(s.detector.process_network_errors(network_errs, state.url, s.steps))
+        recent = s.steps[s._steps_since_last_bug:]
+        new_bugs = s.detector.process_console_errors(console_errs, state.url, recent)
+        new_bugs.extend(s.detector.process_network_errors(network_errs, state.url, recent))
 
         # Probe links once (raw probe, no auto-bug — agent decides).
         link_results = await s.browser.check_links(state.links)
@@ -2030,11 +2047,12 @@ async def end_session() -> str:
         # Final error drain (web mode only — console/network are web concepts).
         console_errs, network_errs = s.browser.drain_errors()
         current_url = s.browser._page.url if s.browser._page else ""
+        recent = s.steps[s._steps_since_last_bug:]
         final_bugs = s.detector.process_console_errors(
-            console_errs, current_url, s.steps
+            console_errs, current_url, recent
         )
         final_bugs.extend(s.detector.process_network_errors(
-            network_errs, current_url, s.steps
+            network_errs, current_url, recent
         ))
         if final_bugs:
             ss_path = await _auto_screenshot(
