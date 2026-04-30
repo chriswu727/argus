@@ -772,3 +772,116 @@ class ScreenBackend:
             "last_diff_pct": round(last_diff_pct, 3),
             "stable_for_ms": stable_for_ms,
         }
+
+    # ── app lifecycle ──────────────────────────────────────────────
+
+    def _running_app_matching(self, target: str):
+        """Return the first NSRunningApplication matching `target`
+        (case-insensitive localised name OR bundle id). None if not running."""
+        if self._workspace is None:
+            self._load_frameworks()
+        target_lower = (target or "").lower()
+        for app in self._workspace.runningApplications():
+            name = (app.localizedName() or "").lower()
+            bundle = (app.bundleIdentifier() or "").lower()
+            if name == target_lower or bundle == target_lower:
+                return app
+            if target_lower and (target_lower in name or target_lower in bundle):
+                return app
+        return None
+
+    def is_running(self, target: str) -> Tuple[bool, Optional[int]]:
+        """Is `target` (localised name or bundle id) currently running?"""
+        self._load_frameworks()
+        app = self._running_app_matching(target)
+        if app is None:
+            return False, None
+        return True, int(app.processIdentifier())
+
+    def launch(self, target: str, wait_s: float = 8.0) -> Tuple[bool, str, Optional[int]]:
+        """Launch `target` (an app name, bundle id, or absolute path).
+
+        If the app is already running, returns its existing pid.
+        Otherwise launches via `open` (most permissive — accepts names,
+        bundle ids, and paths) and polls until the new process appears
+        or `wait_s` elapses.
+
+        The poll spins the current NSRunLoop briefly each iteration —
+        without that, NSWorkspace.runningApplications() returns a
+        stale snapshot in long-lived Python processes (PyObjC quirk:
+        new-app notifications need run-loop ticks to register).
+        """
+        self._load_frameworks()
+        import Foundation
+
+        existing = self._running_app_matching(target)
+        if existing is not None:
+            return True, "already-running", int(existing.processIdentifier())
+
+        # `open -b <bundle>` is more reliable for bundle ids than `open -a`.
+        looks_like_bundle = "." in target and "/" not in target
+        cmd = ["open", "-b", target] if looks_like_bundle else ["open", "-a", target]
+        try:
+            subprocess.run(
+                cmd, capture_output=True, timeout=10, check=True, text=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            return False, f"{' '.join(cmd)} failed: {exc.stderr.strip()[:160]}", None
+        except Exception as exc:
+            return False, f"launch-error: {exc}", None
+
+        loop = Foundation.NSRunLoop.currentRunLoop()
+        deadline = time.time() + wait_s
+        while time.time() < deadline:
+            # Pump the run loop briefly so NSWorkspace processes the
+            # app-launched notification. Without this, runningApplications()
+            # returns a stale snapshot inside a long-lived process.
+            loop.runUntilDate_(
+                Foundation.NSDate.dateWithTimeIntervalSinceNow_(0.2)
+            )
+            app = self._running_app_matching(target)
+            if app is not None and app.isFinishedLaunching():
+                return True, "launched", int(app.processIdentifier())
+
+        # Last-chance check — `isFinishedLaunching` never flips for some
+        # background utilities; accept if the process is at least alive.
+        app = self._running_app_matching(target)
+        if app is not None:
+            return True, "launched (no finishedLaunching signal)", int(app.processIdentifier())
+        return False, f"launched but did not register within {wait_s}s", None
+
+    def quit(
+        self,
+        target: str,
+        force: bool = False,
+        wait_s: float = 8.0,
+    ) -> Tuple[bool, str]:
+        """Quit `target`. By default sends a polite terminate (like
+        cmd-Q), which gives the app a chance to flush state — required
+        if you're testing save-on-quit semantics. `force=True` sends a
+        SIGKILL-equivalent for hung apps."""
+        self._load_frameworks()
+        app = self._running_app_matching(target)
+        if app is None:
+            return True, "not-running"
+
+        try:
+            if force:
+                app.forceTerminate()
+                method = "forceTerminate"
+            else:
+                app.terminate()
+                method = "terminate"
+        except Exception as exc:
+            return False, f"quit-error: {exc}"
+
+        import Foundation
+        loop = Foundation.NSRunLoop.currentRunLoop()
+        deadline = time.time() + wait_s
+        while time.time() < deadline:
+            loop.runUntilDate_(
+                Foundation.NSDate.dateWithTimeIntervalSinceNow_(0.2)
+            )
+            if self._running_app_matching(target) is None:
+                return True, method
+        return False, f"{method} sent but app still running after {wait_s}s"
