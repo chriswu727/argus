@@ -3,9 +3,9 @@
     {
       "target": "buggytasks",
       "fixture": "http://127.0.0.1:5555",
-      "started_at": 1777530943.9179862,
-      "finished_at": 1777530964.396119,
-      "duration_s": 20.48,
+      "started_at": 1777533577.713121,
+      "finished_at": 1777533598.246743,
+      "duration_s": 20.53,
       "caught": 22,
       "total": 22,
       "recall_pct": 100.0,
@@ -24,7 +24,7 @@
           "caught": true,
           "method": "agent-record",
           "notes": "",
-          "elapsed_s": 0.55
+          "elapsed_s": 0.56
         },
         {
           "bug_id": 3,
@@ -32,7 +32,7 @@
           "caught": true,
           "method": "agent-record",
           "notes": "",
-          "elapsed_s": 0.53
+          "elapsed_s": 0.52
         },
         {
           "bug_id": 4,
@@ -40,7 +40,7 @@
           "caught": true,
           "method": "agent-record",
           "notes": "",
-          "elapsed_s": 1.47
+          "elapsed_s": 1.49
         },
         {
           "bug_id": 5,
@@ -48,7 +48,7 @@
           "caught": true,
           "method": "agent-record",
           "notes": "",
-          "elapsed_s": 1.46
+          "elapsed_s": 1.48
         },
         {
           "bug_id": 6,
@@ -56,7 +56,7 @@
           "caught": true,
           "method": "agent-record",
           "notes": "",
-          "elapsed_s": 1.44
+          "elapsed_s": 1.46
         },
         {
           "bug_id": 7,
@@ -88,7 +88,7 @@
           "caught": true,
           "method": "agent-record",
           "notes": "",
-          "elapsed_s": 1.06
+          "elapsed_s": 1.05
         },
         {
           "bug_id": 11,
@@ -96,7 +96,7 @@
           "caught": true,
           "method": "agent-record",
           "notes": "",
-          "elapsed_s": 1.99
+          "elapsed_s": 1.98
         },
         {
           "bug_id": 12,
@@ -112,7 +112,7 @@
           "caught": true,
           "method": "auto-event",
           "notes": "",
-          "elapsed_s": 0.92
+          "elapsed_s": 0.93
         },
         {
           "bug_id": 14,
@@ -128,7 +128,7 @@
           "caught": true,
           "method": "agent-record",
           "notes": "",
-          "elapsed_s": 1.07
+          "elapsed_s": 1.06
         },
         {
           "bug_id": 16,
@@ -144,7 +144,7 @@
           "caught": true,
           "method": "agent-record",
           "notes": "",
-          "elapsed_s": 0.93
+          "elapsed_s": 0.95
         },
         {
           "bug_id": 18,
@@ -160,7 +160,7 @@
           "caught": true,
           "method": "agent-record",
           "notes": "",
-          "elapsed_s": 1.47
+          "elapsed_s": 1.49
         },
         {
           "bug_id": 20,
@@ -176,7 +176,7 @@
           "caught": true,
           "method": "agent-record",
           "notes": "",
-          "elapsed_s": 1.44
+          "elapsed_s": 1.45
         },
         {
           "bug_id": 22,
@@ -184,16 +184,16 @@
           "caught": true,
           "method": "agent-record",
           "notes": "",
-          "elapsed_s": 0.54
+          "elapsed_s": 0.53
         }
       ]
     },
     {
       "target": "darkshop",
       "fixture": "http://127.0.0.1:5556",
-      "started_at": 1777530964.397198,
-      "finished_at": 1777530972.755988,
-      "duration_s": 8.36,
+      "started_at": 1777533598.247505,
+      "finished_at": 1777533606.5196218,
+      "duration_s": 8.27,
       "caught": 12,
       "total": 12,
       "recall_pct": 100.0,
@@ -212,7 +212,7 @@
           "caught": true,
           "method": "agent-record",
           "notes": "",
-          "elapsed_s": 0.55
+          "elapsed_s": 0.54
         },
         {
           "bug_id": 3,
@@ -228,7 +228,7 @@
           "caught": true,
           "method": "agent-record",
           "notes": "",
-          "elapsed_s": 0.52
+          "elapsed_s": 0.53
         },
         {
           "bug_id": 5,
@@ -236,7 +236,7 @@
           "caught": true,
           "method": "agent-record",
           "notes": "",
-          "elapsed_s": 0.52
+          "elapsed_s": 0.53
         },
         {
           "bug_id": 6,
@@ -276,7 +276,7 @@
           "caught": true,
           "method": "agent-record",
           "notes": "",
-          "elapsed_s": 0.53
+          "elapsed_s": 0.54
         },
         {
           "bug_id": 11,
@@ -292,7 +292,7 @@
           "caught": true,
           "method": "agent-record",
           "notes": "",
-          "elapsed_s": 1.06
+          "elapsed_s": 1.05
         }
       ]
     }

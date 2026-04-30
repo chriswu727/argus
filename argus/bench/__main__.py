@@ -38,8 +38,16 @@ _TARGETS = {
 
 def matrix_md(reports: List[BenchReport]) -> str:
     """Cross-fixture matrix Markdown — the headline artifact."""
+    total_caught = sum(r.caught for r in reports)
+    total_total = sum(r.total for r in reports)
+    total_pct = (total_caught / total_total * 100) if total_total else 0
+    total_dur = sum(r.finished_at - r.started_at for r in reports)
+
     lines = [
         "# Argus benchmark matrix",
+        "",
+        f"**{total_caught} / {total_total} = {total_pct:.0f} %** in "
+        f"{total_dur:.1f} s across {len(reports)} fixture(s).",
         "",
         "| Fixture     | Recall            | Duration | Fixture URL                  |",
         "|-------------|-------------------|----------|------------------------------|",
@@ -58,11 +66,50 @@ def matrix_md(reports: List[BenchReport]) -> str:
     )
     lines.append("")
     for r in reports:
-        lines.append(f"## {r.target}")
+        lines.append(f"## {r.target} — {r.caught} / {r.total} = "
+                     f"{r.recall * 100:.0f} % in "
+                     f"{r.finished_at - r.started_at:.1f} s")
         lines.append("")
-        lines.append(r.to_markdown())
+        lines.append(_per_target_table(r))
         lines.append("")
     return "\n".join(lines)
+
+
+def _per_target_table(r: BenchReport) -> str:
+    """Render a single fixture's results as a Markdown table without
+    re-stating the headline (the matrix-level h2 already has it).
+    Drops the empty 'Notes' column from the standalone format unless
+    any row actually has a note worth showing."""
+    show_notes = any(res.notes.strip() for res in r.results)
+    if show_notes:
+        header = (
+            "| #  | Seeded bug                                              "
+            "| Caught | Method        | Notes                          |\n"
+            "|----|---------------------------------------------------------"
+            "|--------|---------------|--------------------------------|"
+        )
+    else:
+        header = (
+            "| #  | Seeded bug                                              "
+            "| Caught | Method        |\n"
+            "|----|---------------------------------------------------------"
+            "|--------|---------------|"
+        )
+
+    rows = [header]
+    for res in r.results:
+        mark = "yes" if res.caught else "no"
+        if show_notes:
+            rows.append(
+                f"| {res.bug_id:>2} | {res.name[:55]:<55} | "
+                f"{mark:<6} | {res.method:<13} | {res.notes[:30]:<30} |"
+            )
+        else:
+            rows.append(
+                f"| {res.bug_id:>2} | {res.name[:55]:<55} | "
+                f"{mark:<6} | {res.method:<13} |"
+            )
+    return "\n".join(rows)
 
 
 def matrix_json(reports: List[BenchReport]) -> dict:
