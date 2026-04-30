@@ -1308,6 +1308,56 @@ async def screen_is_running(target: str) -> str:
 
 
 @mcp.tool()
+async def screen_screenshot_region(
+    x: int,
+    y: int,
+    width: int,
+    height: int,
+    name: str = "region",
+) -> str:
+    """Capture a rectangular region of the screen — for reading fine
+    detail on a specific surface.
+
+    Coordinates are absolute screen coords (the same space the agent
+    sees in screen_observe / AX-tree element rects). VLMs are markedly
+    more accurate on tight crops than full-window screenshots — when
+    you need to read tiny error-toast text or distinguish two similar
+    icons, capture just that region.
+
+    Args:
+        x, y: top-left corner of the region.
+        width, height: pixel dimensions. Must be > 0.
+        name: filename label.
+    """
+    s = _require_session()
+    if s.mode != "screen" or s.screen is None:
+        return "screen_screenshot_region: this session is in web mode."
+    err = _safety_or_error(s)
+    if err:
+        return err
+    if width <= 0 or height <= 0:
+        return f"screen_screenshot_region: invalid dimensions {width}x{height}."
+
+    s.steps.append(f"screen_screenshot_region({x},{y},{width}x{height})")
+    out_dir = _output_dir() + "/screenshots"
+    path = s.screen.capture_region(x, y, width, height, screenshot_dir=out_dir)
+    if path is None:
+        return (
+            f"screen_screenshot_region: capture failed. "
+            f"Check that ({x},{y}) + {width}x{height} stays inside the screen "
+            f"({s.screen._app_pid and 'screen size from start_screen_session output'})."
+        )
+    s._screenshot_counter += 1
+    s.screenshots.append(Screenshot(
+        path=path,
+        name=f"region_{s._screenshot_counter:03d}_{name}",
+        step=f"region@({x},{y}) {width}x{height}",
+        url=f"screen://{s.screen._app_name or 'unknown'}",
+    ))
+    return f"Region screenshot saved: {path}\n  rect: ({x},{y}) {width}x{height}"
+
+
+@mcp.tool()
 async def screen_session_status() -> str:
     """Show how the current screen-mode session is doing: time used vs
     session cap, action count, abort-file state, recent action trail.
