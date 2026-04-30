@@ -28,8 +28,10 @@ from mcp.server.fastmcp import FastMCP
 from .browser import BrowserDriver
 from .detector import Detector
 from .differ import compute_changes
-from .models import Bug, BugType, ExplorationResult, PageState, Screenshot, Severity
+from .models import Bug, BugType, ExplorationResult, InteractiveElement, PageState, Screenshot, Severity
 from .reporter import Reporter
+from .resolver import describe as describe_element
+from .resolver import resolve_element
 
 mcp = FastMCP(
     "argus",
@@ -69,8 +71,8 @@ THE TESTER'S RITUAL — return to this on every tool call
                actual. Take a screenshot when something looks off.
 5. VERIFY      For any destructive or persistence-changing action
                (delete, save, edit, submit, toggle, payment), call
-               verify_action. UIs lie. The "Saved!" toast is the single
-               most common reason real users lose data.
+               verify_persistence. UIs lie. The "Saved!" toast is the
+               single most common reason real users lose data.
 6. RECORD      When you've confirmed a real bug, call record_bug with
                severity + reproducible steps + evidence (URL, element,
                screenshot index). Don't record speculation. Don't record
@@ -244,139 +246,325 @@ async def start_session(
     )
 
 
-@mcp.tool()
-async def get_page_state() -> str:
-    """Get the current page URL, title, and all interactive elements.
+def _format_observation(state: PageState) -> str:
+    """Render a PageState into a description-keyed observation report.
 
-    Returns a numbered list of elements you can interact with using
-    click(index), type_text(index, text), or select_option(index, value).
+    No `[N]` indices — the agent refers to elements by what they are
+    (text / role / placeholder), not by integer position. This matches
+    how a human tester thinks about a screen.
     """
-    s = _require_session()
-    state = await s.browser.get_state()
-    s._last_elements = state.elements
+    lines = [f"URL: {state.url}", f"Title: {state.title}"]
 
-    if state.url not in s.pages_visited:
-        s.pages_visited.append(state.url)
-
-    lines = [f"URL: {state.url}", f"Title: {state.title}", "", "Interactive elements:"]
-    if not state.elements:
-        lines.append("  (none found)")
-    for el in state.elements:
-        parts = [f"  [{el.index}] <{el.tag}"]
-        if el.type:
-            parts.append(f' type="{el.type}"')
-        parts.append(">")
-        if el.text:
-            parts.append(f' "{el.text}"')
-        if el.placeholder:
-            parts.append(f' (placeholder: "{el.placeholder}")')
-        if el.href:
-            parts.append(f" -> {el.href}")
-        if el.disabled:
-            parts.append(" [disabled]")
-        if el.value:
-            parts.append(f' value="{el.value}"')
-        lines.append("".join(parts))
-
-    # Form/action hints for AI
-    form_inputs = [e for e in state.elements if e.tag in ("input", "textarea", "select") and e.type not in ("hidden", "submit", "button")]
-    if form_inputs:
-        lines.append("")
-        lines.append(f"Forms detected: {len(form_inputs)} input fields")
-        lines.append("  TIP: Use test_form() to fill and submit this form with auto-verification")
-
-    # Page content analysis
     if state.page_text:
         lines.append("")
-        lines.append(f"Page text (first 1500 chars):")
-        lines.append(state.page_text[:1500])
+        lines.append("Page text:")
+        lines.append(state.page_text[:1800])
+
+    lines.append("")
+    lines.append("Interactive elements:")
+    if not state.elements:
+        lines.append("  (none visible)")
+    else:
+        for el in state.elements:
+            lines.append(f"  - {describe_element(el)}")
+
     if state.toast_messages:
         lines.append("")
-        lines.append("Visible toasts/notifications:")
+        lines.append("Visible feedback / notifications:")
         for toast in state.toast_messages:
-            lines.append(f"  [TOAST] {toast}")
+            lines.append(f"  [feedback] {toast}")
+
     if state.counts:
         lines.append("")
         lines.append("Displayed counts:")
         for label, val in state.counts.items():
             lines.append(f"  {val} {label}")
+
     if state.css_indicators:
         lines.append("")
         lines.append("CSS state indicators:")
         for ind in state.css_indicators:
             lines.append(f"  .{ind}")
 
+    if state.item_lists:
+        lines.append("")
+        lines.append("Repeating item lists:")
+        for key, items in state.item_lists.items():
+            lines.append(f"  {key[:40]}: {len(items)} item(s)")
+            for item in items[:3]:
+                lines.append(f"    - {item[:120]}")
+            if len(items) > 3:
+                lines.append(f"    ... ({len(items) - 3} more)")
+
+    if state.open_modals:
+        lines.append("")
+        lines.append("Open modals / dialogs / popovers:")
+        for modal in state.open_modals:
+            label = modal.get("ariaLabel") or modal.get("role") or "dialog"
+            preview = (modal.get("text") or "").strip()[:120]
+            modal_marker = " [aria-modal]" if modal.get("isModal") else ""
+            lines.append(f"  - {label}{modal_marker}: {preview}")
+
+    if state.focused:
+        f = state.focused
+        bits = [f.get("tag", "?")]
+        for key in ("ariaLabel", "text", "placeholder", "name", "id"):
+            v = f.get(key)
+            if v:
+                bits.append(f'{key}={v[:40]!r}')
+                break
+        lines.append("")
+        lines.append(f"Focused element: {' '.join(bits)}")
+
+    if state.viewport:
+        v = state.viewport
+        lines.append("")
+        lines.append(
+            f"Viewport: {v.get('innerWidth')}x{v.get('innerHeight')} | "
+            f"scrollY={v.get('scrollY')} of {v.get('documentHeight')} "
+            f"(at_top={v.get('atTop')}, at_bottom={v.get('atBottom')})"
+        )
+        if not v.get("atBottom") and v.get("documentHeight", 0) > v.get("innerHeight", 0) + 50:
+            lines.append(
+                "  Note: more content below the fold — scroll_down to reveal it."
+            )
+
+    lines.append("")
+    lines.append(
+        "To interact: click_what(\"description\"), type_into(\"field\", \"text\"), "
+        "select_into(\"dropdown\", \"value\"). For deeper inspection of one element "
+        "(computed styles / outerHTML / truncation), use inspect_element."
+    )
     return "\n".join(lines)
 
 
-@mcp.tool()
-async def click(element_index: int) -> str:
-    """Click an interactive element by its index number from get_page_state().
+def _resolve_or_error(
+    s: Session,
+    description: str,
+    kind_filter: Optional[str] = None,
+) -> tuple[Optional[InteractiveElement], Optional[str]]:
+    """Resolve a description to a single element or return an error string.
 
-    Args:
-        element_index: The [N] index of the element to click
+    Returns (element, None) on success, (None, error_message) on
+    no_match / ambiguous / no_elements.
     """
-    s = _require_session()
-    if element_index < 0 or element_index >= len(s._last_elements):
-        return f"Error: element index {element_index} out of range (0-{len(s._last_elements) - 1})"
+    result = resolve_element(description, s._last_elements, kind_filter=kind_filter)
 
-    el = s._last_elements[element_index]
-    label = el.text or el.aria_label or el.placeholder or f"{el.tag}#{el.id or '?'}"
-    step = f'Click "{label}"'
-    s.steps.append(step)
+    if result.reason == "unique" and result.found is not None:
+        return result.found, None
 
-    ok = await s.browser.click(element_index, s._last_elements)
-    if ok:
-        new_state = await s.browser.get_state()
-        s._last_elements = new_state.elements
-        if new_state.url not in s.pages_visited:
-            s.pages_visited.append(new_state.url)
-        return f"Clicked \"{label}\". Now on: {new_state.url} ({len(new_state.elements)} elements)"
-    return f"Failed to click \"{label}\" — element may be obscured or gone."
+    if result.reason == "no_elements":
+        return None, (
+            "No interactive elements visible. Call observe() first, or scroll_down "
+            "if you expect content below the fold."
+        )
 
+    if result.reason == "no_match":
+        return None, (
+            f"No element matches {description!r}. Call observe() to see what's "
+            f"actually on the page, or rephrase your description."
+        )
 
-@mcp.tool()
-async def type_text(element_index: int, text: str) -> str:
-    """Type text into an input element.
-
-    Args:
-        element_index: The [N] index of the input element
-        text: The text to type
-    """
-    s = _require_session()
-    if element_index < 0 or element_index >= len(s._last_elements):
-        return f"Error: element index {element_index} out of range"
-
-    el = s._last_elements[element_index]
-    label = el.placeholder or el.name or el.id or f"element [{element_index}]"
-    step = f'Type "{text}" into {label}'
-    s.steps.append(step)
-
-    ok = await s.browser.type_text(element_index, text, s._last_elements)
-    if ok:
-        return f'Typed "{text}" into {label}'
-    return f"Failed to type into {label}"
+    # ambiguous
+    lines = [
+        f"Description {description!r} is ambiguous — multiple matches:"
+    ]
+    for score, el in result.candidates:
+        lines.append(f"  ({score}) {describe_element(el)}")
+    lines.append("")
+    lines.append(
+        "Pick a more specific description (mention surrounding text, kind hint "
+        "like 'button' / 'field', or which section of the page)."
+    )
+    return None, "\n".join(lines)
 
 
 @mcp.tool()
-async def select_option(element_index: int, value: str) -> str:
-    """Select an option from a dropdown/select element.
+async def observe() -> str:
+    """Observe the current target — page, app, or screen. Read this first.
 
-    Args:
-        element_index: The [N] index of the select element
-        value: The value or visible text to select
+    Returns the URL/window, the visible text, every interactive element
+    keyed by description (no integer indices), feedback messages, counts,
+    and any list-shaped repeating content. After every action, observe()
+    again and reason about what changed before acting.
+
+    The agent decides what's a bug from this output. Argus does not
+    auto-flag content quality, validation behaviour, or visual issues
+    here — that's your judgment to make.
     """
     s = _require_session()
-    if element_index < 0 or element_index >= len(s._last_elements):
-        return f"Error: element index {element_index} out of range"
+    state = await s.browser.get_state()
+    s._last_elements = state.elements
+    if state.url not in s.pages_visited:
+        s.pages_visited.append(state.url)
+    return _format_observation(state)
 
-    step = f'Select "{value}" in element [{element_index}]'
+
+@mcp.tool()
+async def click_what(description: str) -> str:
+    """Click the element best matching the natural-language `description`.
+
+    Examples: "Login button", "Add Task", "the email field", "Delete near
+    Buy groceries". Argus matches against visible text, aria-label,
+    placeholder, name, id, and the parent context. Trailing kind hints
+    ("button" / "field" / "link" / "dropdown") narrow the candidate pool.
+
+    If the description is ambiguous, this returns the top candidates with
+    their distinguishing properties so you can rephrase. It does not
+    guess and click — that's how testers misclick.
+    """
+    s = _require_session()
+    el, err = _resolve_or_error(s, description)
+    if err:
+        return err
+
+    label = el.text or el.aria_label or el.placeholder or el.name or el.id or el.tag
+    step = f'click_what({description!r}) -> "{label[:60]}"'
     s.steps.append(step)
 
-    ok = await s.browser.select_option(element_index, value, s._last_elements)
-    if ok:
-        return f'Selected "{value}"'
-    return "Failed to select option"
+    selector = s.browser._build_selector(el)
+    try:
+        await s.browser._page.click(selector, timeout=5000)
+        await s.browser._page.wait_for_load_state("networkidle", timeout=10_000)
+    except Exception as exc:
+        return (
+            f'click_what({description!r}) — failed to click "{label[:60]}": {exc}\n'
+            "The element may be obscured, stale, or removed. Try observe() again."
+        )
+
+    new_state = await s.browser.get_state()
+    s._last_elements = new_state.elements
+    if new_state.url not in s.pages_visited:
+        s.pages_visited.append(new_state.url)
+    return (
+        f'Clicked "{label[:60]}" (via description {description!r}).\n'
+        f"Now on: {new_state.url} — {len(new_state.elements)} interactive elements visible.\n"
+        f"Call observe() to see what changed."
+    )
+
+
+@mcp.tool()
+async def type_into(description: str, text: str) -> str:
+    """Type `text` into the input element best matching `description`.
+
+    Examples: type_into("email", "alice@x.com"), type_into("confirm
+    password", "...") , type_into("the search box", "buy"). Resolution
+    rules are the same as click_what — see that tool for ambiguity behaviour.
+    """
+    s = _require_session()
+    el, err = _resolve_or_error(s, description, kind_filter="input")
+    if err:
+        return err
+
+    label = el.placeholder or el.name or el.aria_label or el.id or el.tag
+    s.steps.append(f'type_into({description!r}, ...) -> {label[:60]}')
+
+    selector = s.browser._build_selector(el)
+    try:
+        await s.browser._page.fill(selector, text, timeout=5000)
+    except Exception as exc:
+        return (
+            f"type_into({description!r}) — failed: {exc}. "
+            f"The element may not be a text input, or it may be disabled."
+        )
+    return f'Typed into "{label[:60]}" (via description {description!r}).'
+
+
+@mcp.tool()
+async def select_into(description: str, value: str) -> str:
+    """Select `value` in the dropdown best matching `description`."""
+    s = _require_session()
+    el, err = _resolve_or_error(s, description, kind_filter="select")
+    if err:
+        return err
+
+    label = el.aria_label or el.name or el.id or el.tag
+    s.steps.append(f'select_into({description!r}, {value!r}) -> {label[:60]}')
+
+    selector = s.browser._build_selector(el)
+    try:
+        await s.browser._page.select_option(selector, value, timeout=5000)
+    except Exception as exc:
+        return (
+            f"select_into({description!r}, {value!r}) — failed: {exc}. "
+            f"Make sure the dropdown actually has that option."
+        )
+    return f'Selected "{value}" in "{label[:60]}".'
+
+
+@mcp.tool()
+async def inspect_element(description: str) -> str:
+    """Get computed styles, ARIA metadata, and outerHTML for one element.
+
+    Use this when you suspect a visual / a11y / truncation bug on a
+    specific surface and observe()'s summary doesn't tell you enough.
+    Returns:
+      - rendered styles (color, background, font-size/weight, display,
+        visibility, opacity, position, z-index, overflow, cursor, etc.)
+      - bounding rect + whether it's in the viewport
+      - whether the element is visually truncated by CSS (scrollWidth >
+        clientWidth with overflow: hidden / text-overflow: ellipsis)
+      - aria-label / aria-describedby / aria-hidden / role / title
+      - associated <label> text(s)
+      - disabled / readonly / focused state
+      - first 1.5 KB of outerHTML
+
+    Argus does not auto-judge anything from this output. You read it
+    and decide whether anything you see warrants record_bug.
+    """
+    s = _require_session()
+    el, err = _resolve_or_error(s, description)
+    if err:
+        return err
+
+    selector = s.browser._build_selector(el)
+    info = await s.browser.inspect_element(selector)
+    if not info.get("found"):
+        return (
+            f"inspect_element({description!r}) — could not re-locate element "
+            f"via selector {selector!r}. The DOM may have changed; observe() again."
+        )
+
+    s.steps.append(f'inspect_element({description!r})')
+
+    lines = [f"Inspecting {description!r} (resolved to <{info['tag']}>)"]
+    lines.append("")
+    lines.append("Visible text: " + (info.get("text") or "<none>")[:160])
+    rect = info.get("rect", {})
+    lines.append(
+        f"Rect: x={rect.get('x', 0):.0f} y={rect.get('y', 0):.0f} "
+        f"w={rect.get('width', 0):.0f} h={rect.get('height', 0):.0f} "
+        f"in_viewport={rect.get('inViewport')}"
+    )
+    if info.get("truncated"):
+        sd = info.get("scrollDimensions", {})
+        lines.append(
+            f"  TRUNCATED: scrollWidth={sd.get('scrollWidth')} > clientWidth={sd.get('clientWidth')} "
+            f"(or scrollHeight > clientHeight) with overflow hidden — text is silently cut off."
+        )
+    if info.get("focused"):
+        lines.append("Focus: this element currently has focus.")
+
+    lines.append("")
+    lines.append("Computed styles:")
+    for k, v in (info.get("styles") or {}).items():
+        lines.append(f"  {k}: {v}")
+
+    lines.append("")
+    lines.append("Accessibility:")
+    lines.append(f"  role: {info.get('role') or '(default)'}")
+    lines.append(f"  aria-label: {info.get('ariaLabel') or '(none)'}")
+    lines.append(f"  aria-describedby: {info.get('ariaDescribedby') or '(none)'}")
+    lines.append(f"  aria-hidden: {info.get('ariaHidden') or '(false/unset)'}")
+    lines.append(f"  title: {info.get('title') or '(none)'}")
+    lines.append(f"  disabled: {info.get('disabled')}, readonly: {info.get('readonly')}")
+    if info.get("labels"):
+        lines.append(f"  associated <label>(s): {info['labels']}")
+
+    lines.append("")
+    lines.append("outerHTML (first 1500 chars):")
+    lines.append(info.get("outerHtml") or "(unavailable)")
+    return "\n".join(lines)
 
 
 @mcp.tool()
@@ -423,16 +611,173 @@ async def scroll_down() -> str:
 
 
 @mcp.tool()
-async def screenshot(name: str = "screenshot") -> str:
-    """Take a screenshot of the current page.
+async def screenshot(
+    name: str = "screenshot",
+    element: str = "",
+    full_page: bool = False,
+) -> str:
+    """Capture a screenshot — full viewport, full page, or one element.
+
+    Use this whenever something looks visually off and you want evidence
+    for a record_bug call, or when you want a before/after pair to feed
+    into screenshot_diff.
 
     Args:
-        name: Name for the screenshot file (without extension)
+        name: Filename label (no extension).
+        element: Optional element description (same syntax as click_what).
+                 If given, crops the screenshot to that element's bounds.
+                 Use for visual hierarchy / truncation / contrast checks.
+        full_page: If True, capture the entire scrollable page rather
+                   than just the viewport. Ignored when `element` is set.
     """
     s = _require_session()
     last_step = s.steps[-1] if s.steps else "Initial state"
-    path = await _auto_screenshot(s, name, last_step)
+
+    if element:
+        el, err = _resolve_or_error(s, element)
+        if err:
+            return err
+        s._screenshot_counter += 1
+        safe_name = f"{s._screenshot_counter:03d}_elem_{name}"
+        path = str(Path(_output_dir()) / "screenshots" / f"{safe_name}.png")
+        selector = s.browser._build_selector(el)
+        result = await s.browser.element_screenshot(selector, path)
+        if result is None:
+            return (
+                f"screenshot(element={element!r}) — could not capture; the "
+                f"element may have moved or detached. observe() and try again."
+            )
+        s.screenshots.append(Screenshot(
+            path=path, name=safe_name, step=last_step,
+            url=s.browser._page.url if s.browser._page else "",
+        ))
+        return f"Element screenshot saved: {path}"
+
+    s._screenshot_counter += 1
+    suffix = "_fullpage" if full_page else ""
+    safe_name = f"{s._screenshot_counter:03d}_{name}{suffix}"
+    path = str(Path(_output_dir()) / "screenshots" / f"{safe_name}.png")
+    await s.browser.screenshot(path, full_page=full_page)
+    s.screenshots.append(Screenshot(
+        path=path, name=safe_name, step=last_step,
+        url=s.browser._page.url if s.browser._page else "",
+    ))
     return f"Screenshot saved: {path}"
+
+
+@mcp.tool()
+async def screenshot_diff(
+    before: str,
+    after: str,
+    name: str = "diff",
+    threshold: int = 25,
+) -> str:
+    """Compare two screenshots and produce a third image with changed
+    regions highlighted in red, so you can see what visually changed
+    between two states.
+
+    Useful for detecting layout shifts, content updates that should not
+    have happened, focus-ring changes after a click, modal overlays
+    appearing, theme switches, etc. Argus does not auto-judge whether
+    a diff is a bug — you read the side-by-side and decide.
+
+    Args:
+        before: Path or filename of the earlier screenshot (returned
+                from a previous `screenshot()` call).
+        after: Path of the later screenshot.
+        name: Label for the output diff image.
+        threshold: 0-255 per-channel pixel difference above which a
+                   pixel is considered "changed". Default 25 (mild).
+                   Lower = more sensitive.
+    """
+    from PIL import Image, ImageChops, ImageDraw
+
+    s = _require_session()
+    out_dir = Path(_output_dir()) / "screenshots"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    def _resolve(p: str) -> Optional[Path]:
+        candidates = [Path(p)]
+        if not Path(p).is_absolute():
+            candidates.append(out_dir / Path(p).name)
+            candidates.append(Path("argus-reports/screenshots") / Path(p).name)
+        for c in candidates:
+            if c.exists():
+                return c
+        return None
+
+    before_path = _resolve(before)
+    after_path = _resolve(after)
+    if before_path is None:
+        return f"screenshot_diff: cannot find {before!r}"
+    if after_path is None:
+        return f"screenshot_diff: cannot find {after!r}"
+
+    try:
+        img_a = Image.open(before_path).convert("RGB")
+        img_b = Image.open(after_path).convert("RGB")
+    except Exception as exc:
+        return f"screenshot_diff: failed to open images: {exc}"
+
+    if img_a.size != img_b.size:
+        # Resize the smaller to match — keeps comparison meaningful even
+        # when viewport changed slightly.
+        target = (
+            min(img_a.size[0], img_b.size[0]),
+            min(img_a.size[1], img_b.size[1]),
+        )
+        img_a = img_a.resize(target)
+        img_b = img_b.resize(target)
+
+    diff_img = ImageChops.difference(img_a, img_b)
+    bbox = diff_img.getbbox()
+
+    s._screenshot_counter += 1
+    safe_name = f"{s._screenshot_counter:03d}_{name}"
+    out_path = out_dir / f"{safe_name}.png"
+
+    if bbox is None:
+        # Pixel-identical. Save before image as the diff so the agent has
+        # a concrete artifact, but signal that there's no change.
+        img_a.save(out_path)
+        return (
+            f"screenshot_diff: images are pixel-identical — no visible change.\n"
+            f"  Saved (copy of before): {out_path}"
+        )
+
+    # Build a binary mask of changed pixels at the requested threshold.
+    grey = diff_img.convert("L")
+    mask = grey.point(lambda v: 255 if v > threshold else 0, mode="L")
+
+    # Composite a translucent red overlay onto the after image at the mask.
+    red_layer = Image.new("RGB", img_b.size, (255, 0, 0))
+    composite = Image.composite(red_layer, img_b, mask).convert("RGB")
+    # Blend back so changed regions are tinted, not solid red.
+    blended = Image.blend(img_b, composite, 0.5)
+
+    # Outline the overall bounding box for orientation.
+    draw = ImageDraw.Draw(blended)
+    draw.rectangle(bbox, outline=(255, 0, 0), width=3)
+
+    blended.save(out_path)
+
+    # Heuristic: how much of the image changed?
+    changed_pixels = sum(1 for px in mask.getdata() if px > 0)
+    total_pixels = mask.size[0] * mask.size[1]
+    pct = (changed_pixels / total_pixels) * 100 if total_pixels else 0
+
+    s.screenshots.append(Screenshot(
+        path=str(out_path), name=safe_name, step=f"diff: {before} vs {after}",
+        url=s.browser._page.url if s.browser._page else "",
+    ))
+
+    return (
+        f"screenshot_diff saved: {out_path}\n"
+        f"  Changed bounding box: {bbox} (size {bbox[2] - bbox[0]} x {bbox[3] - bbox[1]})\n"
+        f"  Approx {pct:.1f}% of pixels changed (threshold={threshold}).\n"
+        f"  Decide: is this change expected for the action you took? If a UI region "
+        f"changed unexpectedly, that may be a bug — call record_bug."
+    )
 
 
 @mcp.tool()
@@ -587,58 +932,76 @@ async def record_bug(
 
 
 @mcp.tool()
-async def verify_action(action_type: str, target_text: str, verify_url: str = "") -> str:
-    """Force a fresh GET on the page where a persistence-changing action
-    should have taken effect, then report whether `target_text` is present.
+async def verify_persistence(
+    expect: str,
+    target_text: str,
+    after_url: str = "",
+) -> str:
+    """Force a fresh page load and report whether `target_text` is present
+    or absent — your tool for catching the "Saved!" toast that lied.
 
-    Use this after any delete / edit / save / toggle / submit. The
-    success toast is not proof of persistence — only a fresh page load is.
+    After any destructive or persistence-changing action (delete, edit,
+    save, submit, toggle, payment, etc.), the success toast is not
+    proof. Only a fresh GET on the relevant page is. This tool does
+    that GET and reports presence — you decide whether the result
+    matches what you expected.
 
-    Argus does not auto-record a bug here. You read the result and
-    decide. If `delete` says target_text is still present, that's a real
-    bug — call record_bug. If `edit` says the new value is missing,
-    that's a real bug — call record_bug.
+    Examples:
+      verify_persistence("absent", "Buy groceries", "/tasks")
+        — after deleting "Buy groceries", confirm it's gone from the list.
+      verify_persistence("present", "EDITED-VALUE-XYZ", "/tasks/1/edit")
+        — after editing, confirm the new value reloads.
+
+    Argus does not auto-record a bug here. If presence does not match
+    your expectation, call record_bug.
 
     Args:
-        action_type: "delete" | "edit" | "toggle". Used only for the
-                     human-readable result string.
-        target_text: For delete — text of the item that should be gone.
-                     For edit — the NEW value that should now be present.
-        verify_url: Page to fetch fresh and inspect. Defaults to current URL.
+        expect: "present" or "absent" — what state the target_text
+                should be in after the fresh page load.
+        target_text: The text or value you're checking for.
+        after_url: Page to load and inspect. Defaults to the current URL.
     """
     s = _require_session()
-    s.steps.append(f'verify_action({action_type}, "{target_text[:60]}")')
+    expect_norm = (expect or "").strip().lower()
+    if expect_norm not in ("present", "absent"):
+        return (
+            f"verify_persistence: invalid `expect` {expect!r}. "
+            f"Use 'present' or 'absent'."
+        )
+
+    s.steps.append(f'verify_persistence({expect_norm}, {target_text[:60]!r})')
 
     current_url = s.browser._page.url if s.browser._page else ""
-    nav_url = verify_url or current_url
+    nav_url = after_url or current_url
     await s.browser.goto(nav_url)
     after_state = await s.browser.get_state()
     s._last_elements = after_state.elements
 
     present = _text_in_state(target_text, after_state)
+    matches = (present and expect_norm == "present") or (
+        not present and expect_norm == "absent"
+    )
 
-    if action_type == "delete":
+    if expect_norm == "absent":
         verdict = (
-            f"Target text STILL PRESENT after refresh — delete did not persist."
-            if present else
-            f"Target text gone — delete persisted."
-        )
-    elif action_type == "edit":
-        verdict = (
-            f"New value PRESENT after refresh — edit persisted."
-            if present else
-            f"New value NOT FOUND after refresh — edit did not persist."
+            "Target text is GONE after refresh — matches expectation."
+            if not present
+            else "Target text is STILL PRESENT after refresh — does NOT match expectation."
         )
     else:
         verdict = (
-            f"Target text {'present' if present else 'absent'} after refresh."
+            "Target text is PRESENT after refresh — matches expectation."
+            if present
+            else "Target text is MISSING after refresh — does NOT match expectation."
         )
 
     return (
-        f"verify_action({action_type}) on '{target_text[:60]}' @ {nav_url}\n"
-        f"  {verdict}\n"
-        f"  Decide: is this a bug? If so, call record_bug with the appropriate\n"
-        f"  severity and steps. Argus does not infer bugs from this output."
+        f"verify_persistence(expect={expect_norm!r}, target={target_text[:60]!r}) "
+        f"on {nav_url}\n"
+        f"  Result: {'MATCH' if matches else 'MISMATCH'} — {verdict}\n"
+        f"  Decide: if this mismatch is a real bug (silent delete failure, "
+        f"edit not persisting, etc.), call record_bug. Argus does not infer "
+        f"that for you."
     )
 
 
@@ -792,207 +1155,232 @@ async def crawl_site(max_pages: int = 20) -> str:
 
 
 @mcp.tool()
-async def test_action(element_index: int, action_description: str) -> str:
-    """Click a button/link and automatically verify what changed.
+async def test_action(target: str, expectation: str = "") -> str:
+    """Click an element and observe the diff in one round-trip.
 
-    Captures state before and after the click, runs all detectors, computes
-    a diff, and takes a screenshot. Returns a complete analysis in one call.
+    Captures the state before and after a click on the element matching
+    `target`, computes a structural diff, drains console/network events,
+    and screenshots the result. This is a convenience wrapper around
+    observe + click_what + observe — useful when you want a single
+    tool call to learn what changed.
+
+    Argus does not auto-judge whether `expectation` was met. You read
+    the diff and decide; if you observed a real bug, call record_bug.
 
     Args:
-        element_index: The [N] index of the element to click
-        action_description: What you expect to happen (e.g. "delete the Buy groceries task")
+        target: Natural-language description of the element to click,
+                same syntax as click_what ("Login button", "Add Task",
+                "Delete near Buy groceries").
+        expectation: Optional one-line note on what you expected to
+                happen — used as the action description in the diff
+                output. Purely informational.
     """
     s = _require_session()
-    if element_index < 0 or element_index >= len(s._last_elements):
-        return f"Error: element index {element_index} out of range (0-{len(s._last_elements) - 1})"
 
-    el = s._last_elements[element_index]
-    label = el.text or el.aria_label or el.placeholder or f"{el.tag}#{el.id or '?'}"
-    step = f'test_action: Click "{label}" ({action_description})'
+    el, err = _resolve_or_error(s, target)
+    if err:
+        return err
+
+    label = el.text or el.aria_label or el.placeholder or el.name or el.tag
+    step = f'test_action({target!r}) -> "{label[:60]}"'
+    if expectation:
+        step += f" — expected: {expectation}"
     s.steps.append(step)
 
-    # Drain pre-existing errors
     s.browser.drain_errors()
-
-    # Before state
     before = await s.browser.get_state()
 
-    # Execute click
-    ok = await s.browser.click(element_index, s._last_elements)
-    if not ok:
+    selector = s.browser._build_selector(el)
+    try:
+        await s.browser._page.click(selector, timeout=5000)
+        await s.browser._page.wait_for_load_state("networkidle", timeout=10_000)
+    except Exception as exc:
         ss = await _auto_screenshot(s, "action_failed", step)
-        return f"ACTION FAILED: Could not click \"{label}\" — element may be obscured or gone.\nScreenshot: {ss}"
+        return (
+            f"test_action({target!r}) — click failed: {exc}\n"
+            f"The element may be obscured, stale, or removed. "
+            f"Screenshot: {ss}"
+        )
 
-    await asyncio.sleep(0.3)  # settle time for JS re-renders
-
-    # After state
+    await asyncio.sleep(0.3)
     after = await s.browser.get_state()
     s._last_elements = after.elements
     if after.url not in s.pages_visited:
         s.pages_visited.append(after.url)
 
-    # Errors from this action
     console_errs, network_errs = s.browser.drain_errors()
-
-    # Run detectors
     new_bugs = await _capture_browser_events(s, after, console_errs, network_errs)
+    changes = compute_changes(before, after, expectation or target)
 
-    # Compute diff
-    changes = compute_changes(before, after, action_description)
-
-    # Screenshot
     ss_path = await _auto_screenshot(s, f"action_{label[:20]}", step)
     for bug in new_bugs:
         bug.screenshot_path = ss_path
     s.bugs.extend(new_bugs)
 
-    # Format result
     lines = [
-        f'ACTION: Clicked "{label}" <{el.tag}> [{element_index}]',
-        f'  ({action_description})',
-        "",
-        "CHANGES:",
+        f'ACTION: Clicked "{label[:60]}" via target {target!r}',
     ]
+    if expectation:
+        lines.append(f"  Expected: {expectation}")
+    lines.append("")
+    lines.append("CHANGES:")
     for c in changes:
         lines.append(f"  {c}")
     lines.append("")
 
     if console_errs or network_errs:
-        lines.append("ERRORS:")
+        lines.append("BROWSER EVENTS:")
         for err in console_errs[:3]:
             lines.append(f"  [CONSOLE] {err['text'][:80]}")
         for err in network_errs[:3]:
             lines.append(f"  [HTTP {err['status']}] {err['method']} {err['url'][:60]}")
     else:
-        lines.append("ERRORS: None")
+        lines.append("BROWSER EVENTS: none")
 
     if new_bugs:
-        lines.append(f"\nBUGS ({len(new_bugs)} new, {len(s.bugs)} total):")
+        lines.append(f"\nEvent-bugs auto-captured ({len(new_bugs)} new):")
         for bug in new_bugs:
             lines.append(f"  [{bug.severity.value.upper()}] {bug.title[:80]}")
-    else:
-        lines.append(f"\nBUGS: None new. Total: {len(s.bugs)}")
-
-    lines.append(f"\nScreenshot: {ss_path}")
+    lines.append(
+        "\nDecide: did anything you observed warrant a record_bug call? "
+        "test_action does not infer that for you."
+    )
+    lines.append(f"Screenshot: {ss_path}")
     return "\n".join(lines)
 
 
 @mcp.tool()
 async def test_form(
     form_fields: dict,
-    submit_text: str = "",
-    submit_index: int = -1,
-    expected_result: str = "success",
+    submit: str = "auto",
 ) -> str:
-    """Fill a form, submit it, and verify the result — all in one call.
+    """Fill a set of form fields and submit, in one call. Description-keyed.
 
-    Matches fields by name/placeholder, types values, clicks submit, then
-    checks if the operation succeeded or failed as expected.
+    Each key in `form_fields` is matched to an input via the same
+    natural-language resolver used by type_into / select_into. Use
+    descriptions that match the field's label, name, or placeholder:
+    {"email": "alice@x.com", "password": "abc12345", "confirm": "abc12345"}.
+
+    Argus reports what happened (URL change, new feedback messages,
+    captured browser events, structural diff). It does NOT label the
+    outcome as success / failure — your job is to read the result and
+    call record_bug if you've confirmed a real bug.
 
     Args:
-        form_fields: Dict mapping field name to value. Example: {"email": "test@test.com", "password": "abc123"}
-        submit_text: Text of submit button to click. Auto-detects if empty.
-        submit_index: Element index of submit button. Used if submit_text is empty.
-        expected_result: "success" (expect redirect/success msg), "validation_error" (expect error msg), or "any"
+        form_fields: Dict {field_description: value}.
+        submit: How to submit. "auto" (default) finds the most likely
+            submit button by text. "enter" presses Enter on the last
+            filled field. Otherwise, treated as a description for
+            click_what to resolve (e.g. "Save Changes" or "Register").
     """
     s = _require_session()
 
-    # Drain pre-existing errors
     s.browser.drain_errors()
     before = await s.browser.get_state()
     before_url = before.url
+    s._last_elements = before.elements
 
     field_results = []
-    elements = s._last_elements
-
-    # Fill each field
-    for field_key, value in form_fields.items():
-        # Re-fetch elements (SPA re-renders may shift indices)
+    for field_desc, value in form_fields.items():
+        # Re-observe before each field; SPA re-renders shift element refs.
         state = await s.browser.get_state()
-        elements = state.elements
-        s._last_elements = elements
+        s._last_elements = state.elements
 
-        idx = s.browser.find_element_by_field(field_key, elements)
-        if idx is None:
-            field_results.append(f"[MISS] \"{field_key}\" — no matching element found")
-            continue
-
-        el = elements[idx]
-        if el.tag == "select":
-            ok = await s.browser.select_option(idx, str(value), elements)
+        result = resolve_element(field_desc, state.elements, kind_filter="input")
+        if result.reason != "unique" or result.found is None:
+            # Try without the kind filter — sometimes selects or buttons are intended
+            result_any = resolve_element(field_desc, state.elements)
+            if result_any.reason != "unique" or result_any.found is None:
+                field_results.append(f'[MISS] {field_desc!r} — {result.reason}')
+                continue
+            el = result_any.found
         else:
-            ok = await s.browser.type_text(idx, str(value), elements)
+            el = result.found
 
-        if ok:
-            field_results.append(f"[OK] \"{field_key}\" -> \"{value}\"")
-            s.steps.append(f'Type "{value}" into {field_key}')
-        else:
-            field_results.append(f"[FAIL] \"{field_key}\" — could not type")
+        selector = s.browser._build_selector(el)
+        try:
+            if el.tag == "select":
+                await s.browser._page.select_option(selector, str(value), timeout=5000)
+            else:
+                await s.browser._page.fill(selector, str(value), timeout=5000)
+            field_results.append(f'[OK] {field_desc!r} -> {value!r}')
+            s.steps.append(f'Type {value!r} into {field_desc!r}')
+        except Exception as exc:
+            field_results.append(f'[FAIL] {field_desc!r} — {exc}')
 
-    # Find submit button
+    # Submit
     state = await s.browser.get_state()
-    elements = state.elements
-    s._last_elements = elements
-    submit_idx = None
+    s._last_elements = state.elements
+    submit_label = ""
 
-    if submit_text:
-        for el in elements:
-            if el.tag in ("button", "input") and el.text and submit_text.lower() in el.text.lower():
-                submit_idx = el.index
-                break
-    elif submit_index >= 0:
-        submit_idx = submit_index
+    if submit == "enter":
+        # Press Enter on whatever element is currently focused, falling back
+        # to the last filled field if we can determine it.
+        try:
+            await s.browser._page.keyboard.press("Enter")
+            await s.browser._page.wait_for_load_state("networkidle", timeout=10_000)
+            submit_label = "Enter key"
+            s.steps.append("Press Enter to submit")
+        except Exception as exc:
+            ss = await _auto_screenshot(s, "form_no_submit", "Enter-key submit failed")
+            return f"FORM: filled {len(field_results)} fields but Enter-submit failed: {exc}"
     else:
-        # Auto-detect submit
-        submit_keywords = ["submit", "save", "create", "sign in", "log in", "login", "register", "send", "add"]
-        for el in elements:
-            if el.tag in ("button", "input") and el.type in ("submit", None, "button"):
-                el_text = (el.text or "").lower()
-                if any(kw in el_text for kw in submit_keywords) or el.type == "submit":
-                    submit_idx = el.index
-                    break
-
-    if submit_idx is None:
-        # Fallback: press Enter on the last filled input field
-        last_filled = None
-        for fr in field_results:
-            if "[OK]" in fr:
-                # Re-find the last successfully filled field
-                for key in reversed(list(form_fields.keys())):
-                    idx = s.browser.find_element_by_field(key, elements)
-                    if idx is not None:
-                        last_filled = idx
-                        break
-                break
-        if last_filled is not None:
-            el = elements[last_filled]
-            selector = s.browser._build_selector(el)
-            try:
-                await s.browser._page.press(selector, "Enter", timeout=5000)
-                await s.browser._page.wait_for_load_state("networkidle", timeout=10000)
-                submit_label = "Enter key"
-                s.steps.append("Press Enter to submit")
-            except Exception:
-                ss = await _auto_screenshot(s, "form_no_submit", "No submit button, Enter failed")
-                return f"FORM: Filled {len(field_results)} fields but no submit button found and Enter key failed.\n" + "\n".join(field_results)
+        if submit == "auto":
+            # Auto-discover: prefer a button whose text matches typical submit verbs.
+            submit_keywords = [
+                "submit", "save", "create", "sign in", "log in", "login",
+                "register", "send", "add", "continue",
+            ]
+            scored: list[tuple[int, InteractiveElement]] = []
+            for el in state.elements:
+                if el.tag not in ("button", "input"):
+                    continue
+                if el.tag == "input" and el.type not in ("submit", "button"):
+                    continue
+                text = (el.text or "").lower()
+                score = 0
+                for kw in submit_keywords:
+                    if kw in text:
+                        score = max(score, 50 + len(kw))
+                if el.type == "submit":
+                    score = max(score, 80)
+                if score > 0:
+                    scored.append((score, el))
+            scored.sort(key=lambda p: -p[0])
+            target_el = scored[0][1] if scored else None
         else:
+            result = resolve_element(submit, state.elements, kind_filter="button")
+            if result.reason != "unique" or result.found is None:
+                return (
+                    f"FORM: filled {len(field_results)} fields but submit "
+                    f"description {submit!r} did not resolve: {result.reason}.\n"
+                    + "\n".join(field_results)
+                )
+            target_el = result.found
+
+        if target_el is None:
             ss = await _auto_screenshot(s, "form_no_submit", "Could not find submit button")
-            return f"FORM: Filled {len(field_results)} fields but could not find submit button.\n" + "\n".join(field_results)
+            return (
+                f"FORM: filled {len(field_results)} fields but no submit button "
+                f"found. Pass submit=\"enter\" or submit=\"<description>\" "
+                f"explicitly.\n" + "\n".join(field_results)
+            )
 
-    if submit_idx is not None:
-        submit_el = elements[submit_idx]
-        submit_label = submit_el.text or "submit"
-        s.steps.append(f'Click "{submit_label}"')
-
-        # Click submit
-        ok = await s.browser.click(submit_idx, elements)
-        if not ok:
+        submit_label = target_el.text or target_el.aria_label or "submit"
+        s.steps.append(f'Click {submit_label!r}')
+        sel = s.browser._build_selector(target_el)
+        try:
+            await s.browser._page.click(sel, timeout=5000)
+            await s.browser._page.wait_for_load_state("networkidle", timeout=10_000)
+        except Exception as exc:
             ss = await _auto_screenshot(s, "form_submit_fail", "Submit click failed")
-            return f"FORM: Filled fields but submit click failed.\n" + "\n".join(field_results)
+            return (
+                f"FORM: filled {len(field_results)} fields but submit click failed: {exc}\n"
+                + "\n".join(field_results)
+            )
 
     await asyncio.sleep(0.3)
 
-    # After state
     after = await s.browser.get_state()
     s._last_elements = after.elements
     if after.url not in s.pages_visited:
@@ -1002,48 +1390,14 @@ async def test_form(
     new_bugs = await _capture_browser_events(s, after, console_errs, network_errs)
     changes = compute_changes(before, after, "form submission")
 
-    # Analyze result
     redirected = after.url != before_url
-    has_success_toast = any(
-        any(kw in t.lower() for kw in ["success", "saved", "created", "added", "logged", "welcome"])
-        for t in after.toast_messages
-    )
-    has_error_toast = any(
-        any(kw in t.lower() for kw in ["error", "fail", "invalid", "required", "incorrect"])
-        for t in after.toast_messages
-    )
-    has_error_text = any(
-        kw in after.page_text.lower()
-        for kw in ["error", "invalid", "required", "do not match", "failed"]
-    )
-    server_error = any(e["status"] >= 500 for e in network_errs)
-
-    if expected_result == "success":
-        if redirected or has_success_toast:
-            outcome = "CONFIRMED — success indicators detected"
-        elif server_error:
-            outcome = "FAILED — server returned error (call record_bug if this is a real bug)"
-        elif has_error_text:
-            outcome = "FAILED — error messages visible on page (call record_bug if this is a real bug)"
-        else:
-            outcome = "UNCLEAR — no obvious success or error indicators"
-    elif expected_result == "validation_error":
-        if has_error_text or has_error_toast:
-            outcome = "CONFIRMED — validation errors shown"
-        elif redirected or has_success_toast:
-            outcome = "UNEXPECTED — form accepted input that should have been rejected (call record_bug if this is a real bug)"
-        else:
-            outcome = "UNCLEAR — no obvious validation feedback"
-    else:
-        outcome = "Observed (no expectation set)"
-
     ss_path = await _auto_screenshot(s, "form_result", f"Form: {submit_label}")
     for bug in new_bugs:
         bug.screenshot_path = ss_path
     s.bugs.extend(new_bugs)
 
     lines = [
-        f"FORM SUBMISSION via \"{submit_label}\"",
+        f'FORM SUBMISSION via "{submit_label}"',
         "",
         "FIELDS:",
     ]
@@ -1051,231 +1405,37 @@ async def test_form(
         lines.append(f"  {fr}")
     lines.append("")
     lines.append("RESULT:")
-    lines.append(f"  URL: {before_url} -> {after.url} {'(redirected)' if redirected else '(same page)'}")
+    lines.append(
+        f"  URL: {before_url} -> {after.url} "
+        f"{'(redirected)' if redirected else '(same page)'}"
+    )
     if after.toast_messages:
-        lines.append(f"  Toasts: {', '.join(after.toast_messages[:3])}")
-    lines.append(f"  Expected: {expected_result} -> {outcome}")
+        lines.append(f"  Feedback: {', '.join(after.toast_messages[:3])}")
     lines.append("")
     lines.append("CHANGES:")
     for c in changes:
         lines.append(f"  {c}")
 
+    if console_errs or network_errs:
+        lines.append("")
+        lines.append("BROWSER EVENTS:")
+        for err in console_errs[:3]:
+            lines.append(f"  [CONSOLE] {err['text'][:80]}")
+        for err in network_errs[:3]:
+            lines.append(f"  [HTTP {err['status']}] {err['method']} {err['url'][:60]}")
+
     if new_bugs:
-        lines.append(f"\nBUGS ({len(new_bugs)} new, {len(s.bugs)} total):")
+        lines.append(f"\nEvent-bugs auto-captured ({len(new_bugs)} new):")
         for bug in new_bugs:
             lines.append(f"  [{bug.severity.value.upper()}] {bug.title[:80]}")
-    else:
-        lines.append(f"\nBUGS: None new. Total: {len(s.bugs)}")
 
-    lines.append(f"\nScreenshot: {ss_path}")
+    lines.append(
+        "\nDecide: was the outcome what you expected? If the form accepted "
+        "garbage / lost data / showed a misleading toast / etc., call record_bug."
+    )
+    lines.append(f"Screenshot: {ss_path}")
     return "\n".join(lines)
 
-
-@mcp.tool()
-async def test_crud(
-    create_url: str,
-    list_url: str,
-    item_data: dict,
-    item_name_field: str = "",
-) -> str:
-    """Test a complete Create → Verify → Edit → Verify → Delete → Verify cycle.
-
-    Navigates to the create form, fills it, submits, then verifies the item
-    exists on the list page. Then finds edit/delete buttons and tests those too.
-
-    Args:
-        create_url: URL of the create/new form (e.g. "/tasks/new")
-        list_url: URL where created items appear (e.g. "/tasks")
-        item_data: Dict of field:value pairs for creating the item
-        item_name_field: Key in item_data that identifies the item (e.g. "title"). Auto-detects if empty.
-    """
-    s = _require_session()
-
-    # Determine item name
-    if item_name_field and item_name_field in item_data:
-        item_name = str(item_data[item_name_field])
-    else:
-        item_name = str(list(item_data.values())[0]) if item_data else "test item"
-
-    results = []
-    phase_bugs = []
-
-    # ── PHASE 1: CREATE ──
-    results.append("CREATE:")
-    try:
-        await s.browser.goto(create_url)
-        state = await s.browser.get_state()
-        s._last_elements = state.elements
-        s.steps.append(f"Navigate to {create_url}")
-
-        # Fill fields
-        for field_key, value in item_data.items():
-            state = await s.browser.get_state()
-            s._last_elements = state.elements
-            idx = s.browser.find_element_by_field(field_key, state.elements)
-            if idx is not None:
-                el = state.elements[idx]
-                if el.tag == "select":
-                    await s.browser.select_option(idx, str(value), state.elements)
-                else:
-                    await s.browser.type_text(idx, str(value), state.elements)
-                s.steps.append(f'Type "{value}" into {field_key}')
-                results.append(f"  [OK] Filled \"{field_key}\" = \"{value}\"")
-            else:
-                results.append(f"  [MISS] Could not find field \"{field_key}\"")
-
-        # Find and click submit
-        state = await s.browser.get_state()
-        s._last_elements = state.elements
-        submit_idx = None
-        for el in state.elements:
-            if el.tag in ("button", "input") and el.type in ("submit", None, "button"):
-                el_text = (el.text or "").lower()
-                if any(kw in el_text for kw in ["submit", "save", "create", "add"]) or el.type == "submit":
-                    submit_idx = el.index
-                    break
-
-        if submit_idx is not None:
-            await s.browser.click(submit_idx, state.elements)
-            await asyncio.sleep(0.3)
-            results.append(f"  [OK] Submitted form")
-            s.steps.append("Click submit")
-        else:
-            results.append(f"  [FAIL] Could not find submit button")
-
-        # Verify on list page
-        await s.browser.goto(list_url)
-        verify_state = await s.browser.get_state()
-        s._last_elements = verify_state.elements
-        if _text_in_state(item_name, verify_state):
-            results.append(f"  [OK] \"{item_name}\" found on {list_url}")
-        else:
-            results.append(f"  [FAIL] \"{item_name}\" NOT found on {list_url}")
-
-        await _auto_screenshot(s, "crud_create", f"CRUD create: {item_name}")
-    except Exception as e:
-        results.append(f"  [ERROR] {str(e)[:100]}")
-
-    # ── PHASE 2: EDIT ──
-    results.append("")
-    results.append("EDIT:")
-    edited_name = f"{item_name} (edited)"
-    try:
-        state = await s.browser.get_state()
-        s._last_elements = state.elements
-        edit_idx = s.browser.find_button_near_item(item_name, ["edit", "update", "modify"], state.elements)
-
-        if edit_idx is not None:
-            await s.browser.click(edit_idx, state.elements)
-            await asyncio.sleep(0.3)
-            results.append(f"  [OK] Found and clicked edit button")
-
-            # Type new value into the name field
-            state = await s.browser.get_state()
-            s._last_elements = state.elements
-            name_idx = s.browser.find_element_by_field(
-                item_name_field or list(item_data.keys())[0], state.elements
-            )
-            if name_idx is not None:
-                await s.browser.type_text(name_idx, edited_name, state.elements)
-                results.append(f"  [OK] Changed to \"{edited_name}\"")
-
-                # Submit edit
-                state = await s.browser.get_state()
-                s._last_elements = state.elements
-                for el in state.elements:
-                    if el.tag in ("button", "input") and el.type in ("submit", None, "button"):
-                        el_text = (el.text or "").lower()
-                        if any(kw in el_text for kw in ["save", "update", "submit"]) or el.type == "submit":
-                            await s.browser.click(el.index, state.elements)
-                            await asyncio.sleep(0.3)
-                            results.append(f"  [OK] Submitted edit")
-                            break
-
-                # Verify edit persisted
-                await s.browser.goto(list_url)
-                verify_state = await s.browser.get_state()
-                s._last_elements = verify_state.elements
-                if _text_in_state(edited_name, verify_state):
-                    results.append(f"  [OK] \"{edited_name}\" found on {list_url}")
-                else:
-                    results.append(f"  [BUG] \"{edited_name}\" NOT found — edit may not have persisted!")
-                    phase_bugs.append(Bug(
-                        type=BugType.STATE_VERIFICATION, severity=Severity.HIGH,
-                        title=f"Edit did not persist: \"{edited_name}\" not found after save",
-                        description=f"Edited item to \"{edited_name}\" and saved, but the new value is not on {list_url}",
-                        url=list_url, steps_to_reproduce=list(s.steps),
-                    ))
-            else:
-                results.append(f"  [SKIP] Could not find name field to edit")
-        else:
-            results.append(f"  [SKIP] No edit button found near \"{item_name}\"")
-
-        await _auto_screenshot(s, "crud_edit", f"CRUD edit: {item_name}")
-    except Exception as e:
-        results.append(f"  [ERROR] {str(e)[:100]}")
-
-    # ── PHASE 3: DELETE ──
-    results.append("")
-    results.append("DELETE:")
-    _cur = await s.browser.get_state()
-    search_name = edited_name if _text_in_state(edited_name, _cur) else item_name
-    try:
-        state = await s.browser.get_state()
-        s._last_elements = state.elements
-        del_idx = s.browser.find_button_near_item(search_name, ["delete", "remove", "trash"], state.elements)
-
-        if del_idx is not None:
-            before_delete = await s.browser.get_state()
-            await s.browser.click(del_idx, state.elements)
-            await asyncio.sleep(0.5)
-            results.append(f"  [OK] Clicked delete button")
-
-            # Check for confirmation dialog
-            state = await s.browser.get_state()
-            s._last_elements = state.elements
-            for el in state.elements:
-                el_text = (el.text or "").lower()
-                if any(kw in el_text for kw in ["confirm", "yes", "ok", "sure"]):
-                    await s.browser.click(el.index, state.elements)
-                    await asyncio.sleep(0.3)
-                    results.append(f"  [OK] Confirmed deletion")
-                    break
-
-            # Verify deletion
-            await s.browser.goto(list_url)
-            verify_state = await s.browser.get_state()
-            s._last_elements = verify_state.elements
-            if not _text_in_state(search_name, verify_state):
-                results.append(f"  [OK] \"{search_name}\" is GONE from {list_url}")
-            else:
-                results.append(f"  [BUG] \"{search_name}\" still present — delete did not persist!")
-                phase_bugs.append(Bug(
-                    type=BugType.STATE_VERIFICATION, severity=Severity.HIGH,
-                    title=f"Delete did not persist: \"{search_name}\" still present after refresh",
-                    description=f"Deleted \"{search_name}\" but it reappeared on {list_url}",
-                    url=list_url, steps_to_reproduce=list(s.steps),
-                ))
-        else:
-            results.append(f"  [SKIP] No delete button found near \"{search_name}\"")
-
-        await _auto_screenshot(s, "crud_delete", f"CRUD delete: {search_name}")
-    except Exception as e:
-        results.append(f"  [ERROR] {str(e)[:100]}")
-
-    # Add bugs
-    for bug in phase_bugs:
-        ss_path = await _auto_screenshot(s, "crud_bug", bug.title[:30])
-        bug.screenshot_path = ss_path
-    s.bugs.extend(phase_bugs)
-
-    # Summary
-    results.append("")
-    passed = sum(1 for r in results if "[OK]" in r)
-    failed = sum(1 for r in results if "[BUG]" in r or "[FAIL]" in r)
-    results.append(f"SUMMARY: {passed} passed, {failed} failed, {len(phase_bugs)} bugs detected")
-    results.append(f"Total session bugs: {len(s.bugs)}")
-    return "\n".join(results)
 
 
 @mcp.tool()

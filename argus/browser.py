@@ -42,11 +42,61 @@ _EXTRACT_ELEMENTS_JS = """
 _EXTRACT_PAGE_CONTENT_JS = """
 () => {
     const result = { pageText: '', toasts: [], counts: {}, cssIndicators: [], itemLists: {},
-                     links: [], images: [], metaTags: {}, headings: [], a11yIssues: [], mixedContent: [] };
+                     links: [], images: [], metaTags: {}, headings: [], a11yIssues: [], mixedContent: [],
+                     openModals: [], focused: null, viewport: null };
 
     // 1. Full visible text — simple and robust
     try {
         result.pageText = (document.body.innerText || '').slice(0, 5000);
+    } catch(e) {}
+
+    // 1a. Open modals / dialogs / popovers
+    try {
+        const modalSels = '[role="dialog"], [role="alertdialog"], [aria-modal="true"], dialog[open], .modal.show, .modal.open';
+        document.querySelectorAll(modalSels).forEach(el => {
+            const s = window.getComputedStyle(el);
+            if (s.display === 'none' || s.visibility === 'hidden') return;
+            const text = (el.textContent || '').trim().slice(0, 300);
+            if (!text) return;
+            result.openModals.push({
+                role: el.getAttribute('role') || el.tagName.toLowerCase(),
+                ariaLabel: el.getAttribute('aria-label') || '',
+                ariaLabelledby: el.getAttribute('aria-labelledby') || '',
+                text: text,
+                isModal: el.getAttribute('aria-modal') === 'true'
+            });
+        });
+    } catch(e) {}
+
+    // 1b. What's focused right now?
+    try {
+        const f = document.activeElement;
+        if (f && f !== document.body && f.tagName !== 'BODY') {
+            result.focused = {
+                tag: f.tagName.toLowerCase(),
+                type: f.type || null,
+                id: f.id || null,
+                name: f.name || null,
+                ariaLabel: f.getAttribute('aria-label') || null,
+                text: (f.textContent || '').trim().slice(0, 80) || null,
+                placeholder: f.placeholder || null,
+                value: (typeof f.value === 'string' ? f.value.slice(0, 80) : null)
+            };
+        }
+    } catch(e) {}
+
+    // 1c. Viewport vs document height — let the agent know if there's content below the fold
+    try {
+        result.viewport = {
+            scrollY: window.scrollY,
+            scrollX: window.scrollX,
+            innerHeight: window.innerHeight,
+            innerWidth: window.innerWidth,
+            documentHeight: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight),
+            documentWidth: Math.max(document.body.scrollWidth, document.documentElement.scrollWidth),
+            atTop: window.scrollY <= 1,
+            atBottom: (window.scrollY + window.innerHeight) >= (Math.max(document.body.scrollHeight, document.documentElement.scrollHeight) - 1)
+        };
     } catch(e) {}
 
     // 2. Toast/notification messages
@@ -180,6 +230,67 @@ _EXTRACT_PAGE_CONTENT_JS = """
 }
 """
 
+# JS snippet to deeply inspect one element. Returns rendered styles (the
+# things humans actually perceive: colour, contrast, size, position,
+# stacking, truncation), accessibility metadata, and outer HTML. Used by
+# the inspect_element tool when the agent suspects a visual / a11y bug
+# on a specific surface.
+_INSPECT_ELEMENT_JS = """
+(el) => {
+    if (!el) return { found: false };
+    const s = window.getComputedStyle(el);
+    const rect = el.getBoundingClientRect();
+    const truncated =
+        (el.scrollWidth > el.clientWidth + 1 && (s.overflow === 'hidden' || s.overflowX === 'hidden' || s.textOverflow === 'ellipsis')) ||
+        (el.scrollHeight > el.clientHeight + 1 && (s.overflow === 'hidden' || s.overflowY === 'hidden'));
+    const labels = [];
+    if (el.id) {
+        document.querySelectorAll('label[for="' + el.id + '"]').forEach(lab => {
+            labels.push((lab.textContent || '').trim().slice(0, 100));
+        });
+    }
+    return {
+        found: true,
+        tag: el.tagName.toLowerCase(),
+        text: (el.textContent || '').trim().slice(0, 200),
+        outerHtml: el.outerHTML.slice(0, 1500),
+        styles: {
+            color: s.color,
+            backgroundColor: s.backgroundColor,
+            fontSize: s.fontSize,
+            fontWeight: s.fontWeight,
+            display: s.display,
+            visibility: s.visibility,
+            opacity: s.opacity,
+            position: s.position,
+            zIndex: s.zIndex,
+            overflow: s.overflow,
+            textOverflow: s.textOverflow,
+            cursor: s.cursor,
+            border: s.border,
+            padding: s.padding,
+            margin: s.margin
+        },
+        rect: {
+            x: rect.x, y: rect.y,
+            width: rect.width, height: rect.height,
+            inViewport: rect.bottom > 0 && rect.top < window.innerHeight && rect.right > 0 && rect.left < window.innerWidth
+        },
+        truncated: truncated,
+        scrollDimensions: { scrollWidth: el.scrollWidth, clientWidth: el.clientWidth, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight },
+        ariaLabel: el.getAttribute('aria-label'),
+        ariaDescribedby: el.getAttribute('aria-describedby'),
+        ariaHidden: el.getAttribute('aria-hidden'),
+        role: el.getAttribute('role'),
+        title: el.title || null,
+        disabled: !!el.disabled,
+        readonly: !!el.readOnly,
+        labels: labels,
+        focused: document.activeElement === el
+    };
+}
+"""
+
 # JS snippet for performance metrics (on-demand).
 _EXTRACT_PERFORMANCE_JS = """
 () => {
@@ -306,7 +417,28 @@ class BrowserDriver:
             headings=content.get("headings", []),
             accessibility_issues=content.get("a11yIssues", []),
             mixed_content=content.get("mixedContent", []),
+            open_modals=content.get("openModals", []),
+            focused=content.get("focused"),
+            viewport=content.get("viewport"),
         )
+
+    async def inspect_element(self, selector: str) -> Dict:
+        """Return computed styles, ARIA metadata and outerHTML for one element.
+
+        `selector` is a Playwright-flavoured selector built from a resolved
+        InteractiveElement (use BrowserDriver._build_selector). Resolves
+        to the first matching element handle and evaluates the inspect
+        snippet against it, so Playwright-specific syntax like
+        ``button:has-text("Login")`` works.
+        """
+        try:
+            locator = self._page.locator(selector).first
+            handle = await locator.element_handle(timeout=2000)
+            if handle is None:
+                return {"found": False}
+            return await self._page.evaluate(_INSPECT_ELEMENT_JS, handle)
+        except Exception:
+            return {"found": False}
 
     async def refresh_and_get_state(self) -> PageState:
         """Reload the current page and return fresh state for verification."""
@@ -368,74 +500,28 @@ class BrowserDriver:
         await self._page.evaluate("window.scrollBy(0, 500)")
         await asyncio.sleep(0.5)
 
-    async def screenshot(self, path: str) -> str:
+    async def screenshot(self, path: str, full_page: bool = False) -> str:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        await self._page.screenshot(path=path, full_page=False)
+        await self._page.screenshot(path=path, full_page=full_page)
         return path
 
-    # -- element matching helpers --
+    async def element_screenshot(self, selector: str, path: str) -> Optional[str]:
+        """Capture just the bounds of one element (Playwright crops natively)."""
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        try:
+            locator = self._page.locator(selector).first
+            handle = await locator.element_handle(timeout=2000)
+            if handle is None:
+                return None
+            await handle.screenshot(path=path)
+            return path
+        except Exception:
+            return None
 
-    @staticmethod
-    def find_element_by_field(
-        field_key: str, elements: List[InteractiveElement]
-    ) -> Optional[int]:
-        """Find an input element matching a field key by name, id, placeholder, or aria-label."""
-        key_lower = field_key.lower()
-        # Priority: name > id > placeholder > aria-label
-        for el in elements:
-            if el.tag not in ("input", "textarea", "select"):
-                continue
-            if el.type in ("submit", "button", "hidden"):
-                continue
-            if el.name and el.name.lower() == key_lower:
-                return el.index
-        for el in elements:
-            if el.tag not in ("input", "textarea", "select"):
-                continue
-            if el.type in ("submit", "button", "hidden"):
-                continue
-            if el.id and el.id.lower() == key_lower:
-                return el.index
-        for el in elements:
-            if el.tag not in ("input", "textarea", "select"):
-                continue
-            if el.type in ("submit", "button", "hidden"):
-                continue
-            if el.placeholder and key_lower in el.placeholder.lower():
-                return el.index
-        for el in elements:
-            if el.tag not in ("input", "textarea", "select"):
-                continue
-            if el.type in ("submit", "button", "hidden"):
-                continue
-            if el.aria_label and key_lower in el.aria_label.lower():
-                return el.index
-        return None
-
-    @staticmethod
-    def find_button_near_item(
-        item_text: str, keywords: List[str], elements: List[InteractiveElement]
-    ) -> Optional[int]:
-        """Find a button matching keywords whose parent_context contains item_text."""
-        item_lower = item_text.lower()
-        for el in elements:
-            if el.tag not in ("button", "a") and el.role not in ("button",):
-                continue
-            el_text = (el.text or "").lower()
-            el_label = (el.aria_label or "").lower()
-            has_keyword = any(kw in el_text or kw in el_label for kw in keywords)
-            if not has_keyword:
-                continue
-            if el.parent_context and item_lower in el.parent_context.lower():
-                return el.index
-        # Fallback: match keyword without parent context (first match)
-        for el in elements:
-            if el.tag not in ("button", "a") and el.role not in ("button",):
-                continue
-            el_text = (el.text or "").lower()
-            if any(kw in el_text for kw in keywords):
-                return el.index
-        return None
+    # Element-matching helpers used to live here. They've been replaced by
+    # argus.resolver.resolve_element, which is backend-agnostic and operates
+    # on InteractiveElement records — keeping browser.py focused on
+    # Playwright-shaped concerns only.
 
     # -- link checking --
 
