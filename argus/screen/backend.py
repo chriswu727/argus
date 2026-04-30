@@ -333,6 +333,39 @@ class ScreenBackend:
             screenshot_path=ss_path,
         )
 
+    def capture_region(
+        self,
+        x: int, y: int, w: int, h: int,
+        screenshot_dir: Optional[str] = None,
+    ) -> Optional[str]:
+        """Capture a rectangular region of the screen via `screencapture -R`.
+
+        Coordinates are absolute screen coords (the same space as
+        ScreenElement.x/y in observe()). Useful for letting the agent's
+        vision read fine detail on a small surface — VLMs are markedly
+        more accurate on tight crops than on full-window screenshots.
+        """
+        if w <= 0 or h <= 0:
+            return None
+        out_dir = Path(screenshot_dir) if screenshot_dir else Path("argus-reports/screenshots")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        ts = int(time.time() * 1000)
+        out_path = out_dir / f"region_{ts}.png"
+        try:
+            subprocess.run(
+                [
+                    "screencapture", "-t", "png", "-x",
+                    "-R", f"{int(x)},{int(y)},{int(w)},{int(h)}",
+                    str(out_path),
+                ],
+                capture_output=True, timeout=5, check=True,
+            )
+            if out_path.exists() and out_path.stat().st_size > 0:
+                return str(out_path)
+            return None
+        except Exception:
+            return None
+
     def _capture(self, screenshot_dir: Optional[str]) -> Optional[str]:
         """Whole-screen screencapture. Used as the fallback when window-
         targeted capture is unavailable."""
