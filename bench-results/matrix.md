@@ -1,15 +1,15 @@
 # Argus benchmark matrix
 
-**34 / 34 = 100 %** in 28.8 s across 2 fixture(s).
+**34 / 34 = 100 %** in 29.3 s across 2 fixture(s).
 
 | Fixture     | Recall            | Duration | Fixture URL                  |
 |-------------|-------------------|----------|------------------------------|
-| buggytasks  | 22 / 22 = 100 %   | 20.5 s   | `http://127.0.0.1:5555` |
+| buggytasks  | 22 / 22 = 100 %   | 21.0 s   | `http://127.0.0.1:5555` |
 | darkshop    | 12 / 12 = 100 %   | 8.3 s    | `http://127.0.0.1:5556` |
 
 Argus's MCP surface is fixture-agnostic — both BuggyTasks (mechanical bugs) and DarkShop (human-eye bugs) are exercised through the same description-keyed tools.
 
-## buggytasks — 22 / 22 = 100 % in 20.5 s
+## buggytasks — 22 / 22 = 100 % in 21.0 s
 
 | #  | Seeded bug                                              | Caught | Method        |
 |----|---------------------------------------------------------|--------|---------------|

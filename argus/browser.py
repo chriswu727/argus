@@ -440,10 +440,6 @@ class BrowserDriver:
         except Exception:
             return {"found": False}
 
-    async def refresh_and_get_state(self) -> PageState:
-        """Reload the current page and return fresh state for verification."""
-        await self._page.reload(wait_until="networkidle", timeout=15_000)
-        return await self.get_state()
 
     async def _extract_elements(self) -> List[InteractiveElement]:
         raw = await self._page.evaluate(_EXTRACT_ELEMENTS_JS)
