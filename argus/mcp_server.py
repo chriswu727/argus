@@ -149,6 +149,9 @@ class Session:
         self._last_elements = []
         self._last_screen_elements = []
         self._screenshot_counter = 0
+        # Lazy-initialised screen-mode safety state. Populated by
+        # start_screen_session; consulted by every screen-mode tool.
+        self._safety = None  # type: Optional["argus.screen.safety.SafetyState"]
 
     @property
     def active(self) -> bool:
@@ -306,6 +309,7 @@ async def start_screen_session(target_app: str = "") -> str:
     try:
         from .screen.permissions import gate_screen_mode
         from .screen.backend import ScreenBackend
+        from .screen import safety as screen_safety
     except ImportError as exc:
         return (
             f"start_screen_session: screen-mode dependencies not installed.\n"
@@ -323,6 +327,15 @@ async def start_screen_session(target_app: str = "") -> str:
         lines.append("Run `argus-mcp --doctor` for full details, then re-try.")
         return "\n".join(lines)
 
+    # Stale abort file from a previous session would gate every action
+    # immediately — clean it up at the boundary.
+    abort_path = screen_safety.abort_file_path()
+    if abort_path.exists():
+        try:
+            abort_path.unlink()
+        except OSError:
+            pass
+
     if _session.active:
         if _session.browser is not None:
             await _session.browser.stop()
@@ -333,12 +346,27 @@ async def start_screen_session(target_app: str = "") -> str:
     _session.mode = "screen"
     _session.start_time = asyncio.get_event_loop().time()
     _session.screen = ScreenBackend()
+    _session._safety = screen_safety.SafetyState()
     try:
-        obs = await _session.screen.start(target_app=target_app or None)
+        obs = await screen_safety.with_timeout(
+            _session.screen.start(target_app=target_app or None)
+        )
+    except asyncio.TimeoutError:
+        return (
+            "start_screen_session: AX query timed out — the target app "
+            "may be unresponsive or AX-blind. Try again, or pass an "
+            "explicit `target_app` to bind to a specific known-good app."
+        )
     except Exception as exc:
         return f"start_screen_session: failed to start — {exc}"
 
     _session._last_screen_elements = obs.elements
+
+    # Banner to stderr so a user running argus-mcp from a terminal sees
+    # the warning. Silently no-ops in MCP-over-stdio if stderr is not
+    # captured by the host.
+    import sys as _sys
+    print(screen_safety.banner(), file=_sys.stderr)
 
     return (
         f"Screen session started.\n"
@@ -347,6 +375,12 @@ async def start_screen_session(target_app: str = "") -> str:
         f"Screen: {obs.screen_width}x{obs.screen_height}\n"
         f"AX-tree elements: {len(obs.elements)}\n"
         f"Initial screenshot: {obs.screenshot_path}\n"
+        f"\n"
+        f"Safety:\n"
+        f"  Session cap: {int(screen_safety.session_max_seconds())}s\n"
+        f"  Per-call timeout: {screen_safety.per_call_timeout_s()}s\n"
+        f"  Abort file: `touch {screen_safety.abort_file_path()}` to stop\n"
+        f"\n"
         f"Call screen_observe() to see what's on screen."
     )
 
@@ -542,6 +576,28 @@ def _format_screen_observation(obs) -> str:
     return "\n".join(lines)
 
 
+def _require_screen_session() -> Session:
+    """Like _require_session, but also rejects web-mode + runs safety
+    precheck. Returns the session if all gates pass; raises or returns
+    a string-based error message via the caller-side pattern."""
+    s = _require_session()
+    if s.mode != "screen" or s.screen is None:
+        raise RuntimeError(
+            "This tool is screen-mode only. Call start_screen_session() "
+            "or use the equivalent web-mode tool."
+        )
+    return s
+
+
+def _safety_or_error(s: Session) -> Optional[str]:
+    """Run the screen-mode safety pre-check, returning an error string
+    if the next action should be refused, or None to proceed."""
+    from .screen import safety as screen_safety
+    if s._safety is None:
+        return "Screen-mode session has no safety state — start_screen_session() first."
+    return screen_safety.precheck(s._safety)
+
+
 @mcp.tool()
 async def screen_observe() -> str:
     """Re-snapshot the screen — fresh screenshot + fresh AX tree of the
@@ -562,7 +618,23 @@ async def screen_observe() -> str:
             f"(mode={s.mode!r}). End this session and call "
             "start_screen_session() to switch."
         )
-    obs = await s.screen.observe()
+    err = _safety_or_error(s)
+    if err:
+        return err
+
+    from .screen import safety as screen_safety
+    try:
+        obs = await screen_safety.with_timeout(s.screen.observe())
+    except asyncio.TimeoutError:
+        screen_safety.record_action(
+            s._safety, "screen_observe", "", "timeout", success=False,
+            error="AX/observe timed out",
+        )
+        return (
+            "screen_observe: AX query timed out. The target app may be "
+            "unresponsive or AX-blind. Try `screen_observe()` again, or "
+            "switch target_app via start_screen_session()."
+        )
     s._last_screen_elements = obs.elements
     if obs.screenshot_path:
         s._screenshot_counter += 1
@@ -572,6 +644,10 @@ async def screen_observe() -> str:
             step="screen_observe",
             url=f"screen://{obs.foreground_app}",
         ))
+    screen_safety.record_action(
+        s._safety, "screen_observe", obs.foreground_app, "ok", success=True,
+        post_screenshot=obs.screenshot_path,
+    )
     return _format_screen_observation(obs)
 
 
@@ -626,13 +702,40 @@ async def screen_click_what(description: str) -> str:
             "screen_click_what: this session is in web mode "
             "(use click_what for web). End and start a screen session first."
         )
+    err = _safety_or_error(s)
+    if err:
+        return err
     el, err = _resolve_screen_or_error(s, description)
     if err:
         return err
 
+    from .screen import safety as screen_safety
     label = el.title or el.value or el.description or el.role
     s.steps.append(f'screen_click_what({description!r}) -> {el.role} {label[:40]!r}')
-    ok, method = s.screen.click(el)
+
+    pre_path = await _auto_screenshot(
+        s, "screen_click_pre", f"pre-click {description!r}",
+    )
+
+    try:
+        ok, method = await screen_safety.with_timeout(
+            lambda: s.screen.click(el)
+        )
+    except asyncio.TimeoutError:
+        screen_safety.record_action(
+            s._safety, "screen_click_what", description, "timeout",
+            success=False, pre_screenshot=pre_path, error="click timed out",
+        )
+        return f"screen_click_what({description!r}) — click timed out."
+
+    post_path = await _auto_screenshot(
+        s, "screen_click_post", f"post-click {description!r}",
+    )
+    screen_safety.record_action(
+        s._safety, "screen_click_what", description, method,
+        success=ok, pre_screenshot=pre_path, post_screenshot=post_path,
+        error=None if ok else method,
+    )
     if not ok:
         return (
             f"screen_click_what({description!r}) — click failed via {method}.\n"
@@ -641,6 +744,8 @@ async def screen_click_what(description: str) -> str:
         )
     return (
         f'Clicked {el.role} "{label[:60]}" via {method}.\n'
+        f"  pre-screenshot: {pre_path}\n"
+        f"  post-screenshot: {post_path}\n"
         f"Call screen_observe() to see what changed."
     )
 
@@ -659,13 +764,34 @@ async def screen_type_into(description: str, text: str) -> str:
             "screen_type_into: this session is in web mode "
             "(use type_into for web)."
         )
+    err = _safety_or_error(s)
+    if err:
+        return err
     el, err = _resolve_screen_or_error(s, description, kind_filter="input")
     if err:
         return err
 
+    from .screen import safety as screen_safety
     label = el.title or el.value or el.description or el.role
     s.steps.append(f'screen_type_into({description!r}, ...) -> {label[:40]!r}')
-    ok, method = s.screen.type_into(el, text)
+
+    pre_path = await _auto_screenshot(s, "screen_type_pre", f"pre-type into {label[:30]}")
+    try:
+        ok, method = await screen_safety.with_timeout(
+            lambda: s.screen.type_into(el, text)
+        )
+    except asyncio.TimeoutError:
+        screen_safety.record_action(
+            s._safety, "screen_type_into", description, "timeout",
+            success=False, pre_screenshot=pre_path, error="type timed out",
+        )
+        return f"screen_type_into({description!r}) — typing timed out."
+    post_path = await _auto_screenshot(s, "screen_type_post", f"post-type into {label[:30]}")
+    screen_safety.record_action(
+        s._safety, "screen_type_into", description, method,
+        success=ok, pre_screenshot=pre_path, post_screenshot=post_path,
+        error=None if ok else method,
+    )
     if not ok:
         return (
             f"screen_type_into({description!r}) — typing failed via {method}.\n"
@@ -685,11 +811,71 @@ async def screen_press_key(key: str) -> str:
     s = _require_session()
     if s.mode != "screen" or s.screen is None:
         return "screen_press_key: this session is in web mode."
+    err = _safety_or_error(s)
+    if err:
+        return err
+
+    from .screen import safety as screen_safety
     s.steps.append(f"screen_press_key({key!r})")
-    ok, method = s.screen.press_key(key)
+    try:
+        ok, method = await screen_safety.with_timeout(
+            lambda: s.screen.press_key(key)
+        )
+    except asyncio.TimeoutError:
+        screen_safety.record_action(
+            s._safety, "screen_press_key", key, "timeout",
+            success=False, error="key press timed out",
+        )
+        return f"screen_press_key({key!r}) timed out."
+    screen_safety.record_action(
+        s._safety, "screen_press_key", key, method, success=ok,
+        error=None if ok else method,
+    )
     if not ok:
         return f"screen_press_key({key!r}) failed: {method}"
     return f"Pressed {key} via {method}."
+
+
+@mcp.tool()
+async def screen_session_status() -> str:
+    """Show how the current screen-mode session is doing: time used vs
+    session cap, action count, abort-file state, recent action trail.
+
+    Useful between steps to verify you're not about to hit the session
+    cap, and after the fact to review what Argus did.
+    """
+    s = _require_session()
+    if s.mode != "screen" or s.screen is None:
+        return "screen_session_status: this session is in web mode."
+
+    from .screen import safety as screen_safety
+    state = s._safety
+    if state is None:
+        return "screen_session_status: no safety state — bug in session bootstrap."
+
+    elapsed = int(asyncio_time() - state.started_at)
+    remaining = int(screen_safety.session_remaining_seconds(state))
+    abort_present = screen_safety.abort_file_present()
+
+    lines = [
+        f"Screen session status:",
+        f"  elapsed: {elapsed}s",
+        f"  remaining (cap): {remaining}s",
+        f"  action count: {state.action_count}",
+        f"  aborted: {state.aborted}",
+        f"  abort file present: {abort_present} ({screen_safety.abort_file_path()})",
+        "",
+        screen_safety.trail_summary(state),
+    ]
+    return "\n".join(lines)
+
+
+def asyncio_time() -> float:
+    """Wallclock helper — `time.time()` is what SafetyState.started_at
+    uses, but the rest of mcp_server tracks event-loop time. Stay in
+    `time.time()` here."""
+    import time as _time
+    return _time.time()
 
 
 @mcp.tool()

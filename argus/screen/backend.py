@@ -213,7 +213,11 @@ class ScreenBackend:
         children = self._ax_get(ref, AX.kAXChildrenAttribute)
         if not children:
             return
-        next_path = path + [identifying_text or role or "?"]
+        # AX values can come back as floats / AXValueRefs in some apps
+        # (sliders, scroll bars). Stringify defensively so the path
+        # stays joinable.
+        crumb = identifying_text or role or "?"
+        next_path = path + [str(crumb)]
         for child in children:
             if len(out) >= self._max_elements:
                 return
