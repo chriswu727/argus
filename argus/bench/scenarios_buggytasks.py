@@ -8,7 +8,7 @@ wraps these in timing + reporting.
 """
 from __future__ import annotations
 
-from typing import Awaitable, Callable, List, Tuple
+from typing import Awaitable, Callable, List
 
 from .runner import call, reset as _reset, bugs_added_since as _bugs_added_since, records_match as _records_match
 import argus.mcp_server as mcp_module

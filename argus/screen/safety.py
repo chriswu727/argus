@@ -23,7 +23,7 @@ import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Awaitable, Callable, List, Optional, TypeVar
+from typing import Awaitable, Callable, List, Optional, TypeVar
 
 T = TypeVar("T")
 

@@ -180,19 +180,20 @@ Argus's surface gives the agent enough information to make that call.
 Screen mode is **not in the recall matrix** — that needs a seeded
 macOS app with intentional bugs, which is out of scope for v1. Screen
 mode is validated separately via `python -m argus.screen.validate`,
-which walks the AX tree of running apps and confirms that Argus can
-see real elements with real coordinates. Sample run on the dev Mac:
+which walks the AX tree of any running app and reports the elements
++ round-trip identity probes. Raw desktop inventories are not distributed.
 
-```
-# 访达 (Finder)            17 elements (real desktop icons by filename)
-# 备忘录 (Notes)             8 elements (full localised menu bar)
-# Google Chrome           56 elements (toolbar, tabs, page chrome)
-─────────────────────────────────────────────────────────────────────
-Aggregate: 81 AX elements observed. 15 / 15 round-trip identity
-probes resolved (8 unique + 7 ambiguous + 0 no-match).
+To exercise screen mode against your own apps:
+
+```bash
+python -m argus.screen.validate Finder Notes "Google Chrome" \
+    --json /tmp/screen.json
 ```
 
-Run the read-only screen validator locally to inspect your own apps.
+The script is read-only — it does not click, type, or move the mouse.
+Output element counts vary by app: simple system apps expose a few
+items at the menu-bar level; richer apps (browsers, IDEs) typically
+expose tens to hundreds.
 
 ---
 
@@ -355,4 +356,5 @@ MIT. See [LICENSE](LICENSE).
 
 ## Author
 
-Built by [Yichen Wu](https://github.com/chriswu727). Feedback, issues, and PRs welcome.
+Built by [Yichen Wu](https://github.com/chriswu727). Issues and PRs
+welcome.
