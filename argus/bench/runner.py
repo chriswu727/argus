@@ -84,6 +84,8 @@ class BenchReport:
         }
 
     def to_markdown(self) -> str:
+        # Skip the Notes column when no row has anything to put in it.
+        show_notes = any(r.notes.strip() for r in self.results)
         lines = [
             f"# Argus benchmark — {self.target}",
             "",
@@ -92,15 +94,37 @@ class BenchReport:
             f"- **Recall: {self.caught} / {self.total} "
             f"= {self.recall * 100:.0f} %**",
             "",
-            "| #  | Seeded bug                                              | Caught | Method        | Notes                          |",
-            "|----|---------------------------------------------------------|--------|---------------|--------------------------------|",
         ]
+        if show_notes:
+            lines.append(
+                "| #  | Seeded bug                                              "
+                "| Caught | Method        | Notes                          |"
+            )
+            lines.append(
+                "|----|---------------------------------------------------------"
+                "|--------|---------------|--------------------------------|"
+            )
+        else:
+            lines.append(
+                "| #  | Seeded bug                                              "
+                "| Caught | Method        |"
+            )
+            lines.append(
+                "|----|---------------------------------------------------------"
+                "|--------|---------------|"
+            )
         for r in self.results:
             mark = "yes" if r.caught else "no"
-            lines.append(
-                f"| {r.bug_id:>2} | {r.name[:55]:<55} | {mark:<6} | "
-                f"{r.method:<13} | {r.notes[:30]:<30} |"
-            )
+            if show_notes:
+                lines.append(
+                    f"| {r.bug_id:>2} | {r.name[:55]:<55} | {mark:<6} | "
+                    f"{r.method:<13} | {r.notes[:30]:<30} |"
+                )
+            else:
+                lines.append(
+                    f"| {r.bug_id:>2} | {r.name[:55]:<55} | {mark:<6} | "
+                    f"{r.method:<13} |"
+                )
         return "\n".join(lines)
 
 
