@@ -526,3 +526,143 @@ class ScreenBackend:
             return True, f"cliclick-kp:{key}"
         except Exception as exc:
             return False, f"key-error: {exc}"
+
+    # ── coordinate-driven primitives ──────────────────────────────────
+    # Required when the target app is AX-blind (Unity, Electron with
+    # custom rendering, Adobe self-render, web-canvas tools, etc.).
+    # The caller resolves "what to click" by reading the screenshot
+    # itself (vision LLM); these primitives just execute the action.
+
+    def click_at(
+        self,
+        x: int,
+        y: int,
+        button: str = "left",
+        count: int = 1,
+        hold_ms: int = 0,
+    ) -> Tuple[bool, str]:
+        """Click at absolute screen coordinates.
+
+        button: "left" | "right" | "middle"
+        count:  1 (single), 2 (double), 3 (triple), or N for rapid
+                consecutive single clicks (race-condition probing).
+        hold_ms: when > 0, hold the button down for that many ms
+                 before releasing (long-press / press-and-hold).
+        """
+        button_l = (button or "left").lower()
+        if hold_ms > 0:
+            # Mouse-down at coord, wait, mouse-up — long-press / hold.
+            try:
+                subprocess.run(
+                    ["cliclick", f"dd:{x},{y}", f"w:{int(hold_ms)}", f"du:{x},{y}"],
+                    capture_output=True, timeout=max(5, int(hold_ms / 1000) + 5),
+                    check=True,
+                )
+                return True, f"cliclick-hold:{x},{y},{hold_ms}ms"
+            except Exception as exc:
+                return False, f"click_at-hold-error: {exc}"
+
+        # Map count + button to a cliclick verb.
+        if count == 1:
+            verb = {"left": "c", "right": "rc", "middle": "c"}.get(button_l, "c")
+        elif count == 2 and button_l == "left":
+            verb = "dc"
+        elif count == 3 and button_l == "left":
+            verb = "tc"
+        else:
+            # N rapid clicks → repeat the single-click verb.
+            verb = "rc" if button_l == "right" else "c"
+
+        try:
+            if count > 3 or (count > 1 and verb in ("c", "rc")):
+                # Rapid sequence — chain N click commands in one cliclick call.
+                args = ["cliclick"] + [f"{verb}:{x},{y}"] * count
+                subprocess.run(args, capture_output=True, timeout=5, check=True)
+                return True, f"cliclick-{verb}:{x},{y} x{count}"
+            subprocess.run(
+                ["cliclick", f"{verb}:{x},{y}"],
+                capture_output=True, timeout=3, check=True,
+            )
+            return True, f"cliclick-{verb}:{x},{y}"
+        except FileNotFoundError:
+            return False, "cliclick-missing (brew install cliclick)"
+        except subprocess.CalledProcessError as exc:
+            return False, f"click_at-failed: {exc.stderr!r}"
+        except Exception as exc:
+            return False, f"click_at-error: {exc}"
+
+    def hover_at(self, x: int, y: int) -> Tuple[bool, str]:
+        """Move the cursor to (x, y) without clicking — useful for
+        triggering hover-state changes the agent then observes."""
+        try:
+            subprocess.run(
+                ["cliclick", f"m:{x},{y}"],
+                capture_output=True, timeout=3, check=True,
+            )
+            return True, f"cliclick-m:{x},{y}"
+        except Exception as exc:
+            return False, f"hover_at-error: {exc}"
+
+    def drag(
+        self,
+        from_x: int,
+        from_y: int,
+        to_x: int,
+        to_y: int,
+        duration_ms: int = 300,
+    ) -> Tuple[bool, str]:
+        """Press at (from_x, from_y), move to (to_x, to_y), release.
+
+        duration_ms is split between the press-and-move phase. Apps that
+        rely on inertial drag detection (sliders, kanban boards) don't
+        always honour zero-duration drags, so 300 ms is the default.
+        """
+        try:
+            args = [
+                "cliclick",
+                f"dd:{from_x},{from_y}",
+                f"w:{int(duration_ms)}",
+                f"m:{to_x},{to_y}",
+                f"du:{to_x},{to_y}",
+            ]
+            subprocess.run(
+                args, capture_output=True,
+                timeout=max(5, int(duration_ms / 1000) + 5), check=True,
+            )
+            return True, f"cliclick-drag:{from_x},{from_y}->{to_x},{to_y}"
+        except FileNotFoundError:
+            return False, "cliclick-missing (brew install cliclick)"
+        except Exception as exc:
+            return False, f"drag-error: {exc}"
+
+    def press_keys(self, keys: List[str]) -> Tuple[bool, str]:
+        """Press a sequence of keys in order. Each item is a cliclick
+        key name (e.g. 'return', 'esc', 'space', 'tab', 'arrow-down')
+        or a combo (e.g. 'cmd-s', 'cmd-shift-z')."""
+        if not keys:
+            return False, "press_keys: empty key list"
+        try:
+            args = ["cliclick"] + [f"kp:{k}" for k in keys]
+            subprocess.run(args, capture_output=True, timeout=10, check=True)
+            return True, f"cliclick-kp:[{','.join(keys)}]"
+        except FileNotFoundError:
+            return False, "cliclick-missing (brew install cliclick)"
+        except Exception as exc:
+            return False, f"press_keys-error: {exc}"
+
+    def type_at(self, x: int, y: int, text: str) -> Tuple[bool, str]:
+        """Click at (x, y) to focus, then type `text`. Useful for AX-blind
+        text fields where set-AXValue is unavailable."""
+        ok, click_method = self.click_at(x, y)
+        if not ok:
+            return False, f"type_at: focus click failed ({click_method})"
+        try:
+            subprocess.run(
+                ["cliclick", f"t:{text}"],
+                capture_output=True, timeout=10, check=True,
+            )
+            return True, f"cliclick-c:{x},{y}+t:({len(text)} chars)"
+        except FileNotFoundError:
+            return False, "cliclick-missing (brew install cliclick)"
+        except Exception as exc:
+            return False, f"type_at-error: {exc}"

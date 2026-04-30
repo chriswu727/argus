@@ -700,23 +700,47 @@ def _resolve_screen_or_error(s, description: str, kind_filter=None, *, strict_ki
 
     Mirrors `_resolve_or_error` for screen mode. Returns
     (element, None) on success or (None, error_message) when the
-    description doesn't pin down a single element.
+    description doesn't pin down a single element. AX-blind apps
+    (Unity / Electron with custom rendering / Adobe self-render /
+    web-canvas tools) get a specific hint pointing at the coordinate
+    escape hatches — read the screenshot, identify (x, y), call
+    screen_click_at / screen_type_at instead.
     """
+    elements = s._last_screen_elements
+
+    # AX-blind: the target app exposes nothing useful in its AX tree
+    # (or the agent never observed). Surface the coordinate fallback
+    # explicitly — this is the most common screen-mode failure mode
+    # and the user shouldn't have to discover the workaround on their own.
+    if not elements or len(elements) <= 1:
+        return None, (
+            "screen_click_what / screen_type_into can't help here — the "
+            "target app exposes "
+            f"{len(elements)} interactive AX element(s). It's effectively "
+            "AX-blind (Unity, custom-rendered Electron, Adobe self-render, "
+            "web-canvas tools all behave this way).\n\n"
+            "Use the coordinate escape hatch:\n"
+            "  1. Re-screenshot if needed (screen_observe captures a fresh PNG)\n"
+            "  2. Read the screenshot yourself, identify the (x, y) of the\n"
+            "     target element on the visible window\n"
+            "  3. Call screen_click_at(x, y), screen_drag(...), screen_type_at(x, y, text),\n"
+            "     screen_keys([...]), or screen_hover_at(x, y) as appropriate"
+        )
+
     result = resolve_screen_element(
-        description, s._last_screen_elements,
+        description, elements,
         kind_filter=kind_filter, strict_kind=strict_kind,
     )
     if result.reason == "unique" and result.found is not None:
         return result.found, None
-    if result.reason == "no_elements":
-        return None, (
-            "screen_observe() first — Argus has no AX snapshot yet."
-        )
     if result.reason == "no_match":
         return None, (
             f"No AX element matches {description!r}. Call screen_observe() "
             f"to see what's actually exposed; the AX tree changes when the "
-            f"foreground app changes or new windows open."
+            f"foreground app changes or new windows open. If this app "
+            f"exposes nothing useful in AX (Unity, custom Electron, etc.), "
+            f"fall back to screen_click_at(x, y) with coordinates from the "
+            f"screenshot."
         )
     lines = [f"Description {description!r} is ambiguous in screen mode:"]
     for score, el in result.candidates:
@@ -881,6 +905,214 @@ async def screen_press_key(key: str) -> str:
     if not ok:
         return f"screen_press_key({key!r}) failed: {method}"
     return f"Pressed {key} via {method}."
+
+
+@mcp.tool()
+async def screen_click_at(
+    x: int,
+    y: int,
+    button: str = "left",
+    count: int = 1,
+    hold_ms: int = 0,
+) -> str:
+    """Click at absolute screen coordinates — the escape hatch for
+    AX-blind apps (Unity, custom-rendered Electron, Adobe self-render,
+    web-canvas tools). Use this when screen_click_what reports an empty
+    AX tree.
+
+    Workflow: read the most recent screenshot, identify the (x, y) of
+    the element you want to click, call this tool. Re-screenshot or
+    screen_observe afterwards to see what changed.
+
+    Args:
+        x, y: absolute screen coordinates (the same coordinate space
+              as screen_observe's element rects).
+        button: "left" (default), "right", or "middle".
+        count: 1 (single, default), 2 (double-click), 3 (triple), or
+               N for rapid consecutive clicks (race-condition probing).
+        hold_ms: when > 0, press-and-hold for that many milliseconds
+                 before releasing.
+    """
+    s = _require_session()
+    if s.mode != "screen" or s.screen is None:
+        return "screen_click_at: this session is in web mode."
+    err = _safety_or_error(s)
+    if err:
+        return err
+
+    from .screen import safety as screen_safety
+    target = f"({x},{y}) {button} x{count}" + (f" hold={hold_ms}ms" if hold_ms else "")
+    s.steps.append(f"screen_click_at({target})")
+
+    pre_path = await _auto_screenshot(s, "screen_click_at_pre", f"pre-click {target}")
+    try:
+        ok, method = await screen_safety.with_timeout(
+            lambda: s.screen.click_at(x, y, button=button, count=count, hold_ms=hold_ms),
+            timeout_s=max(5.0, hold_ms / 1000 + 5.0),
+        )
+    except asyncio.TimeoutError:
+        screen_safety.record_action(
+            s._safety, "screen_click_at", target, "timeout",
+            success=False, pre_screenshot=pre_path, error="click timed out",
+        )
+        return f"screen_click_at({target}) timed out."
+    post_path = await _auto_screenshot(s, "screen_click_at_post", f"post-click {target}")
+    screen_safety.record_action(
+        s._safety, "screen_click_at", target, method,
+        success=ok, pre_screenshot=pre_path, post_screenshot=post_path,
+        error=None if ok else method,
+    )
+    if not ok:
+        return f"screen_click_at({target}) failed: {method}"
+    return (
+        f"Clicked at ({x},{y}) via {method}.\n"
+        f"  pre:  {pre_path}\n  post: {post_path}\n"
+        f"Re-observe (screen_observe) or read the post-screenshot to see what changed."
+    )
+
+
+@mcp.tool()
+async def screen_hover_at(x: int, y: int) -> str:
+    """Move the cursor to (x, y) without clicking. Use to surface
+    hover-state styling on a specific element (the agent then re-
+    screenshots to see the hover effect)."""
+    s = _require_session()
+    if s.mode != "screen" or s.screen is None:
+        return "screen_hover_at: this session is in web mode."
+    err = _safety_or_error(s)
+    if err:
+        return err
+    from .screen import safety as screen_safety
+    s.steps.append(f"screen_hover_at({x},{y})")
+    try:
+        ok, method = await screen_safety.with_timeout(
+            lambda: s.screen.hover_at(x, y),
+        )
+    except asyncio.TimeoutError:
+        return f"screen_hover_at timed out."
+    screen_safety.record_action(
+        s._safety, "screen_hover_at", f"({x},{y})", method, success=ok,
+        error=None if ok else method,
+    )
+    if not ok:
+        return f"screen_hover_at failed: {method}"
+    return f"Cursor at ({x},{y}) via {method}."
+
+
+@mcp.tool()
+async def screen_drag(
+    from_x: int,
+    from_y: int,
+    to_x: int,
+    to_y: int,
+    duration_ms: int = 300,
+) -> str:
+    """Press at (from_x, from_y), move to (to_x, to_y), release.
+
+    Required for sliders, kanban-style reordering, dragging files,
+    drawing strokes, and any app that distinguishes drag from click.
+    Default duration is 300 ms because some apps drop zero-duration
+    drag events as accidental clicks.
+    """
+    s = _require_session()
+    if s.mode != "screen" or s.screen is None:
+        return "screen_drag: this session is in web mode."
+    err = _safety_or_error(s)
+    if err:
+        return err
+
+    from .screen import safety as screen_safety
+    target = f"({from_x},{from_y})->({to_x},{to_y}) {duration_ms}ms"
+    s.steps.append(f"screen_drag({target})")
+
+    pre_path = await _auto_screenshot(s, "screen_drag_pre", f"pre-drag {target}")
+    try:
+        ok, method = await screen_safety.with_timeout(
+            lambda: s.screen.drag(from_x, from_y, to_x, to_y, duration_ms=duration_ms),
+            timeout_s=max(5.0, duration_ms / 1000 + 5.0),
+        )
+    except asyncio.TimeoutError:
+        return f"screen_drag({target}) timed out."
+    post_path = await _auto_screenshot(s, "screen_drag_post", f"post-drag {target}")
+    screen_safety.record_action(
+        s._safety, "screen_drag", target, method, success=ok,
+        pre_screenshot=pre_path, post_screenshot=post_path,
+        error=None if ok else method,
+    )
+    if not ok:
+        return f"screen_drag failed: {method}"
+    return (
+        f"Dragged {target} via {method}.\n"
+        f"  pre:  {pre_path}\n  post: {post_path}"
+    )
+
+
+@mcp.tool()
+async def screen_keys(keys: list) -> str:
+    """Press a sequence of keys in order — the multi-key version of
+    screen_press_key. Each item is a cliclick key name (`return`,
+    `esc`, `space`, `tab`, `arrow-up`, …) or a combo (`cmd-s`,
+    `cmd-shift-z`). Useful for keyboard-only navigation flows
+    (`["arrow-down", "arrow-down", "return"]`) and OS-level shortcuts
+    (`["cmd-tab"]`).
+    """
+    s = _require_session()
+    if s.mode != "screen" or s.screen is None:
+        return "screen_keys: this session is in web mode."
+    err = _safety_or_error(s)
+    if err:
+        return err
+    if not isinstance(keys, list) or not keys:
+        return "screen_keys: pass a non-empty list of cliclick key names."
+
+    from .screen import safety as screen_safety
+    s.steps.append(f"screen_keys({keys})")
+    try:
+        ok, method = await screen_safety.with_timeout(
+            lambda: s.screen.press_keys(keys),
+            timeout_s=max(5.0, 0.3 * len(keys) + 3.0),
+        )
+    except asyncio.TimeoutError:
+        return f"screen_keys timed out."
+    screen_safety.record_action(
+        s._safety, "screen_keys", str(keys), method, success=ok,
+        error=None if ok else method,
+    )
+    if not ok:
+        return f"screen_keys failed: {method}"
+    return f"Pressed {keys} via {method}."
+
+
+@mcp.tool()
+async def screen_type_at(x: int, y: int, text: str) -> str:
+    """Click at (x, y) to focus, then type `text`. The coordinate-
+    based escape hatch for AX-blind text fields (where set-AXValue
+    is unavailable)."""
+    s = _require_session()
+    if s.mode != "screen" or s.screen is None:
+        return "screen_type_at: this session is in web mode."
+    err = _safety_or_error(s)
+    if err:
+        return err
+    from .screen import safety as screen_safety
+    s.steps.append(f"screen_type_at({x},{y}, {len(text)} chars)")
+    pre_path = await _auto_screenshot(s, "screen_type_at_pre", f"pre-type at ({x},{y})")
+    try:
+        ok, method = await screen_safety.with_timeout(
+            lambda: s.screen.type_at(x, y, text),
+            timeout_s=max(10.0, 0.05 * len(text) + 5.0),
+        )
+    except asyncio.TimeoutError:
+        return f"screen_type_at timed out."
+    post_path = await _auto_screenshot(s, "screen_type_at_post", f"post-type at ({x},{y})")
+    screen_safety.record_action(
+        s._safety, "screen_type_at", f"({x},{y})", method, success=ok,
+        pre_screenshot=pre_path, post_screenshot=post_path,
+        error=None if ok else method,
+    )
+    if not ok:
+        return f"screen_type_at failed: {method}"
+    return f"Typed {len(text)} chars at ({x},{y}) via {method}.\n  pre: {pre_path}\n  post: {post_path}"
 
 
 @mcp.tool()
