@@ -2088,10 +2088,51 @@ async def end_session() -> str:
     return "\n".join(lines)
 
 
+def _argus_version() -> str:
+    """Resolve the installed Argus version.
+
+    For source-checkout / editable installs we prefer pyproject.toml on
+    disk — pip's metadata gets stamped at install time and lags when
+    you `git pull` or bump the version locally. For wheel installs there's
+    no pyproject.toml next to the package, so we fall back to
+    importlib.metadata.
+    """
+    from pathlib import Path
+
+    # Source-checkout fast path.
+    try:
+        root = Path(__file__).resolve().parent.parent
+        pp = root / "pyproject.toml"
+        if pp.exists():
+            for line in pp.read_text().splitlines():
+                stripped = line.strip()
+                if stripped.startswith("version"):
+                    parts = stripped.split("=", 1)
+                    if len(parts) == 2:
+                        return parts[1].strip().strip('"').strip("'")
+    except Exception:
+        pass
+
+    # Wheel-install fallback.
+    try:
+        from importlib.metadata import version, PackageNotFoundError
+        try:
+            return version("argus-testing")
+        except PackageNotFoundError:
+            pass
+    except ImportError:
+        pass
+    return "unknown"
+
+
 def main():
     """Entry point for argus-mcp command.
 
     Flags:
+      --version      Print the installed Argus version and exit. Useful
+                     after `pip install -U` to confirm the running MCP
+                     server picks up the new tools (you usually need to
+                     restart your MCP host to refresh the tool table).
       --unsafe       Enable eval_js (off by default; can read cookies,
                      mutate state, and fetch arbitrary URLs from the
                      page context).
@@ -2102,6 +2143,10 @@ def main():
     Without flags, just runs the MCP server over stdio.
     """
     import sys as _sys
+
+    if "--version" in _sys.argv or "-V" in _sys.argv:
+        print(f"argus-testing {_argus_version()}")
+        _sys.exit(0)
 
     if "--doctor" in _sys.argv:
         from .screen.permissions import main as _doctor
