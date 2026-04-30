@@ -665,6 +665,71 @@ async def api_newsletter(request: Request):
     raise RuntimeError("Newsletter service unavailable")
 
 
+# ── Argus test-fixture convention ─────────────────────────────────────
+# Implements /api/test/state (read) and /api/test/reset (mutate) per the
+# Argus fixture convention. These endpoints exist so an agent driving
+# Argus can reach states that the buggy UI flow can't (e.g. drain all
+# tasks for the empty-Loading bug, mark every task done for the alarming
+# 0-remaining bug). They are intentionally outside the seeded-bug list.
+
+async def api_test_state(request: Request):
+    """GET /api/test/state — return the full in-memory state of the fixture."""
+    return JSONResponse({
+        "tasks": _tasks,
+        "task_id_seq": _task_id_seq,
+        "users": list(_users.keys()),
+        "current_user": _current_user["email"] if _current_user else None,
+        "settings": _settings,
+        "task_counts": {
+            "total": len(_tasks),
+            "pending": sum(1 for t in _tasks if not t["done"]),
+            "done": sum(1 for t in _tasks if t["done"]),
+        },
+    })
+
+
+async def api_test_reset(request: Request):
+    """POST /api/test/reset — restore the fixture to a known starting
+    state, optionally with a `mode` query param to reach specific
+    extremes for testing.
+
+    Modes:
+      seeded (default) — original 8 seeded tasks, no users, no login.
+      empty            — zero tasks (triggers BUG #14 empty Loading).
+      all_done         — all seeded tasks marked done (triggers BUG #22
+                         0-remaining alarming red).
+      one_pending      — exactly one undone task (smoke).
+    """
+    global _users, _current_user, _tasks, _task_id_seq, _settings
+    mode = request.query_params.get("mode", "seeded")
+
+    _users = {}
+    _current_user = None
+    _tasks = []
+    _task_id_seq = 0
+    _settings = {"theme": "dark", "notifications": True, "language": "en"}
+
+    if mode != "empty":
+        _seed_tasks()
+
+    if mode == "all_done":
+        for t in _tasks:
+            t["done"] = True
+    elif mode == "one_pending":
+        for t in _tasks:
+            t["done"] = True
+        if _tasks:
+            _tasks[0]["done"] = False
+
+    return JSONResponse({
+        "ok": True,
+        "mode": mode,
+        "tasks": len(_tasks),
+        "pending": sum(1 for t in _tasks if not t["done"]),
+        "done": sum(1 for t in _tasks if t["done"]),
+    })
+
+
 # ── App ───────────────────────────────────────────────────────────────
 
 routes = [
@@ -684,6 +749,9 @@ routes = [
     Route("/api/tasks/{task_id:int}", api_update_task, methods=["PUT"]),
     Route("/api/tasks/{task_id:int}/toggle", api_toggle_task, methods=["POST"]),
     Route("/api/newsletter", api_newsletter, methods=["POST"]),
+    # Argus test-fixture convention
+    Route("/api/test/state", api_test_state, methods=["GET"]),
+    Route("/api/test/reset", api_test_reset, methods=["POST"]),
 ]
 
 app = Starlette(

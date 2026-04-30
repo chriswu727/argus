@@ -568,6 +568,61 @@ async def inspect_element(description: str) -> str:
 
 
 @mcp.tool()
+async def eval_js(code: str) -> str:
+    """Run arbitrary JavaScript in the page context and return the result.
+
+    Disabled by default because it can read cookies, mutate state, and
+    issue any fetch the page is allowed to. Enable with the `--unsafe`
+    flag at server start (or `ARGUS_UNSAFE_EVAL=1`). Use this when:
+      - inspecting state the standard tools don't expose (window.X,
+        a global config object, IndexedDB contents);
+      - resetting or seeding a test fixture via its own internal
+        endpoints (`fetch('/api/test/reset', {method: 'POST'})`);
+      - probing edge cases that require triggering JS the UI doesn't
+        expose (race conditions, double-submit by direct fetch).
+
+    The tool returns the JSON-serialised return value of the JS
+    expression. If your code returns an unserialisable object, wrap
+    it (e.g. `JSON.stringify(...)` or pluck specific fields).
+
+    Argus does not auto-record bugs from eval_js output. If you find
+    something via eval_js, call record_bug like with anything else.
+
+    Args:
+        code: A JS expression or arrow function. Examples:
+            "() => window.location.href"
+            "() => fetch('/api/test/reset', {method:'POST'}).then(r=>r.status)"
+            "() => Object.keys(window.appConfig || {})"
+    """
+    if os.environ.get("ARGUS_UNSAFE_EVAL") != "1":
+        return (
+            "eval_js is disabled. Restart argus-mcp with the --unsafe flag "
+            "(or set ARGUS_UNSAFE_EVAL=1) to enable arbitrary JS execution. "
+            "It is off by default because the JS you run has the same "
+            "powers as the page itself."
+        )
+
+    s = _require_session()
+    s.steps.append(f"eval_js: {code[:80]}")
+
+    try:
+        result = await s.browser._page.evaluate(code)
+    except Exception as exc:
+        return f"eval_js failed: {exc}"
+
+    # Serialise. Playwright already gives us Python primitives for JSON-able
+    # results. For other shapes, fall back to repr.
+    try:
+        import json as _json
+        rendered = _json.dumps(result, default=str)
+        if len(rendered) > 4000:
+            rendered = rendered[:4000] + "... [truncated]"
+        return f"eval_js result: {rendered}"
+    except Exception:
+        return f"eval_js result (repr): {result!r}"
+
+
+@mcp.tool()
 async def navigate(url: str) -> str:
     """Navigate to a specific URL.
 
@@ -1506,7 +1561,18 @@ async def end_session() -> str:
 
 
 def main():
-    """Entry point for argus-mcp command."""
+    """Entry point for argus-mcp command.
+
+    Pass --unsafe (or set ARGUS_UNSAFE_EVAL=1) to enable the eval_js
+    tool, which lets the agent run arbitrary JS in the page context.
+    Off by default because it can read cookies, mutate state, and
+    fetch arbitrary URLs. Useful for fixture introspection / reset and
+    for probing edge-case state that the standard tools can't reach.
+    """
+    import sys as _sys
+    if "--unsafe" in _sys.argv:
+        os.environ["ARGUS_UNSAFE_EVAL"] = "1"
+        _sys.argv = [a for a in _sys.argv if a != "--unsafe"]
     mcp.run()
 
 

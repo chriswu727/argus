@@ -1,0 +1,187 @@
+{
+  "started_at": 1777528271.227158,
+  "finished_at": 1777528291.8572202,
+  "duration_s": 20.63,
+  "fixture": "http://127.0.0.1:5555",
+  "caught": 22,
+  "total": 22,
+  "recall_pct": 100.0,
+  "results": [
+    {
+      "bug_id": 1,
+      "name": "Console ReferenceError on homepage (appConfig)",
+      "caught": true,
+      "method": "auto-event",
+      "notes": "",
+      "elapsed_s": 0.55
+    },
+    {
+      "bug_id": 2,
+      "name": "Dead nav link /help -> 404",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 0.56
+    },
+    {
+      "bug_id": 3,
+      "name": "POST /api/newsletter -> 500",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 0.53
+    },
+    {
+      "bug_id": 4,
+      "name": "Login accepts ANY credentials",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 1.48
+    },
+    {
+      "bug_id": 5,
+      "name": "Register: mismatched passwords still create account",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 1.49
+    },
+    {
+      "bug_id": 6,
+      "name": "Register: form data cleared on validation error",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 1.49
+    },
+    {
+      "bug_id": 7,
+      "name": "Search XSS reflection",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 0.53
+    },
+    {
+      "bug_id": 8,
+      "name": "Double-submit creates duplicate task",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 0.01
+    },
+    {
+      "bug_id": 9,
+      "name": "Dashboard task count off-by-one",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 0.54
+    },
+    {
+      "bug_id": 10,
+      "name": "Delete fake-success: still present after refresh",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 1.05
+    },
+    {
+      "bug_id": 11,
+      "name": "Edit silent failure: data not actually updated",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 2.0
+    },
+    {
+      "bug_id": 12,
+      "name": "Toggle race condition (no server lock)",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 0.01
+    },
+    {
+      "bug_id": 13,
+      "name": "Load More: JS init error blocks pagination",
+      "caught": true,
+      "method": "auto-event",
+      "notes": "",
+      "elapsed_s": 0.96
+    },
+    {
+      "bug_id": 14,
+      "name": "Empty state shows 'Loading...' forever",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 0.53
+    },
+    {
+      "bug_id": 15,
+      "name": "Search is case-sensitive",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 1.07
+    },
+    {
+      "bug_id": 16,
+      "name": "Date display: '1.0 days ago' decimal format",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 0.54
+    },
+    {
+      "bug_id": 17,
+      "name": "Settings 'saved!' even when 500",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 0.93
+    },
+    {
+      "bug_id": 18,
+      "name": "Long titles silently truncated by CSS",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 0.54
+    },
+    {
+      "bug_id": 19,
+      "name": "Priority field accepts arbitrary values",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 1.45
+    },
+    {
+      "bug_id": 20,
+      "name": "Navbar still shows 'Login' after authentication",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 1.46
+    },
+    {
+      "bug_id": 21,
+      "name": "Whitespace-only task title creates empty task",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 1.46
+    },
+    {
+      "bug_id": 22,
+      "name": "0 tasks remaining shown in alarming red",
+      "caught": true,
+      "method": "agent-record",
+      "notes": "",
+      "elapsed_s": 0.53
+    }
+  ]
+}
