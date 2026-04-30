@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from .runner import run_scenarios, BenchReport
+from .runner import run_scenarios, BenchReport, fixture_healthy, target_to_app_hint
 from . import scenarios_buggytasks
 from . import scenarios_darkshop
 
@@ -82,17 +82,47 @@ def matrix_json(reports: List[BenchReport]) -> dict:
 
 
 async def run(targets: List[str], out_json: Optional[Path], out_md: Optional[Path]) -> int:
-    reports: List[BenchReport] = []
+    # Validate target names up front.
     for t in targets:
         if t not in _TARGETS:
-            print(f"Unknown target: {t}. Choose from: {', '.join(_TARGETS)}.")
+            print(f"Unknown target: {t!r}. Choose from: {', '.join(_TARGETS)}.")
             return 2
+
+    # Pre-check every requested fixture in one pass — surface ALL gaps
+    # before running any scenarios, so users with both fixtures down
+    # don't have to fix one, retry, fail, fix the other, retry. The
+    # cost of the pre-check is negligible (one HEAD-style HTTP probe).
+    failures = []
+    for t in targets:
+        base, _ = _TARGETS[t]
+        err = fixture_healthy(base)
+        if err:
+            failures.append((t, base, err))
+
+    if failures:
+        print("Argus bench: cannot start — fixture(s) not reachable.\n")
+        for t, base, err in failures:
+            hint = target_to_app_hint(t)
+            print(f"  [{t}] {base}")
+            print(f"        {err}")
+            print(f"        start with: python {hint}")
+            print()
+        if len(failures) == len(targets):
+            print("Tip: each fixture is a separate process — start them in their")
+            print("own terminals (or backgrounded) before re-running this bench.")
+        return 2
+
+    reports: List[BenchReport] = []
+    for t in targets:
         base, scenarios = _TARGETS[t]
         try:
             report = await run_scenarios(t, base, scenarios)
         except RuntimeError as exc:
-            print(str(exc))
-            return 2
+            # Should be rare since we pre-checked, but a fixture could die
+            # mid-run. Report and continue so the reports we did get aren't
+            # silently dropped.
+            print(f"\n[{t}] aborted mid-run: {exc}")
+            continue
         reports.append(report)
         print()  # blank line between fixtures
 
