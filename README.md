@@ -74,7 +74,16 @@ brew install cliclick    # for keystroke / coordinate fallback
 
 # Wire it into Claude Code
 claude mcp add argus -- argus-mcp
+
+# Confirm the version your MCP host will load
+argus-mcp --version
 ```
+
+> **After upgrading Argus**, restart your MCP host (Claude Code,
+> Cursor, etc.). MCP hosts cache the tool table at startup, so a fresh
+> `pip install -U argus-testing` won't expose new tools until the host
+> reconnects to the server. `argus-mcp --version` is the easy way to
+> verify which version your host is actually running.
 
 Then, in your Claude Code / Cursor / any-MCP session:
 
