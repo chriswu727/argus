@@ -128,22 +128,62 @@ class ScreenBackend:
     # ── observation ──────────────────────────────────────────────────
 
     def _find_target_app(self):
-        """Resolve target app to a PID + name + AXUIElement. Defaults to
-        the frontmost app if no explicit target was set."""
+        """Resolve target app to a PID + name + AXUIElement.
+
+        Defaults to the frontmost app if no explicit target was set.
+        When `target_app_name` is given, prefer an *exact* (case-
+        insensitive) localised-name match, then bundle-id match, then
+        substring match. This matters for cases like a "Unity" target
+        when both "Unity" (the editor) and "Unity Hub" are running —
+        the substring "unity" is in both, but the user almost certainly
+        means the editor.
+        """
         AX = self._AX
         if self._target_app_name:
-            running = self._workspace.runningApplications()
+            target = self._target_app_name
+            target_lower = target.lower()
+            running = list(self._workspace.runningApplications())
+            exact = []
+            bundle = []
+            substring = []
             for app in running:
                 name = app.localizedName() or ""
-                if name == self._target_app_name or self._target_app_name.lower() in name.lower():
-                    return (
-                        app.processIdentifier(),
-                        name,
-                        AX.AXUIElementCreateApplication(app.processIdentifier()),
-                    )
+                bid = app.bundleIdentifier() or ""
+                if name.lower() == target_lower:
+                    exact.append((app, name))
+                elif bid.lower() == target_lower or bid.lower().endswith("." + target_lower):
+                    bundle.append((app, name))
+                elif target_lower in name.lower() or target_lower in bid.lower():
+                    substring.append((app, name))
+
+            chosen = None
+            if exact:
+                chosen = exact[0]
+            elif bundle:
+                chosen = bundle[0]
+            elif len(substring) == 1:
+                chosen = substring[0]
+            elif len(substring) > 1:
+                names = ", ".join(repr(n) for _, n in substring)
+                raise RuntimeError(
+                    f"Screen mode: target {target!r} is ambiguous — "
+                    f"matches {names}. Use the exact localised name "
+                    f"(e.g. {substring[0][1]!r}) or pass the bundle id "
+                    f"(e.g. {substring[0][0].bundleIdentifier()!r})."
+                )
+
+            if chosen is not None:
+                app, name = chosen
+                return (
+                    app.processIdentifier(),
+                    name,
+                    AX.AXUIElementCreateApplication(app.processIdentifier()),
+                )
+
+            front = self._workspace.frontmostApplication()
             raise RuntimeError(
-                f"Screen mode: no running app matches {self._target_app_name!r}. "
-                f"Frontmost is {self._workspace.frontmostApplication().localizedName()!r}."
+                f"Screen mode: no running app matches {target!r}. "
+                f"Frontmost is {front.localizedName()!r}."
             )
         # No target specified — bind to whatever is foreground right now.
         front = self._workspace.frontmostApplication()
@@ -270,8 +310,11 @@ class ScreenBackend:
         if window_ref is not None:
             self._flatten(window_ref, depth=0, path=[name, window_title], out=elements)
 
-        # Screenshot to a fresh path under the configured output dir.
-        ss_path = self._capture(screenshot_dir)
+        # Screenshot the *target app's* window specifically — not the whole
+        # screen. Falls back to whole-screen screencapture if we can't
+        # resolve a window for this PID (e.g. the app has no on-screen
+        # windows because it's minimised).
+        ss_path = self._capture_window(pid, screenshot_dir) or self._capture(screenshot_dir)
 
         # Screen size — useful context for resolving coordinates / fold.
         from AppKit import NSScreen
@@ -291,6 +334,8 @@ class ScreenBackend:
         )
 
     def _capture(self, screenshot_dir: Optional[str]) -> Optional[str]:
+        """Whole-screen screencapture. Used as the fallback when window-
+        targeted capture is unavailable."""
         out_dir = Path(screenshot_dir) if screenshot_dir else Path("argus-reports/screenshots")
         out_dir.mkdir(parents=True, exist_ok=True)
         ts = int(time.time() * 1000)
@@ -300,6 +345,95 @@ class ScreenBackend:
                 ["screencapture", "-t", "png", "-x", str(out_path)],
                 capture_output=True, timeout=5, check=True,
             )
+            return str(out_path)
+        except Exception:
+            return None
+
+    def _capture_window(
+        self, pid: int, screenshot_dir: Optional[str],
+    ) -> Optional[str]:
+        """Capture the largest visible on-screen window owned by `pid`.
+
+        Uses Quartz CGWindowListCreateImage so the capture works even
+        when the target app is *not* foreground — important because
+        Argus drives the target via AX without disturbing focus, so
+        the user's mouse-attended app is usually NOT the test target.
+        Returns the saved PNG path on success, None on failure.
+        """
+        try:
+            import Quartz
+            from Foundation import NSURL, NSData
+            import AppKit
+        except ImportError:
+            return None
+
+        try:
+            # Use kCGWindowListOptionAll (not OnScreenOnly) so we still
+            # find the target's main window when it's hidden behind
+            # another app. CGWindowListCreateImage can capture an off-
+            # screen window's contents directly.
+            window_list = Quartz.CGWindowListCopyWindowInfo(
+                Quartz.kCGWindowListOptionAll
+                | Quartz.kCGWindowListExcludeDesktopElements,
+                Quartz.kCGNullWindowID,
+            )
+        except Exception:
+            return None
+
+        # Pick the largest *named* window owned by `pid` and on the main
+        # window layer. A "named" window is the user-visible title-bar
+        # one — Unity creates several layer-0 windows per editor instance
+        # (toolbars, scene-view chrome, "Hold on..." dialogs); only the
+        # main editor window has a `kCGWindowName` set.
+        best = None
+        best_area = 0
+        for w in window_list:
+            if w.get("kCGWindowOwnerPID") != pid:
+                continue
+            if w.get("kCGWindowLayer", 0) != 0:
+                continue
+            if not w.get("kCGWindowName"):
+                continue
+            bounds = w.get("kCGWindowBounds") or {}
+            width = bounds.get("Width", 0)
+            height = bounds.get("Height", 0)
+            area = width * height
+            if area <= 10_000:
+                continue
+            if area > best_area:
+                best_area = area
+                best = w
+
+        if best is None:
+            return None
+        win_id = best.get("kCGWindowNumber")
+        if win_id is None:
+            return None
+
+        try:
+            cg_image = Quartz.CGWindowListCreateImage(
+                Quartz.CGRectNull,
+                Quartz.kCGWindowListOptionIncludingWindow,
+                int(win_id),
+                Quartz.kCGWindowImageBoundsIgnoreFraming,
+            )
+            if cg_image is None:
+                return None
+
+            out_dir = Path(screenshot_dir) if screenshot_dir else Path("argus-reports/screenshots")
+            out_dir.mkdir(parents=True, exist_ok=True)
+            ts = int(time.time() * 1000)
+            out_path = out_dir / f"window_{ts}.png"
+
+            # CGImage -> NSBitmapImageRep -> PNG bytes -> file
+            rep = AppKit.NSBitmapImageRep.alloc().initWithCGImage_(cg_image)
+            png_data = rep.representationUsingType_properties_(
+                AppKit.NSBitmapImageFileTypePNG, None,
+            )
+            url = NSURL.fileURLWithPath_(str(out_path))
+            ok = png_data.writeToURL_atomically_(url, True)
+            if not ok:
+                return None
             return str(out_path)
         except Exception:
             return None
