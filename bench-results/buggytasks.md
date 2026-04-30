@@ -1,7 +1,7 @@
-# Argus benchmark
+# Argus benchmark — buggytasks
 
 - Fixture: `http://127.0.0.1:5555`
-- Duration: 20.6 s
+- Duration: 20.5 s
 - **Recall: 22 / 22 = 100 %**
 
 | #  | Seeded bug                                              | Caught | Method        | Notes                          |

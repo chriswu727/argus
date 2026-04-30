@@ -1,0 +1,305 @@
+{
+  "matrix": [
+    {
+      "target": "buggytasks",
+      "fixture": "http://127.0.0.1:5555",
+      "started_at": 1777530943.9179862,
+      "finished_at": 1777530964.396119,
+      "duration_s": 20.48,
+      "caught": 22,
+      "total": 22,
+      "recall_pct": 100.0,
+      "results": [
+        {
+          "bug_id": 1,
+          "name": "Console ReferenceError on homepage (appConfig)",
+          "caught": true,
+          "method": "auto-event",
+          "notes": "",
+          "elapsed_s": 0.55
+        },
+        {
+          "bug_id": 2,
+          "name": "Dead nav link /help -> 404",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 0.55
+        },
+        {
+          "bug_id": 3,
+          "name": "POST /api/newsletter -> 500",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 0.53
+        },
+        {
+          "bug_id": 4,
+          "name": "Login accepts ANY credentials",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 1.47
+        },
+        {
+          "bug_id": 5,
+          "name": "Register: mismatched passwords still create account",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 1.46
+        },
+        {
+          "bug_id": 6,
+          "name": "Register: form data cleared on validation error",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 1.44
+        },
+        {
+          "bug_id": 7,
+          "name": "Search XSS reflection",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 0.53
+        },
+        {
+          "bug_id": 8,
+          "name": "Double-submit creates duplicate task",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 0.01
+        },
+        {
+          "bug_id": 9,
+          "name": "Dashboard task count off-by-one",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 0.53
+        },
+        {
+          "bug_id": 10,
+          "name": "Delete fake-success: still present after refresh",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 1.06
+        },
+        {
+          "bug_id": 11,
+          "name": "Edit silent failure: data not actually updated",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 1.99
+        },
+        {
+          "bug_id": 12,
+          "name": "Toggle race condition (no server lock)",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 0.01
+        },
+        {
+          "bug_id": 13,
+          "name": "Load More: JS init error blocks pagination",
+          "caught": true,
+          "method": "auto-event",
+          "notes": "",
+          "elapsed_s": 0.92
+        },
+        {
+          "bug_id": 14,
+          "name": "Empty state shows 'Loading...' forever",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 0.53
+        },
+        {
+          "bug_id": 15,
+          "name": "Search is case-sensitive",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 1.07
+        },
+        {
+          "bug_id": 16,
+          "name": "Date display: '1.0 days ago' decimal format",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 0.56
+        },
+        {
+          "bug_id": 17,
+          "name": "Settings 'saved!' even when 500",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 0.93
+        },
+        {
+          "bug_id": 18,
+          "name": "Long titles silently truncated by CSS",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 0.53
+        },
+        {
+          "bug_id": 19,
+          "name": "Priority field accepts arbitrary values",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 1.47
+        },
+        {
+          "bug_id": 20,
+          "name": "Navbar still shows 'Login' after authentication",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 1.47
+        },
+        {
+          "bug_id": 21,
+          "name": "Whitespace-only task title creates empty task",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 1.44
+        },
+        {
+          "bug_id": 22,
+          "name": "0 tasks remaining shown in alarming red",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 0.54
+        }
+      ]
+    },
+    {
+      "target": "darkshop",
+      "fixture": "http://127.0.0.1:5556",
+      "started_at": 1777530964.397198,
+      "finished_at": 1777530972.755988,
+      "duration_s": 8.36,
+      "caught": 12,
+      "total": 12,
+      "recall_pct": 100.0,
+      "results": [
+        {
+          "bug_id": 1,
+          "name": "Hardcoded 'Only 3 left!' stock label",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 0.54
+        },
+        {
+          "bug_id": 2,
+          "name": "Fake -50% sale badge (original_price == price)",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 0.55
+        },
+        {
+          "bug_id": 3,
+          "name": "Free-shipping banner contradicted by checkout fee",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 1.06
+        },
+        {
+          "bug_id": 4,
+          "name": "Visual hierarchy inverted on product page",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 0.52
+        },
+        {
+          "bug_id": 5,
+          "name": "Misleading rating \u2014 4.8\u2605 huge, '1 review' tiny",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 0.52
+        },
+        {
+          "bug_id": 6,
+          "name": "CVV field ordered before card number",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 0.52
+        },
+        {
+          "bug_id": 7,
+          "name": "Side-panel subtotal vs main-area total mismatch",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 0.54
+        },
+        {
+          "bug_id": 8,
+          "name": "Place Order demoted to a link; Edit Cart is the CTA",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 0.53
+        },
+        {
+          "bug_id": 9,
+          "name": "Legal checkbox '(optional)' carries required-mark",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 0.54
+        },
+        {
+          "bug_id": 10,
+          "name": "Account rename does not update nav greeting",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 0.53
+        },
+        {
+          "bug_id": 11,
+          "name": "Nav cart-count badge stale vs cart contents",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 0.54
+        },
+        {
+          "bug_id": 12,
+          "name": "Discount code field clears silently with no feedback",
+          "caught": true,
+          "method": "agent-record",
+          "notes": "",
+          "elapsed_s": 1.06
+        }
+      ]
+    }
+  ],
+  "totals": {
+    "caught": 34,
+    "total": 34,
+    "recall_pct": 100.0
+  }
+}
