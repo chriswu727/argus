@@ -260,17 +260,46 @@ async def start_session(
     if _session.active:
         await _session.browser.stop()
 
-    _session = Session()
-    _session.mode = "web"
-    _session.url = url
-    _session.start_time = asyncio.get_event_loop().time()
-    _session.browser = BrowserDriver(
+    new_session = Session()
+    new_session.mode = "web"
+    new_session.url = url
+    new_session.start_time = asyncio.get_event_loop().time()
+    new_session.browser = BrowserDriver(
         headless=headless,
         viewport_width=viewport_width,
         viewport_height=viewport_height,
     )
-    await _session.browser.start()
-    await _session.browser.goto(url)
+    try:
+        await new_session.browser.start()
+    except Exception as exc:
+        return (
+            f"start_session: failed to launch the browser — "
+            f"{type(exc).__name__}: {str(exc)[:160]}\n"
+            f"Run `playwright install chromium` and try again."
+        )
+    try:
+        await new_session.browser.goto(url)
+    except Exception as exc:
+        # Don't leak the Playwright stack-trace; classify the common shapes.
+        msg = str(exc)
+        hint = ""
+        if "ERR_CONNECTION_REFUSED" in msg:
+            hint = " The host is up but nothing is listening on that port."
+        elif "ERR_NAME_NOT_RESOLVED" in msg or "getaddrinfo" in msg:
+            hint = " The hostname couldn't be resolved — check the URL."
+        elif "Timeout" in msg or "timeout" in msg:
+            hint = " The page took longer than 30 s to settle to networkidle."
+        # Tear down the half-built browser before bubbling the error.
+        try:
+            await new_session.browser.stop()
+        except Exception:
+            pass
+        return (
+            f"start_session: could not load {url} — {type(exc).__name__}.{hint}\n"
+            f"No session was created."
+        )
+
+    _session = new_session
     _session.pages_visited.append(url)
 
     state = await _session.browser.get_state()

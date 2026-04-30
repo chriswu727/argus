@@ -104,7 +104,31 @@ class Explorer:
                     )
                 except Exception as e:
                     console.print(f"  [yellow]Planner error: {e}[/]")
+                    msg = str(e).lower()
+                    # Auth failures aren't going to fix themselves on
+                    # the next iteration — abort immediately and surface
+                    # the cause.
+                    if any(s in msg for s in (
+                        "api key", "api_key", "authentication", "unauthorized",
+                        "401", "did not find",
+                    )):
+                        raise RuntimeError(
+                            "LLM auth failed. Set the API key for your "
+                            "chosen model (e.g. OPENAI_API_KEY, "
+                            "ANTHROPIC_API_KEY, DEEPSEEK_API_KEY) or pass "
+                            "--api-key explicitly."
+                        ) from e
+                    self._consecutive_planner_failures = (
+                        getattr(self, "_consecutive_planner_failures", 0) + 1
+                    )
+                    if self._consecutive_planner_failures >= 3:
+                        raise RuntimeError(
+                            "Planner failed 3 steps in a row — aborting. "
+                            "Last error: " + str(e)[:200]
+                        ) from e
                     continue
+                else:
+                    self._consecutive_planner_failures = 0
 
                 if action.type == ActionType.DONE:
                     console.print(
