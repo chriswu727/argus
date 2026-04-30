@@ -481,13 +481,23 @@ def _resolve_or_error(
     s: Session,
     description: str,
     kind_filter: Optional[str] = None,
+    *,
+    strict_kind: bool = False,
 ) -> tuple[Optional[InteractiveElement], Optional[str]]:
     """Resolve a description to a single element or return an error string.
 
     Returns (element, None) on success, (None, error_message) on
     no_match / ambiguous / no_elements.
+
+    Set `strict_kind=True` from tools that *cannot* gracefully handle a
+    cross-kind match (e.g. type_into pointed at a link gives the user
+    a Playwright stack-trace). With strict_kind, the resolver refuses
+    to fall back to the full element pool.
     """
-    result = resolve_element(description, s._last_elements, kind_filter=kind_filter)
+    result = resolve_element(
+        description, s._last_elements,
+        kind_filter=kind_filter, strict_kind=strict_kind,
+    )
 
     if result.reason == "unique" and result.found is not None:
         return result.found, None
@@ -651,7 +661,7 @@ async def screen_observe() -> str:
     return _format_screen_observation(obs)
 
 
-def _resolve_screen_or_error(s, description: str, kind_filter=None):
+def _resolve_screen_or_error(s, description: str, kind_filter=None, *, strict_kind: bool = False):
     """Resolve a description against the cached AX-tree elements.
 
     Mirrors `_resolve_or_error` for screen mode. Returns
@@ -659,7 +669,8 @@ def _resolve_screen_or_error(s, description: str, kind_filter=None):
     description doesn't pin down a single element.
     """
     result = resolve_screen_element(
-        description, s._last_screen_elements, kind_filter=kind_filter,
+        description, s._last_screen_elements,
+        kind_filter=kind_filter, strict_kind=strict_kind,
     )
     if result.reason == "unique" and result.found is not None:
         return result.found, None
@@ -767,7 +778,9 @@ async def screen_type_into(description: str, text: str) -> str:
     err = _safety_or_error(s)
     if err:
         return err
-    el, err = _resolve_screen_or_error(s, description, kind_filter="input")
+    el, err = _resolve_screen_or_error(
+        s, description, kind_filter="input", strict_kind=True,
+    )
     if err:
         return err
 
@@ -923,7 +936,9 @@ async def type_into(description: str, text: str) -> str:
     rules are the same as click_what — see that tool for ambiguity behaviour.
     """
     s = _require_session()
-    el, err = _resolve_or_error(s, description, kind_filter="input")
+    el, err = _resolve_or_error(
+        s, description, kind_filter="input", strict_kind=True,
+    )
     if err:
         return err
 
@@ -935,8 +950,8 @@ async def type_into(description: str, text: str) -> str:
         await s.browser._page.fill(selector, text, timeout=5000)
     except Exception as exc:
         return (
-            f"type_into({description!r}) — failed: {exc}. "
-            f"The element may not be a text input, or it may be disabled."
+            f"type_into({description!r}) — failed: {type(exc).__name__}. "
+            f"The element may be disabled or the page may have re-rendered."
         )
     return f'Typed into "{label[:60]}" (via description {description!r}).'
 
@@ -945,7 +960,9 @@ async def type_into(description: str, text: str) -> str:
 async def select_into(description: str, value: str) -> str:
     """Select `value` in the dropdown best matching `description`."""
     s = _require_session()
-    el, err = _resolve_or_error(s, description, kind_filter="select")
+    el, err = _resolve_or_error(
+        s, description, kind_filter="select", strict_kind=True,
+    )
     if err:
         return err
 
@@ -957,8 +974,9 @@ async def select_into(description: str, value: str) -> str:
         await s.browser._page.select_option(selector, value, timeout=5000)
     except Exception as exc:
         return (
-            f"select_into({description!r}, {value!r}) — failed: {exc}. "
-            f"Make sure the dropdown actually has that option."
+            f"select_into({description!r}, {value!r}) — failed: "
+            f"{type(exc).__name__}. Make sure the dropdown actually has "
+            f"that option (call inspect_element to list the choices)."
         )
     return f'Selected "{value}" in "{label[:60]}".'
 

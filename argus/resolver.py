@@ -146,6 +146,8 @@ def resolve_element(
     description: str,
     elements: List[InteractiveElement],
     kind_filter: Optional[str] = None,
+    *,
+    strict_kind: bool = False,
 ) -> ResolveResult:
     """Map a natural-language description to one interactive element.
 
@@ -155,6 +157,12 @@ def resolve_element(
         kind_filter: Optional explicit kind override ("button", "input",
             "link", "select", "checkbox", "radio"). If omitted we infer
             from a trailing kind-hint word in `description`.
+        strict_kind: When True, refuse to fall back to the full element
+            pool if the kind filter eliminates everyone. Use this from
+            type_into / select_into where falling back to a link or
+            button gives the caller a confusing Playwright stack trace
+            downstream. Default False matches click_what's prior
+            "be helpful" behaviour.
     """
     if not elements:
         return ResolveResult(found=None, candidates=[], reason="no_elements")
@@ -165,8 +173,10 @@ def resolve_element(
     pool = elements
     if effective_kind:
         filtered = [el for el in elements if _kind_compatible(kind_of(el), effective_kind)]
-        # Fall back to full pool if the filter rules everyone out.
-        pool = filtered or elements
+        if strict_kind:
+            pool = filtered  # may end up empty — that's the caller's choice
+        else:
+            pool = filtered or elements
 
     scored: List[Tuple[int, InteractiveElement]] = []
     for el in pool:
@@ -272,11 +282,15 @@ def resolve_screen_element(
     description: str,
     elements: list,
     kind_filter: Optional[str] = None,
+    *,
+    strict_kind: bool = False,
 ):
     """Pick the screen element best matching `description`.
 
     Returns a ResolveResult with the same semantics as resolve_element
     but operating on ScreenElement records (from argus.screen.backend).
+    Pass strict_kind=True from screen_type_into to refuse the cross-kind
+    fallback (so we don't try to type into a button).
     """
     if not elements:
         return ResolveResult(found=None, candidates=[], reason="no_elements")
@@ -287,7 +301,10 @@ def resolve_screen_element(
     pool = elements
     if effective_kind:
         filtered = [el for el in elements if _ax_kind(el.role) == effective_kind]
-        pool = filtered or elements
+        if strict_kind:
+            pool = filtered
+        else:
+            pool = filtered or elements
 
     scored = []
     for el in pool:
