@@ -1208,6 +1208,105 @@ async def screen_wait_for_stable(
     return f"screen_wait_for_stable: {reason}.\n  final: {final_path}"
 
 
+def _adhoc_screen_backend():
+    """Build a one-off ScreenBackend for lifecycle calls that don't need
+    an active session (launch / quit / is_running can run before a
+    session is started or against a different target than the bound one)."""
+    from .screen.backend import ScreenBackend
+    backend = ScreenBackend()
+    backend._load_frameworks()
+    return backend
+
+
+@mcp.tool()
+async def screen_launch(target: str, wait_s: float = 8.0) -> str:
+    """Launch a macOS app by localised name, bundle id, or absolute path.
+
+    If the app is already running, returns the existing pid without
+    re-launching. Otherwise shells out to `open -a <target>` and polls
+    until the new process appears or `wait_s` elapses.
+
+    This unlocks save-persistence testing: launch the app fresh, drive
+    a flow, screen_quit it, screen_launch again, observe whether state
+    survived.
+    """
+    if not target:
+        return "screen_launch: target is required (app name / bundle id / path)."
+    try:
+        from .screen.permissions import gate_screen_mode
+    except ImportError as exc:
+        return f"screen_launch: screen-mode deps missing — pip install argus-testing[mac]. ({exc})"
+    missing = gate_screen_mode()
+    if missing:
+        names = ", ".join(c.name for c in missing)
+        return f"screen_launch: missing macOS grants: {names}. Run argus-mcp --doctor."
+
+    try:
+        backend = _adhoc_screen_backend()
+        ok, method, pid = backend.launch(target, wait_s=wait_s)
+    except Exception as exc:
+        return f"screen_launch failed: {exc}"
+    if not ok:
+        return f"screen_launch({target!r}): {method}"
+
+    # If a screen session is currently bound to the same app and we just
+    # re-launched it, the old AX refs are stale — force the session to
+    # rebind on next observe.
+    s = _session
+    if s.active and s.mode == "screen" and s.screen is not None:
+        s.screen._app_pid = None  # forces _find_target_app to re-resolve
+    return f"Launched {target!r} (pid {pid}, {method})."
+
+
+@mcp.tool()
+async def screen_quit(target: str, force: bool = False, wait_s: float = 8.0) -> str:
+    """Quit a macOS app gracefully (like cmd-Q) or forcibly (SIGKILL).
+
+    Use the polite path by default — apps need the chance to flush
+    state if you're testing save-on-quit. Pass `force=True` only when
+    the app is hung or you're explicitly testing crash recovery.
+    """
+    if not target:
+        return "screen_quit: target is required."
+    try:
+        backend = _adhoc_screen_backend()
+        ok, method = backend.quit(target, force=force, wait_s=wait_s)
+    except Exception as exc:
+        return f"screen_quit failed: {exc}"
+
+    # If the current session was bound to the app we just killed, the
+    # bound state is no longer valid — the agent should call
+    # start_screen_session again.
+    s = _session
+    if (
+        s.active and s.mode == "screen" and s.screen is not None
+        and s.screen._app_name and target.lower() in s.screen._app_name.lower()
+    ):
+        s.screen._app_pid = None
+
+    if not ok:
+        return f"screen_quit({target!r}): {method}"
+    return f"Quit {target!r} via {method}."
+
+
+@mcp.tool()
+async def screen_is_running(target: str) -> str:
+    """Check whether a macOS app is currently running. Returns the pid
+    if so. Useful as a wait/poll primitive after screen_launch /
+    screen_quit, or to verify a relaunch actually replaced the old
+    process."""
+    if not target:
+        return "screen_is_running: target is required."
+    try:
+        backend = _adhoc_screen_backend()
+        running, pid = backend.is_running(target)
+    except Exception as exc:
+        return f"screen_is_running failed: {exc}"
+    if running:
+        return f"{target!r} is running (pid {pid})."
+    return f"{target!r} is not running."
+
+
 @mcp.tool()
 async def screen_session_status() -> str:
     """Show how the current screen-mode session is doing: time used vs
