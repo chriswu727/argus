@@ -849,11 +849,12 @@ async def screen_session_status() -> str:
         return "screen_session_status: this session is in web mode."
 
     from .screen import safety as screen_safety
+    import time as _time
     state = s._safety
     if state is None:
         return "screen_session_status: no safety state — bug in session bootstrap."
 
-    elapsed = int(asyncio_time() - state.started_at)
+    elapsed = int(_time.time() - state.started_at)
     remaining = int(screen_safety.session_remaining_seconds(state))
     abort_present = screen_safety.abort_file_present()
 
@@ -868,14 +869,6 @@ async def screen_session_status() -> str:
         screen_safety.trail_summary(state),
     ]
     return "\n".join(lines)
-
-
-def asyncio_time() -> float:
-    """Wallclock helper — `time.time()` is what SafetyState.started_at
-    uses, but the rest of mcp_server tracks event-loop time. Stay in
-    `time.time()` here."""
-    import time as _time
-    return _time.time()
 
 
 @mcp.tool()
@@ -1140,7 +1133,7 @@ async def scroll_down() -> str:
     s = _require_session()
     s.steps.append("Scroll down")
     await s.browser.scroll_down()
-    return "Scrolled down. Call get_page_state() to see updated elements."
+    return "Scrolled down. Call observe() to see what's now in view."
 
 
 @mcp.tool()
