@@ -339,6 +339,13 @@ class BrowserDriver:
         self._page: Optional[Page] = None
         self.console_errors: List[Dict] = []
         self.network_errors: List[Dict] = []
+        # Full request/response log — every HTTP call this session has
+        # made, regardless of status. Used by network_requests / network_request
+        # tools so the agent can verify "did the right /api/foo get called
+        # with the right payload" without manually scraping anything.
+        self.network_log: List[Dict] = []
+        # Request-mock routes registered by the agent. {pattern: {response_dict}}.
+        self._mock_routes: Dict[str, Dict] = {}
 
     # -- lifecycle --
 
@@ -360,6 +367,7 @@ class BrowserDriver:
     def _setup_listeners(self):
         self._page.on("console", self._on_console)
         self._page.on("pageerror", self._on_page_error)
+        self._page.on("request", self._on_request)
         self._page.on("response", self._on_response)
 
     def _on_console(self, msg):
@@ -379,7 +387,47 @@ class BrowserDriver:
             "timestamp": datetime.now().isoformat(),
         })
 
+    def _on_request(self, request):
+        try:
+            entry = {
+                "id": id(request),
+                "url": request.url,
+                "method": request.method,
+                "resource_type": request.resource_type,
+                "headers": dict(request.headers),
+                "post_data": request.post_data,
+                "started_at": datetime.now().isoformat(),
+                "page_url": self._page.url if self._page else "",
+                "status": None,
+                "response_headers": None,
+                "response_size": None,
+            }
+            self.network_log.append(entry)
+        except Exception:
+            pass
+
     async def _on_response(self, response):
+        try:
+            req_id = id(response.request)
+            entry = next(
+                (e for e in reversed(self.network_log) if e.get("id") == req_id),
+                None,
+            )
+            if entry is not None:
+                entry["status"] = response.status
+                try:
+                    entry["response_headers"] = dict(response.headers)
+                except Exception:
+                    entry["response_headers"] = None
+                try:
+                    body = await response.body()
+                    entry["response_size"] = len(body) if body else 0
+                except Exception:
+                    entry["response_size"] = None
+                entry["finished_at"] = datetime.now().isoformat()
+        except Exception:
+            pass
+
         if response.status >= 400:
             self.network_errors.append({
                 "url": response.url,
@@ -388,6 +436,68 @@ class BrowserDriver:
                 "page_url": self._page.url,
                 "timestamp": datetime.now().isoformat(),
             })
+
+    # -- network mocking --
+
+    async def add_route(
+        self,
+        pattern: str,
+        status: int = 200,
+        body: str = "",
+        headers: Optional[Dict[str, str]] = None,
+        content_type: str = "application/json",
+    ) -> None:
+        """Register a mock for any request matching `pattern` (URL glob or
+        regex string). Subsequent matching requests get the canned response
+        instead of hitting the network."""
+        async def _handler(route):
+            try:
+                await route.fulfill(
+                    status=status,
+                    content_type=content_type,
+                    headers=headers or {},
+                    body=body,
+                )
+            except Exception:
+                try:
+                    await route.continue_()
+                except Exception:
+                    pass
+
+        await self._page.route(pattern, _handler)
+        self._mock_routes[pattern] = {
+            "status": status,
+            "content_type": content_type,
+            "headers": headers or {},
+            "body_preview": body[:200],
+        }
+
+    async def remove_route(self, pattern: str) -> bool:
+        """Drop a previously-registered mock. Returns True if it existed."""
+        if pattern in self._mock_routes:
+            try:
+                await self._page.unroute(pattern)
+            except Exception:
+                pass
+            self._mock_routes.pop(pattern, None)
+            return True
+        return False
+
+    async def clear_routes(self) -> int:
+        """Drop all mocks. Returns the count cleared."""
+        count = len(self._mock_routes)
+        for pattern in list(self._mock_routes):
+            await self.remove_route(pattern)
+        return count
+
+    def network_log_snapshot(self) -> List[Dict]:
+        """Return a shallow copy of the captured request/response log."""
+        return list(self.network_log)
+
+    def clear_network_log(self) -> int:
+        n = len(self.network_log)
+        self.network_log.clear()
+        return n
 
     # -- navigation --
 

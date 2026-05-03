@@ -1619,6 +1619,224 @@ async def eval_js(code: str) -> str:
         return f"eval_js result (repr): {result!r}"
 
 
+# ── network inspection + mocking ────────────────────────────────────
+
+
+def _filter_network_log(log, url_substring=None, method=None, status_min=None):
+    """Slice the network log by simple criteria — used by network_requests
+    and network_request to surface what the agent cares about without
+    paging through everything."""
+    out = log
+    if url_substring:
+        out = [e for e in out if url_substring in (e.get("url") or "")]
+    if method:
+        m = method.upper()
+        out = [e for e in out if (e.get("method") or "").upper() == m]
+    if status_min is not None:
+        out = [e for e in out if (e.get("status") or 0) >= status_min]
+    return out
+
+
+@mcp.tool()
+async def network_requests(
+    url_substring: str = "",
+    method: str = "",
+    status_min: int = 0,
+    limit: int = 30,
+) -> str:
+    """List the HTTP requests this page has issued, newest last.
+
+    Every request and response is captured in the background; this tool
+    drains the current snapshot, optionally filtered. Use it to verify
+    "did the right /api/foo get called", "what method", "what response
+    status", and to spot requests the UI doesn't surface (analytics,
+    background polls, third-party widgets).
+
+    Args:
+        url_substring: keep only requests whose URL contains this string.
+        method: keep only this method (GET / POST / PUT / …). Empty = all.
+        status_min: keep only responses ≥ this status (e.g. 400 to find
+                    failures only). 0 = all.
+        limit: cap the returned list (default 30).
+    """
+    s = _require_session()
+    if s.mode != "web" or s.browser is None:
+        return "network_requests: this tool is web-mode only."
+
+    log = s.browser.network_log_snapshot()
+    filtered = _filter_network_log(log, url_substring or None, method or None,
+                                   status_min if status_min > 0 else None)
+    shown = filtered[-limit:]
+
+    if not shown:
+        return (
+            f"No matching requests "
+            f"(filters: url~{url_substring!r}, method={method!r}, "
+            f"status≥{status_min}). Total captured this session: {len(log)}."
+        )
+
+    lines = [
+        f"Network log: {len(shown)} of {len(filtered)} matching "
+        f"({len(log)} total this session)."
+    ]
+    for e in shown:
+        url_display = (e.get("url") or "")[:90]
+        status = e.get("status")
+        status_s = str(status) if status is not None else "pending"
+        size = e.get("response_size")
+        size_s = f" {size}B" if size is not None else ""
+        lines.append(
+            f"  [{status_s:>7}] {(e.get('method') or '?'):<6} "
+            f"{e.get('resource_type', ''):<10} {url_display}{size_s}"
+        )
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def network_request(
+    url_substring: str,
+    method: str = "",
+) -> str:
+    """Get the full request/response detail for ONE captured request.
+
+    Picks the most recent request whose URL contains `url_substring`
+    (and matches `method` if given). Returns headers, post-body,
+    response status, response headers, response size — everything you
+    need to assert "this exact payload was sent and returned 200".
+
+    For the list view, use network_requests.
+    """
+    s = _require_session()
+    if s.mode != "web" or s.browser is None:
+        return "network_request: this tool is web-mode only."
+    if not url_substring:
+        return "network_request: pass a url_substring to identify the request."
+
+    log = s.browser.network_log_snapshot()
+    matches = _filter_network_log(log, url_substring, method or None)
+    if not matches:
+        return (
+            f"No request matches url~{url_substring!r}"
+            f"{', method=' + method if method else ''}. "
+            f"Total captured: {len(log)}."
+        )
+
+    e = matches[-1]
+    import json as _json
+    lines = [
+        f"Request: {e.get('method')} {e.get('url')}",
+        f"  resource_type: {e.get('resource_type')}",
+        f"  page_url:      {e.get('page_url')}",
+        f"  started:       {e.get('started_at')}",
+        "",
+        "Request headers:",
+    ]
+    for k, v in (e.get("headers") or {}).items():
+        lines.append(f"  {k}: {v}")
+    if e.get("post_data"):
+        body = e["post_data"]
+        lines.append("")
+        lines.append("Request body:")
+        lines.append("  " + (body[:1500] + ("…[truncated]" if len(body) > 1500 else "")))
+
+    lines.append("")
+    status = e.get("status")
+    if status is None:
+        lines.append("Response: (still pending — request fired but no response yet)")
+    else:
+        lines.append(f"Response: HTTP {status}")
+        size = e.get("response_size")
+        if size is not None:
+            lines.append(f"  body size: {size} bytes")
+        if e.get("finished_at"):
+            lines.append(f"  finished:  {e['finished_at']}")
+        rh = e.get("response_headers") or {}
+        if rh:
+            lines.append("  Response headers:")
+            for k, v in rh.items():
+                lines.append(f"    {k}: {v}")
+
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def network_mock(
+    url_pattern: str,
+    status: int = 200,
+    body: str = "",
+    content_type: str = "application/json",
+) -> str:
+    """Intercept any request matching `url_pattern` and return a canned
+    response, instead of hitting the network.
+
+    Use this to test how the UI handles specific server responses
+    (5xx, 401, slow JSON, malformed payload) without needing the
+    backend to cooperate.
+
+    Args:
+        url_pattern: glob-style (`**/api/users`) or full URL substring.
+                     Playwright's page.route() patterns apply.
+        status: HTTP status code to return (default 200).
+        body: response body string.
+        content_type: response Content-Type header.
+    """
+    s = _require_session()
+    if s.mode != "web" or s.browser is None:
+        return "network_mock: this tool is web-mode only."
+    if not url_pattern:
+        return "network_mock: pass a url_pattern."
+    try:
+        await s.browser.add_route(
+            pattern=url_pattern, status=status, body=body,
+            content_type=content_type,
+        )
+    except Exception as exc:
+        return f"network_mock failed: {type(exc).__name__}: {exc}"
+    s.steps.append(f"network_mock({url_pattern!r}) -> HTTP {status}")
+    return (
+        f"Mock registered: {url_pattern} -> HTTP {status} "
+        f"({content_type}, {len(body)}B body).\n"
+        f"Subsequent matching requests will return this canned response.\n"
+        f"Call network_unmock or network_clear_mocks to remove."
+    )
+
+
+@mcp.tool()
+async def network_unmock(url_pattern: str) -> str:
+    """Drop a mock previously registered via network_mock."""
+    s = _require_session()
+    if s.mode != "web" or s.browser is None:
+        return "network_unmock: this tool is web-mode only."
+    try:
+        removed = await s.browser.remove_route(url_pattern)
+    except Exception as exc:
+        return f"network_unmock failed: {exc}"
+    if removed:
+        return f"Unmocked: {url_pattern}"
+    return f"No mock registered for {url_pattern!r}."
+
+
+@mcp.tool()
+async def network_clear_mocks() -> str:
+    """Drop every mock registered this session."""
+    s = _require_session()
+    if s.mode != "web" or s.browser is None:
+        return "network_clear_mocks: this tool is web-mode only."
+    n = await s.browser.clear_routes()
+    return f"Cleared {n} mock(s)."
+
+
+@mcp.tool()
+async def network_clear_log() -> str:
+    """Drop the captured request/response log (the mocks themselves stay
+    registered). Useful between scenarios to isolate the call set."""
+    s = _require_session()
+    if s.mode != "web" or s.browser is None:
+        return "network_clear_log: this tool is web-mode only."
+    n = s.browser.clear_network_log()
+    return f"Cleared {n} captured request entries."
+
+
 @mcp.tool()
 async def navigate(url: str) -> str:
     """Navigate to a specific URL.
