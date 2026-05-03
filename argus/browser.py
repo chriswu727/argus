@@ -499,6 +499,75 @@ class BrowserDriver:
         self.network_log.clear()
         return n
 
+    # -- storage state --
+
+    async def cookies_get(self, url: Optional[str] = None) -> List[Dict]:
+        """Return cookies for the given URL (or all cookies if None)."""
+        try:
+            urls = [url] if url else None
+            return await self._context.cookies(urls=urls)
+        except Exception:
+            return []
+
+    async def cookies_set(self, cookies: List[Dict]) -> int:
+        """Set a list of cookies on the current context. Each cookie
+        must have at least name + value + (url OR domain+path)."""
+        try:
+            await self._context.add_cookies(cookies)
+            return len(cookies)
+        except Exception:
+            return 0
+
+    async def cookies_clear(self) -> bool:
+        try:
+            await self._context.clear_cookies()
+            return True
+        except Exception:
+            return False
+
+    async def storage_get(self, kind: str = "local") -> Dict[str, str]:
+        """Return all key/value pairs in localStorage (kind='local') or
+        sessionStorage (kind='session') of the current page."""
+        store = "localStorage" if kind == "local" else "sessionStorage"
+        try:
+            return await self._page.evaluate(
+                f"() => {{const r = {{}}; "
+                f"for (let i = 0; i < {store}.length; i++) "
+                f"{{const k = {store}.key(i); r[k] = {store}.getItem(k);}} "
+                f"return r;}}"
+            )
+        except Exception:
+            return {}
+
+    async def storage_set(self, key: str, value: str, kind: str = "local") -> bool:
+        store = "localStorage" if kind == "local" else "sessionStorage"
+        try:
+            await self._page.evaluate(
+                f"({{k, v}}) => {store}.setItem(k, v)",
+                {"k": key, "v": value},
+            )
+            return True
+        except Exception:
+            return False
+
+    async def storage_remove(self, key: str, kind: str = "local") -> bool:
+        store = "localStorage" if kind == "local" else "sessionStorage"
+        try:
+            await self._page.evaluate(
+                f"(k) => {store}.removeItem(k)", key,
+            )
+            return True
+        except Exception:
+            return False
+
+    async def storage_clear(self, kind: str = "local") -> bool:
+        store = "localStorage" if kind == "local" else "sessionStorage"
+        try:
+            await self._page.evaluate(f"() => {store}.clear()")
+            return True
+        except Exception:
+            return False
+
     # -- navigation --
 
     async def goto(self, url: str):
