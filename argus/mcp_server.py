@@ -1837,6 +1837,165 @@ async def network_clear_log() -> str:
     return f"Cleared {n} captured request entries."
 
 
+# -- cookies + storage state --
+
+@mcp.tool()
+async def cookies_get(url: str = "") -> str:
+    """List cookies on the current browser context.
+
+    Use this to verify what the server / front-end set after login,
+    consent banner, A/B opt-in, etc. Pair with cookies_set to seed
+    a known-good auth session and skip the login UI for downstream
+    tests.
+
+    Args:
+        url: Filter to cookies that would be sent for this URL.
+             Empty = return every cookie on the context.
+    """
+    s = _require_session()
+    if s.mode != "web" or s.browser is None:
+        return "cookies_get: this tool is web-mode only."
+    cookies = await s.browser.cookies_get(url or None)
+    if not cookies:
+        return "No cookies." + (f" (filter: url={url})" if url else "")
+    lines = [f"{len(cookies)} cookie(s){' for ' + url if url else ''}:"]
+    for c in cookies:
+        domain = c.get("domain", "")
+        path = c.get("path", "/")
+        name = c.get("name", "")
+        val = c.get("value", "")
+        if len(val) > 60:
+            val = val[:57] + "..."
+        flags = []
+        if c.get("httpOnly"):
+            flags.append("HttpOnly")
+        if c.get("secure"):
+            flags.append("Secure")
+        if c.get("sameSite"):
+            flags.append(f"SameSite={c['sameSite']}")
+        flag_str = f" [{', '.join(flags)}]" if flags else ""
+        lines.append(f"  {name}={val}  ({domain}{path}){flag_str}")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def cookies_set(cookies: list) -> str:
+    """Inject one or more cookies into the current browser context.
+
+    Each cookie must be a dict with at least name + value, and either
+    a `url` field OR both `domain` + `path`. Common extras: expires
+    (unix seconds), httpOnly, secure, sameSite ("Strict"|"Lax"|"None").
+
+    Useful for skipping the login UI: paste a session cookie captured
+    out-of-band and the next navigate() request lands authenticated.
+
+    Args:
+        cookies: List of cookie dicts. Example:
+                 [{"name": "session", "value": "abc",
+                   "url": "http://127.0.0.1:5555"}]
+    """
+    s = _require_session()
+    if s.mode != "web" or s.browser is None:
+        return "cookies_set: this tool is web-mode only."
+    if not cookies:
+        return "cookies_set: pass a non-empty list of cookie dicts."
+    n = await s.browser.cookies_set(cookies)
+    s.steps.append(f"cookies_set({n} cookie(s))")
+    if n == 0:
+        return ("cookies_set: 0 set — check that each entry has name + value "
+                "and either url OR domain+path.")
+    return f"Set {n} cookie(s) on the context."
+
+
+@mcp.tool()
+async def cookies_clear() -> str:
+    """Clear every cookie on the browser context (logout-all-the-things)."""
+    s = _require_session()
+    if s.mode != "web" or s.browser is None:
+        return "cookies_clear: this tool is web-mode only."
+    ok = await s.browser.cookies_clear()
+    s.steps.append("cookies_clear")
+    return "Cleared all cookies." if ok else "cookies_clear: failed."
+
+
+@mcp.tool()
+async def storage_get(kind: str = "local") -> str:
+    """Read every key/value in localStorage or sessionStorage of the
+    current page.
+
+    Args:
+        kind: "local" (default) for localStorage, "session" for
+              sessionStorage.
+    """
+    s = _require_session()
+    if s.mode != "web" or s.browser is None:
+        return "storage_get: this tool is web-mode only."
+    if kind not in ("local", "session"):
+        return "storage_get: kind must be 'local' or 'session'."
+    items = await s.browser.storage_get(kind)
+    label = "localStorage" if kind == "local" else "sessionStorage"
+    if not items:
+        return f"{label}: empty."
+    lines = [f"{label} ({len(items)} key(s)):"]
+    for k, v in items.items():
+        sval = v if v is not None else ""
+        if len(sval) > 200:
+            sval = sval[:197] + "..."
+        lines.append(f"  {k} = {sval}")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def storage_set(key: str, value: str, kind: str = "local") -> str:
+    """Write a single key/value to localStorage or sessionStorage.
+
+    Use this to seed a feature-flag, theme preference, or onboarding-
+    completed marker without driving the UI to set it.
+
+    Args:
+        key: Storage key.
+        value: Value (always stored as a string in browser storage).
+        kind: "local" or "session" (default "local").
+    """
+    s = _require_session()
+    if s.mode != "web" or s.browser is None:
+        return "storage_set: this tool is web-mode only."
+    if kind not in ("local", "session"):
+        return "storage_set: kind must be 'local' or 'session'."
+    ok = await s.browser.storage_set(key, value, kind)
+    label = "localStorage" if kind == "local" else "sessionStorage"
+    s.steps.append(f"storage_set({label}, {key!r})")
+    return f"Set {label}[{key!r}]." if ok else f"storage_set: failed for {key!r}."
+
+
+@mcp.tool()
+async def storage_remove(key: str, kind: str = "local") -> str:
+    """Delete a single key from localStorage or sessionStorage."""
+    s = _require_session()
+    if s.mode != "web" or s.browser is None:
+        return "storage_remove: this tool is web-mode only."
+    if kind not in ("local", "session"):
+        return "storage_remove: kind must be 'local' or 'session'."
+    ok = await s.browser.storage_remove(key, kind)
+    label = "localStorage" if kind == "local" else "sessionStorage"
+    s.steps.append(f"storage_remove({label}, {key!r})")
+    return f"Removed {label}[{key!r}]." if ok else f"storage_remove: failed."
+
+
+@mcp.tool()
+async def storage_clear(kind: str = "local") -> str:
+    """Clear all keys from localStorage or sessionStorage on this page."""
+    s = _require_session()
+    if s.mode != "web" or s.browser is None:
+        return "storage_clear: this tool is web-mode only."
+    if kind not in ("local", "session"):
+        return "storage_clear: kind must be 'local' or 'session'."
+    ok = await s.browser.storage_clear(kind)
+    label = "localStorage" if kind == "local" else "sessionStorage"
+    s.steps.append(f"storage_clear({label})")
+    return f"Cleared {label}." if ok else "storage_clear: failed."
+
+
 @mcp.tool()
 async def navigate(url: str) -> str:
     """Navigate to a specific URL.
