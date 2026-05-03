@@ -353,8 +353,9 @@ class BrowserDriver:
         self._playwright = await async_playwright().start()
         self._browser = await self._playwright.chromium.launch(headless=self.headless)
         self._context = await self._browser.new_context(viewport=self.viewport)
+        self._context.on("page", self._on_new_page)
         self._page = await self._context.new_page()
-        self._setup_listeners()
+        self._attach_page_listeners(self._page)
 
     async def stop(self):
         if self._browser:
@@ -364,11 +365,30 @@ class BrowserDriver:
 
     # -- listeners --
 
+    def _on_new_page(self, page: Page):
+        # Pages spawned via target.click() or window.open() arrive here.
+        # The first page (created in start()) is attached directly, so guard
+        # against double-attach by checking listener count is zero.
+        try:
+            already = bool(getattr(page, "_argus_attached", False))
+        except Exception:
+            already = False
+        if not already:
+            self._attach_page_listeners(page)
+
+    def _attach_page_listeners(self, page: Page):
+        page.on("console", self._on_console)
+        page.on("pageerror", self._on_page_error)
+        page.on("request", self._on_request)
+        page.on("response", self._on_response)
+        try:
+            page._argus_attached = True
+        except Exception:
+            pass
+
     def _setup_listeners(self):
-        self._page.on("console", self._on_console)
-        self._page.on("pageerror", self._on_page_error)
-        self._page.on("request", self._on_request)
-        self._page.on("response", self._on_response)
+        # Back-compat shim: old call site that wired listeners onto self._page.
+        self._attach_page_listeners(self._page)
 
     def _on_console(self, msg):
         if msg.type in ("error", "warning"):
@@ -567,6 +587,107 @@ class BrowserDriver:
             return True
         except Exception:
             return False
+
+    # -- multi-tab --
+
+    def _live_pages(self) -> List[Page]:
+        if self._context is None:
+            return []
+        return [p for p in self._context.pages if not p.is_closed()]
+
+    async def tabs_list(self) -> List[Dict]:
+        """Return one entry per open tab: index, url, title, active."""
+        out: List[Dict] = []
+        for i, p in enumerate(self._live_pages()):
+            try:
+                title = await p.title()
+            except Exception:
+                title = ""
+            out.append({
+                "index": i,
+                "url": p.url,
+                "title": title,
+                "active": p is self._page,
+            })
+        return out
+
+    async def tabs_switch(self, index: int) -> bool:
+        pages = self._live_pages()
+        if index < 0 or index >= len(pages):
+            return False
+        self._page = pages[index]
+        try:
+            await self._page.bring_to_front()
+        except Exception:
+            pass
+        return True
+
+    async def tabs_close(self, index: int) -> bool:
+        pages = self._live_pages()
+        if index < 0 or index >= len(pages):
+            return False
+        target = pages[index]
+        was_active = target is self._page
+        try:
+            await target.close()
+        except Exception:
+            return False
+        if was_active:
+            remaining = self._live_pages()
+            self._page = remaining[0] if remaining else None
+            if self._page is not None:
+                try:
+                    await self._page.bring_to_front()
+                except Exception:
+                    pass
+        return True
+
+    # -- waits --
+
+    async def wait_for_text(self, text: str, timeout_s: float = 10.0) -> bool:
+        """Poll until the given text appears anywhere in the page body."""
+        try:
+            await self._page.wait_for_function(
+                "(target) => document.body && document.body.innerText.includes(target)",
+                arg=text,
+                timeout=int(timeout_s * 1000),
+            )
+            return True
+        except Exception:
+            return False
+
+    async def wait_for_request(
+        self,
+        url_substring: str,
+        method: Optional[str] = None,
+        timeout_s: float = 10.0,
+    ) -> Optional[Dict]:
+        """Wait for a request whose URL contains `url_substring` (and
+        method matches if given). Returns a dict snapshot or None on
+        timeout."""
+        method_u = method.upper() if method else None
+
+        def match(req):
+            if url_substring not in req.url:
+                return False
+            if method_u and req.method.upper() != method_u:
+                return False
+            return True
+
+        try:
+            req = await self._page.wait_for_event(
+                "request",
+                predicate=match,
+                timeout=int(timeout_s * 1000),
+            )
+        except Exception:
+            return None
+        return {
+            "url": req.url,
+            "method": req.method,
+            "resource_type": req.resource_type,
+            "post_data": req.post_data,
+        }
 
     # -- navigation --
 
