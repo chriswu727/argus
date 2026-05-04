@@ -13,7 +13,7 @@ from .models import InteractiveElement, PageState
 # JS snippet to extract visible interactive elements from the page.
 _EXTRACT_ELEMENTS_JS = """
 () => {
-    const sel = 'a, button, input, select, textarea, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [onclick], [tabindex]:not([tabindex="-1"])';
+    const sel = 'a, button, input, select, textarea, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [onclick], [tabindex]:not([tabindex="-1"]), [draggable="true"]';
     const els = document.querySelectorAll(sel);
     return Array.from(els).map((el, i) => {
         const rect = el.getBoundingClientRect();
@@ -346,6 +346,10 @@ class BrowserDriver:
         self.network_log: List[Dict] = []
         # Request-mock routes registered by the agent. {pattern: {response_dict}}.
         self._mock_routes: Dict[str, Dict] = {}
+        # JS dialog handling — agent queues a response, the handler pops one
+        # for each fired alert/confirm/prompt, falls back to auto-dismiss.
+        self._dialog_queue: List[Dict] = []
+        self._dialog_log: List[Dict] = []
 
     # -- lifecycle --
 
@@ -381,10 +385,40 @@ class BrowserDriver:
         page.on("pageerror", self._on_page_error)
         page.on("request", self._on_request)
         page.on("response", self._on_response)
+        page.on("dialog", self._on_dialog)
         try:
             page._argus_attached = True
         except Exception:
             pass
+
+    async def _on_dialog(self, dialog):
+        """Handle alert/confirm/prompt. Use the next queued response if
+        the agent set one, otherwise auto-dismiss (Playwright's default
+        behaviour, but we record it so get_errors / dialog_log surfaces
+        the silent dismissal)."""
+        spec = self._dialog_queue.pop(0) if self._dialog_queue else None
+        action = (spec or {}).get("action", "dismiss")
+        text = (spec or {}).get("text", "")
+        self._dialog_log.append({
+            "type": dialog.type,
+            "message": dialog.message,
+            "responded_with": action if spec else "auto-dismiss",
+            "text": text,
+            "timestamp": datetime.now().isoformat(),
+        })
+        try:
+            if action == "accept":
+                await dialog.accept(text)
+            else:
+                await dialog.dismiss()
+        except Exception:
+            pass
+
+    def queue_dialog_response(self, action: str, text: str = "") -> None:
+        self._dialog_queue.append({"action": action, "text": text})
+
+    def dialog_log_snapshot(self) -> List[Dict]:
+        return list(self._dialog_log)
 
     def _setup_listeners(self):
         # Back-compat shim: old call site that wired listeners onto self._page.
@@ -781,6 +815,56 @@ class BrowserDriver:
         selector = self._build_selector(el)
         try:
             await self._page.select_option(selector, value, timeout=5_000)
+            return True
+        except Exception:
+            return False
+
+    async def hover(
+        self, element_index: int, elements: List[InteractiveElement]
+    ) -> bool:
+        el = elements[element_index]
+        selector = self._build_selector(el)
+        try:
+            await self._page.hover(selector, timeout=5_000)
+            return True
+        except Exception:
+            return False
+
+    async def right_click(
+        self, element_index: int, elements: List[InteractiveElement]
+    ) -> bool:
+        el = elements[element_index]
+        selector = self._build_selector(el)
+        try:
+            await self._page.click(selector, button="right", timeout=5_000)
+            return True
+        except Exception:
+            return False
+
+    async def drag(
+        self, source_index: int, target_index: int,
+        elements: List[InteractiveElement],
+    ) -> bool:
+        src = elements[source_index]
+        tgt = elements[target_index]
+        try:
+            await self._page.drag_and_drop(
+                self._build_selector(src),
+                self._build_selector(tgt),
+                timeout=10_000,
+            )
+            return True
+        except Exception:
+            return False
+
+    async def upload_file(
+        self, element_index: int, paths: List[str],
+        elements: List[InteractiveElement],
+    ) -> bool:
+        el = elements[element_index]
+        selector = self._build_selector(el)
+        try:
+            await self._page.set_input_files(selector, paths, timeout=5_000)
             return True
         except Exception:
             return False

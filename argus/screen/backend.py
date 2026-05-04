@@ -23,6 +23,7 @@ Design choices:
 from __future__ import annotations
 
 import platform
+import re
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -674,17 +675,59 @@ class ScreenBackend:
             return False, f"drag-error: {exc}"
 
     def press_keys(self, keys: List[str]) -> Tuple[bool, str]:
-        """Press a sequence of keys in order. Each item is a cliclick
-        key name (e.g. 'return', 'esc', 'space', 'tab', 'arrow-down')
-        or a combo (e.g. 'cmd-s', 'cmd-shift-z')."""
+        """Press a sequence of keys.
+
+        Accepts both shapes the agent is likely to send:
+          ["return"]                 -> Enter
+          ["cmd-s"] or ["cmd+s"]     -> Cmd+S (combo string)
+          ["cmd", "c"]               -> Cmd+C (modifier-aware list)
+          ["cmd", "shift", "z"]      -> Cmd+Shift+Z
+          ["a", "b", "c"]            -> three separate keypresses
+
+        cliclick's `kp:` only handles printable / named keys; modifiers
+        must be wrapped in `kd:` / `ku:`. We expand combos and emit the
+        right command shape so cmd-shortcuts actually fire.
+        """
         if not keys:
             return False, "press_keys: empty key list"
+
+        expanded: List[str] = []
+        for k in keys:
+            if any(sep in k for sep in ("-", "+")):
+                expanded.extend(p for p in re.split(r"[-+]", k) if p)
+            else:
+                expanded.append(k)
+
+        modifier_aliases = {"control": "ctrl", "option": "alt"}
+        modifier_set = {"cmd", "ctrl", "alt", "shift", "fn"}
+        mods: List[str] = []
+        rest: List[str] = []
+        for k in expanded:
+            norm = modifier_aliases.get(k.lower(), k.lower())
+            if norm in modifier_set:
+                mods.append(norm)
+            else:
+                rest.append(k)
+
+        args = ["cliclick"]
+        if mods:
+            for m in mods:
+                args.append(f"kd:{m}")
+            for k in rest:
+                args.append(f"kp:{k}")
+            for m in reversed(mods):
+                args.append(f"ku:{m}")
+        else:
+            args.extend(f"kp:{k}" for k in rest)
+
         try:
-            args = ["cliclick"] + [f"kp:{k}" for k in keys]
             subprocess.run(args, capture_output=True, timeout=10, check=True)
-            return True, f"cliclick-kp:[{','.join(keys)}]"
+            return True, f"cliclick-{'+'.join(expanded)}"
         except FileNotFoundError:
             return False, "cliclick-missing (brew install cliclick)"
+        except subprocess.CalledProcessError as exc:
+            err = (exc.stderr or b"").decode(errors="replace").strip()
+            return False, f"press_keys-error: cliclick exit {exc.returncode}: {err}"
         except Exception as exc:
             return False, f"press_keys-error: {exc}"
 

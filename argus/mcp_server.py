@@ -1489,6 +1489,158 @@ async def select_into(description: str, value: str) -> str:
     return f'Selected "{value}" in "{label[:60]}".'
 
 
+# -- richer interaction primitives --
+
+@mcp.tool()
+async def hover_what(description: str) -> str:
+    """Hover the mouse over the element best matching `description`.
+
+    Real `:hover` (not synthetic): triggers tooltips, dropdown-on-hover
+    menus, hover-only action buttons. Use after the element shows up
+    in observe — for divs that observe filters out (figures, plain
+    `<div>`s with `:hover` rules), introspect via inspect_element or
+    fall back to eval_js.
+    """
+    s = _require_session()
+    if s.mode != "web" or s.browser is None:
+        return "hover_what: this tool is web-mode only."
+    el, err = _resolve_or_error(s, description)
+    if err:
+        return err
+    label = el.text or el.aria_label or el.placeholder or el.id or el.tag
+    s.steps.append(f"hover_what({description!r}) -> {label[:60]}")
+    idx = s._last_elements.index(el)
+    ok = await s.browser.hover(idx, s._last_elements)
+    if not ok:
+        return f"hover_what({description!r}) — failed (element may be off-screen or detached)."
+    return f"Hovered \"{label[:60]}\". observe() to see what just appeared."
+
+
+@mcp.tool()
+async def right_click(description: str) -> str:
+    """Right-click (button=right) the element best matching `description`.
+
+    Use for custom context menus, "Open in new tab" tests, draggable
+    handles that respond to right-click. Any context menu or alert that
+    appears as a result is handled by the dialog queue (see
+    set_dialog_handler).
+    """
+    s = _require_session()
+    if s.mode != "web" or s.browser is None:
+        return "right_click: this tool is web-mode only."
+    el, err = _resolve_or_error(s, description)
+    if err:
+        return err
+    label = el.text or el.aria_label or el.placeholder or el.id or el.tag
+    s.steps.append(f"right_click({description!r}) -> {label[:60]}")
+    idx = s._last_elements.index(el)
+    ok = await s.browser.right_click(idx, s._last_elements)
+    if not ok:
+        return f"right_click({description!r}) — failed."
+    return f"Right-clicked \"{label[:60]}\". observe() to see the menu / new state."
+
+
+@mcp.tool()
+async def drag_what(from_description: str, to_description: str) -> str:
+    """Drag the element matching `from_description` onto `to_description`.
+
+    Wraps Playwright's `page.drag_and_drop` (real mouse events — works
+    for both HTML5 DnD and Sortable.js / dnd-kit / react-beautiful-dnd
+    style mousedown+mousemove). Both endpoints must be visible in
+    observe(); for `[draggable="true"]` divs that's automatic, for
+    other element types the agent may need to scroll first.
+    """
+    s = _require_session()
+    if s.mode != "web" or s.browser is None:
+        return "drag_what: this tool is web-mode only."
+    src, err = _resolve_or_error(s, from_description)
+    if err:
+        return f"drag_what(from): {err}"
+    tgt, err = _resolve_or_error(s, to_description)
+    if err:
+        return f"drag_what(to): {err}"
+    src_label = src.text or src.id or src.tag
+    tgt_label = tgt.text or tgt.id or tgt.tag
+    s.steps.append(f"drag_what({from_description!r} -> {to_description!r})")
+    src_idx = s._last_elements.index(src)
+    tgt_idx = s._last_elements.index(tgt)
+    ok = await s.browser.drag(src_idx, tgt_idx, s._last_elements)
+    if not ok:
+        return (
+            f"drag_what({from_description!r} -> {to_description!r}) — failed. "
+            f"The source may not actually be draggable, or the target may be "
+            f"off-screen."
+        )
+    return f'Dragged "{src_label[:40]}" onto "{tgt_label[:40]}". observe() to verify.'
+
+
+@mcp.tool()
+async def upload_file(description: str, paths: list) -> str:
+    """Attach one or more local files to the file `<input>` matching
+    `description`.
+
+    Wraps Playwright's `set_input_files` — works on both visible and
+    hidden file inputs (most modern UIs hide the real input behind a
+    styled label). For drag-drop upload zones that don't have an
+    underlying `<input type=file>`, this won't work; those need a
+    real drag.
+
+    Args:
+        description: Match the file input. "file", "upload", or the
+                     visible label text.
+        paths: List of absolute paths to files to attach. Single file:
+               pass a one-element list.
+    """
+    s = _require_session()
+    if s.mode != "web" or s.browser is None:
+        return "upload_file: this tool is web-mode only."
+    if not paths:
+        return "upload_file: paths is empty."
+    el, err = _resolve_or_error(s, description, kind_filter="input")
+    if err:
+        return err
+    if (el.type or "").lower() != "file":
+        return (
+            f"upload_file: matched element is `<input type={el.type!r}>`, "
+            f"not a file input. Pass a description that matches the file "
+            f"input specifically."
+        )
+    s.steps.append(f"upload_file({description!r}, {len(paths)} file(s))")
+    idx = s._last_elements.index(el)
+    ok = await s.browser.upload_file(idx, paths, s._last_elements)
+    if not ok:
+        return f"upload_file({description!r}) — failed."
+    return f"Attached {len(paths)} file(s) to {description!r}: {', '.join(paths)}"
+
+
+@mcp.tool()
+async def set_dialog_handler(action: str = "accept", text: str = "") -> str:
+    """Queue a response for the next JS `alert` / `confirm` / `prompt`.
+
+    Playwright's default is to auto-dismiss every dialog, which means
+    `confirm()` always sees Cancel and `prompt()` always sees null.
+    Call this BEFORE the click that triggers the dialog so the agent
+    actually controls OK vs Cancel and the prompt input value.
+
+    Args:
+        action: "accept" (OK) or "dismiss" (Cancel).
+        text: For prompt(), the text to type before accepting. Ignored
+              for alert/confirm.
+    """
+    s = _require_session()
+    if s.mode != "web" or s.browser is None:
+        return "set_dialog_handler: this tool is web-mode only."
+    if action not in ("accept", "dismiss"):
+        return "set_dialog_handler: action must be 'accept' or 'dismiss'."
+    s.browser.queue_dialog_response(action, text)
+    s.steps.append(f"set_dialog_handler({action!r}, text={text!r})")
+    return (
+        f"Next dialog will be {action}ed"
+        + (f" with text {text!r}" if text else "")
+        + ". Trigger the action that fires the dialog now."
+    )
+
+
 @mcp.tool()
 async def inspect_element(description: str) -> str:
     """Get computed styles, ARIA metadata, and outerHTML for one element.
