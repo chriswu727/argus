@@ -77,11 +77,17 @@ def kind_of(el: InteractiveElement) -> str:
 
 def split_description(desc: str) -> Tuple[str, Optional[str]]:
     """Strip stopwords and a trailing kind-hint, return (core, kind_hint)."""
-    words = [w for w in desc.lower().strip().split() if w and w not in _STOPWORDS]
+    raw = [w for w in desc.lower().strip().split() if w]
     kind: Optional[str] = None
-    if words and words[-1] in _KIND_HINTS:
-        kind = _KIND_HINTS[words[-1]]
-        words = words[:-1]
+    if raw and raw[-1] in _KIND_HINTS:
+        kind = _KIND_HINTS[raw[-1]]
+        raw = raw[:-1]
+    words = [w for w in raw if w not in _STOPWORDS]
+    if not words:
+        # Stopword filter ate everything — preserve the raw tokens. A
+        # one-letter button labelled "A" or a heading "The" are real
+        # labels that the agent will reasonably pass verbatim.
+        words = raw
     return " ".join(words), kind
 
 
@@ -177,6 +183,13 @@ def resolve_element(
             pool = filtered  # may end up empty — that's the caller's choice
         else:
             pool = filtered or elements
+
+    # Kind-only call: the description was just a kind word ("dropdown",
+    # "button", "the textbox") and after stripping it `core` is empty.
+    # If the kind filter narrowed the pool to exactly one element, the
+    # agent's intent is unambiguous — pick it.
+    if not core and effective_kind and len(pool) == 1:
+        return ResolveResult(found=pool[0], candidates=[(100, pool[0])], reason="unique")
 
     scored: List[Tuple[int, InteractiveElement]] = []
     for el in pool:
