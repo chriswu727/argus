@@ -11,6 +11,7 @@ the top candidates so the agent can rephrase rather than misclick.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
@@ -52,8 +53,42 @@ _KIND_HINTS = {
     "menu": "select",
 }
 
-# Filler words to drop from descriptions before scoring.
-_STOPWORDS = {"the", "a", "an", "this", "that", "in", "on", "of"}
+# Filler words to drop from descriptions before scoring. Includes
+# row-scoping scaffolding ("the Delete in the Buy-groceries row", "Delete
+# button for Buy groceries") — the tester's connective words, not content.
+_STOPWORDS = {
+    "the", "a", "an", "this", "that", "in", "on", "of",
+    "row", "rows", "item", "entry", "near", "for", "with",
+    "named", "labeled", "labelled", "containing",
+}
+
+_ORDINAL_WORDS = {
+    "first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5,
+    "sixth": 6, "seventh": 7, "eighth": 8, "ninth": 9, "tenth": 10,
+}
+
+
+def extract_ordinal(desc: str) -> Tuple[str, Optional[int]]:
+    """Pull a positional selector out of a description, return (rest, n).
+
+    Lets a tester pick among identical labels by position the way a human
+    would: "Delete #2", "the 2nd Delete", "third Edit button". Returns the
+    description with the ordinal removed and the 1-based index, or (desc,
+    None) when there's no ordinal.
+    """
+    d = desc.strip()
+    m = re.search(r"#\s*(\d+)\s*$", d)
+    if m:
+        return d[:m.start()].strip(), int(m.group(1))
+    m = re.search(r"\b(\d+)(?:st|nd|rd|th)\b", d, re.IGNORECASE)
+    if m:
+        return (d[:m.start()] + d[m.end():]).strip(), int(m.group(1))
+    toks = d.split()
+    if len(toks) > 1:  # a lone "second" is a label, not a position
+        for i, t in enumerate(toks):
+            if t.lower() in _ORDINAL_WORDS:
+                return " ".join(toks[:i] + toks[i + 1:]).strip(), _ORDINAL_WORDS[t.lower()]
+    return d, None
 
 
 def kind_of(el: InteractiveElement) -> str:
@@ -79,9 +114,13 @@ def split_description(desc: str) -> Tuple[str, Optional[str]]:
     """Strip stopwords and a trailing kind-hint, return (core, kind_hint)."""
     raw = [w for w in desc.lower().strip().split() if w]
     kind: Optional[str] = None
-    if raw and raw[-1] in _KIND_HINTS:
-        kind = _KIND_HINTS[raw[-1]]
-        raw = raw[:-1]
+    # A kind word can sit anywhere ("Submit button", "the Delete button for
+    # X"), not just at the end. Consume the first one as the kind signal.
+    for i, w in enumerate(raw):
+        if w in _KIND_HINTS:
+            kind = _KIND_HINTS[w]
+            raw = raw[:i] + raw[i + 1:]
+            break
     words = [w for w in raw if w not in _STOPWORDS]
     if not words:
         # Stopword filter ate everything — preserve the raw tokens. A
@@ -129,16 +168,26 @@ def _score(el: InteractiveElement, core: str) -> int:
     if core in id_:
         score = max(score, 20)
 
-    # Word-set match: all core words present. Prefer the visible surface;
-    # only fall back to internal attrs (name/id/parent) at a barely-there
-    # weight, so attribute leakage can't masquerade as a strong match.
+    # Word-set match: all core words present, tiered by WHERE they land.
+    #  - all on the element's own face (text/aria/placeholder) -> strong.
+    #  - some on the element's face + the rest in its row context (parent):
+    #    a targeted row-scoped match. "Delete Buy groceries" puts "delete"
+    #    on the button's own face and "buy groceries" in its row, so the
+    #    Delete in the Buy-groceries row beats both its row-mates (Edit,
+    #    whose face says "edit") and the same Delete in other rows (whose
+    #    rows lack "buy groceries"). Reward the words the element itself
+    #    carries so the right control in the right row wins.
+    #  - only in internal attrs / row, nothing on the face -> barely there
+    #    (Round 2 anti-leak: an id/parent substring must not pose as real).
     core_words = [w for w in core.split() if len(w) >= 2]
     if core_words:
         visible = " ".join([text, aria, placeholder])
+        extended = " ".join([visible, name, id_, parent])
         if all(w in visible for w in core_words):
             score = max(score, 50)
-        elif all(w in " ".join([visible, name, id_, parent]) for w in core_words):
-            score = max(score, 22)
+        elif all(w in extended for w in core_words):
+            own_hits = sum(1 for w in core_words if w in visible)
+            score = max(score, 44 + 8 * own_hits if own_hits else 22)
 
     if core in parent:
         score = max(score, 30)
@@ -181,6 +230,7 @@ def resolve_element(
     if not elements:
         return ResolveResult(found=None, candidates=[], reason="no_elements")
 
+    description, ordinal = extract_ordinal(description)
     core, hinted_kind = split_description(description)
     effective_kind = kind_filter or hinted_kind
 
@@ -211,6 +261,18 @@ def resolve_element(
     scored.sort(key=lambda pair: -pair[0])
     top_score = scored[0][0]
     runner_up = scored[1][0] if len(scored) > 1 else 0
+
+    # Positional pick: "Delete #2" resolves the base label, then selects the
+    # Nth top-scoring match in document order. This is the deterministic
+    # escape hatch for N identical controls (lists, tables) — exactly the
+    # case where scoring alone can only report "ambiguous".
+    if ordinal is not None:
+        band = [el for sc, el in scored if sc == top_score]
+        band.sort(key=lambda el: el.index)
+        if 1 <= ordinal <= len(band):
+            return ResolveResult(found=band[ordinal - 1],
+                                 candidates=[(top_score, band[ordinal - 1])], reason="unique")
+        return ResolveResult(found=None, candidates=scored[:5], reason="ambiguous")
 
     if len(scored) == 1 or top_score >= runner_up + 15:
         return ResolveResult(found=scored[0][1], candidates=scored[:3], reason="unique")

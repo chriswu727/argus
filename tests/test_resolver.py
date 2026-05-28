@@ -114,6 +114,68 @@ def test_visible_match_beats_id_attribute_leak():
     assert r.found is els[0]
 
 
+def _row(idx, title, label, tag="button"):
+    """One control inside a task card. parent_context is the WHOLE card's
+    text — including sibling controls — exactly as the browser extracts it.
+    This is what made naive word-set matching collide across a row."""
+    el = make_element(idx, tag=tag, text=label)
+    el.parent_context = f"{title} high 1.0 days ago Edit Delete"
+    return el
+
+
+def test_row_scoped_match_picks_the_right_rows_control():
+    # Two task cards, each with Edit + Delete. "Delete Buy groceries" must
+    # land on the Delete in the Buy-groceries row — not its row-mate Edit
+    # (whose card text also contains the word "Delete"), nor the Delete in
+    # the other row (whose card lacks "Buy groceries").
+    els = [
+        _row(0, "Buy groceries", "Edit"),
+        _row(1, "Buy groceries", "Delete"),
+        _row(2, "Fix login page CSS", "Edit"),
+        _row(3, "Fix login page CSS", "Delete"),
+    ]
+    r = resolve_element("Delete Buy groceries", els)
+    assert r.reason == "unique"
+    assert r.found is els[1]
+    # Natural tester scaffolding ("in the ... row") must not break the match.
+    r2 = resolve_element("Delete in the Buy groceries row", els)
+    assert r2.reason == "unique"
+    assert r2.found is els[1]
+
+
+def test_ordinal_selects_nth_identical_control():
+    els = [make_element(i, tag="button", text="Delete") for i in range(5)]
+    r = resolve_element("Delete #2", els)
+    assert r.reason == "unique"
+    assert r.found is els[1]  # 1-based: #2 -> index 1
+    r2 = resolve_element("the 3rd Delete", els)
+    assert r2.reason == "unique"
+    assert r2.found is els[2]
+
+
+def test_ordinal_out_of_range_is_ambiguous():
+    els = [make_element(i, tag="button", text="Delete") for i in range(3)]
+    r = resolve_element("Delete #9", els)
+    assert r.reason == "ambiguous"
+    assert r.found is None
+
+
+def test_lone_ordinal_word_stays_a_label():
+    # "second" alone is the label, not a position selector.
+    els = [make_element(0, tag="button", text="Second"), make_element(1, tag="button", text="First")]
+    r = resolve_element("Second", els)
+    assert r.reason == "unique"
+    assert r.found is els[0]
+
+
+def test_extract_ordinal_forms():
+    from argus.resolver import extract_ordinal
+    assert extract_ordinal("Delete #2") == ("Delete", 2)
+    assert extract_ordinal("the 3rd Edit") == ("the  Edit", 3)
+    assert extract_ordinal("second Delete button") == ("Delete button", 2)
+    assert extract_ordinal("Delete") == ("Delete", None)
+
+
 def test_kind_of_categorises_correctly():
     assert kind_of(make_element(0, tag="a")) == "link"
     assert kind_of(make_element(0, tag="button")) == "button"
