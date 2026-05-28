@@ -11,16 +11,26 @@ from typing import Dict, List, Optional, Tuple
 from .models import InteractiveElement, PageState
 
 # JS snippet to extract visible interactive elements from the page.
+# Walks open shadow roots too: querySelectorAll does not cross shadow
+# boundaries, so a plain document query is blind to Web Components. We
+# recurse into every reachable open shadowRoot and tag those elements
+# with shadow:true (the resolver/selector layer needs to know, because
+# Playwright's :has-text engine doesn't pierce shadow — see _build_selector).
 _EXTRACT_ELEMENTS_JS = """
 () => {
     const sel = 'a, button, input, select, textarea, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [onclick], [tabindex]:not([tabindex="-1"]), [draggable="true"]';
-    const els = document.querySelectorAll(sel);
-    return Array.from(els).map((el, i) => {
+    const MAX = 400;
+    const out = [];
+    const seen = new Set();
+
+    function record(el, inShadow) {
+        if (seen.has(el)) return;
+        seen.add(el);
         const rect = el.getBoundingClientRect();
         const style = window.getComputedStyle(el);
-        if (rect.width === 0 || rect.height === 0 || style.display === 'none' || style.visibility === 'hidden') return null;
-        return {
-            index: i,
+        if (rect.width === 0 || rect.height === 0 || style.display === 'none' || style.visibility === 'hidden') return;
+        out.push({
+            index: out.length,
             tag: el.tagName.toLowerCase(),
             type: el.type || null,
             text: (el.textContent || '').trim().slice(0, 100) || null,
@@ -33,8 +43,21 @@ _EXTRACT_ELEMENTS_JS = """
             name: el.name || null,
             id: el.id || null,
             parent_context: (el.closest('li, tr, .card, .list-item, [class*="item"], [class*="row"]') || {}).textContent?.trim()?.slice(0, 200) || null,
-        };
-    }).filter(Boolean);
+            shadow: inShadow,
+        });
+    }
+
+    function walk(root, inShadow) {
+        if (out.length >= MAX) return;
+        root.querySelectorAll(sel).forEach(el => { if (out.length < MAX) record(el, inShadow); });
+        // Descend into open shadow roots hosted anywhere under this root.
+        root.querySelectorAll('*').forEach(node => {
+            if (out.length < MAX && node.shadowRoot) walk(node.shadowRoot, true);
+        });
+    }
+
+    walk(document, false);
+    return out;
 }
 """
 
@@ -963,6 +986,11 @@ class BrowserDriver:
             return f'{el.tag}[role="{el.role}"]'
         if el.text and el.tag in ("a", "button"):
             text_escaped = el.text[:50].replace('"', '\\"')
+            # :has-text doesn't pierce shadow DOM; the standalone text engine
+            # does. Use the piercing form only for shadow elements so the
+            # light-DOM path keeps its proven substring semantics.
+            if el.shadow:
+                return f'{el.tag} >> text="{text_escaped}"'
             return f'{el.tag}:has-text("{text_escaped}")'
         # Last resort: tag + type
         if el.type and el.tag == "input":

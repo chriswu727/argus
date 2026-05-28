@@ -60,6 +60,7 @@ class InteractiveElement:
     name: Optional[str] = None
     id: Optional[str] = None
     parent_context: Optional[str] = None
+    shadow: bool = False  # element lives inside an open shadow root
 
 
 @dataclass
