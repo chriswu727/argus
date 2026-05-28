@@ -100,6 +100,20 @@ def test_stopwords_dont_block_match():
     assert r.found is els[0]
 
 
+def test_visible_match_beats_id_attribute_leak():
+    # els[1]'s id contains "email" but nothing a user sees does. The real
+    # field exposes "email" in its placeholder. A visible/placeholder hit
+    # must win decisively — an internal id substring must not drag the
+    # result into ambiguity (regression for the W-09/W-19 attr leak).
+    els = [
+        make_element(0, tag="input", type="text", placeholder="Enter your email"),
+        make_element(1, tag="input", type="text", id="email-confirm-wrapper"),
+    ]
+    r = resolve_element("email", els)
+    assert r.reason == "unique"
+    assert r.found is els[0]
+
+
 def test_kind_of_categorises_correctly():
     assert kind_of(make_element(0, tag="a")) == "link"
     assert kind_of(make_element(0, tag="button")) == "button"
