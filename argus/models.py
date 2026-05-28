@@ -107,6 +107,9 @@ class Bug:
     network_logs: List[Dict] = field(default_factory=list)
     timestamp: datetime = field(default_factory=datetime.now)
     raw_error: Optional[str] = None
+    # Independent re-check of the bug's observable symptom from a clean load.
+    # None = no machine-checkable symptom supplied (observation/visual finding).
+    reproduction_receipt: Optional[Dict] = None
 
 
 @dataclass

@@ -36,6 +36,27 @@ def _esc(text: str) -> str:
     )
 
 
+def _repro_badge(receipt: Optional[dict]) -> str:
+    """Render the reproduction receipt as a small inline badge on a bug card.
+
+    Empty string when there's no receipt — most bugs are observation-based
+    and shouldn't carry a misleading 'unverified' mark.
+    """
+    if not receipt or not receipt.get("attempted"):
+        return ""
+    reproduced = receipt.get("reproduced")
+    if reproduced is True:
+        color, label = "#1a7f37", f"VERIFIED · reproduced {receipt.get('runs', '')} from clean load"
+    elif reproduced is False:
+        if receipt.get("flaky"):
+            color, label = "#9a6700", f"FLAKY · only {receipt.get('runs', '')} on reload"
+        else:
+            color, label = "#b35900", "UNCONFIRMED · symptom did not hold on clean reload"
+    else:
+        color, label = "#6e7781", "repro check errored"
+    return (f'<span class="rp" style="background:{color}">{_esc(label)}</span>')
+
+
 def _embed_image(path: str) -> Optional[str]:
     """Read an image file and return a base64 data URI."""
     p = Path(path)
@@ -106,10 +127,11 @@ class Reporter:
                     data_uri = _embed_image(bug.screenshot_path)
                     if data_uri:
                         ss = f'<img src="{data_uri}" class="ss" alt="Bug screenshot">'
+                repro = _repro_badge(bug.reproduction_receipt)
 
                 cards += f"""<div class="bc">
 <div class="bh"><span class="sv" style="background:{_SEVERITY_COLORS[sev]}">{sev.value.upper()}</span>
-<span class="bt">{_BUGTYPE_LABELS.get(bug.type, bug.type.value)}</span></div>
+<span class="bt">{_BUGTYPE_LABELS.get(bug.type, bug.type.value)}</span>{repro}</div>
 <h3>{_esc(bug.title)}</h3>
 <p>{_esc(bug.description)}</p>
 <div class="bu">URL: {_esc(bug.url)}</div>
@@ -159,6 +181,7 @@ h3{{font-size:1.1rem;margin:.5rem 0;color:#f1f5f9}}
 .bc{{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:1.2rem;margin-bottom:1rem;overflow:hidden;word-break:break-word}}
 .bh{{display:flex;gap:.5rem;align-items:center;margin-bottom:.5rem}}
 .bt{{color:#64748b;font-size:.85rem}}
+.rp{{color:#fff;padding:2px 8px;border-radius:4px;font-size:.72rem;font-weight:600;margin-left:auto}}
 .bu{{color:#64748b;font-size:.85rem;margin:.5rem 0}}
 .st ol{{margin:.5rem 0 .5rem 1.5rem;color:#cbd5e1;word-break:break-word}}
 .st li{{margin:.2rem 0}}
