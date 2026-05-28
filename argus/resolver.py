@@ -121,16 +121,24 @@ def _score(el: InteractiveElement, core: str) -> int:
         score = max(score, 65 + min(15, len(core)))
     if core in placeholder:
         score = max(score, 60 + min(15, len(core)))
+    # id/name are internal identifiers, not what a user sees. They earn a
+    # token presence so a label-less form field is still reachable, but at
+    # a weight that can never outrank a real visible/aria/placeholder hit.
     if core in name:
-        score = max(score, 55)
+        score = max(score, 22)
     if core in id_:
-        score = max(score, 53)
+        score = max(score, 20)
 
-    # Word-set match: all core words appear somewhere on the element.
-    haystack = " ".join([text, aria, placeholder, name, id_, parent])
+    # Word-set match: all core words present. Prefer the visible surface;
+    # only fall back to internal attrs (name/id/parent) at a barely-there
+    # weight, so attribute leakage can't masquerade as a strong match.
     core_words = [w for w in core.split() if len(w) >= 2]
-    if core_words and all(w in haystack for w in core_words):
-        score = max(score, 50)
+    if core_words:
+        visible = " ".join([text, aria, placeholder])
+        if all(w in visible for w in core_words):
+            score = max(score, 50)
+        elif all(w in " ".join([visible, name, id_, parent]) for w in core_words):
+            score = max(score, 22)
 
     if core in parent:
         score = max(score, 30)
@@ -139,13 +147,13 @@ def _score(el: InteractiveElement, core: str) -> int:
 
 
 def _kind_compatible(el_kind: str, kind_filter: str) -> bool:
-    """Is an element's kind acceptable under a kind filter?"""
-    if el_kind == kind_filter:
-        return True
-    # Buttons and submit-like inputs can absorb each other.
-    if {el_kind, kind_filter} <= {"button", "input"}:
-        return False
-    return False
+    """Is an element's kind acceptable under a kind filter?
+
+    Submit/button-type inputs are already normalised to kind "button" by
+    kind_of, so an exact match is all we need: a text input must not
+    satisfy a "button" filter, nor a button an "input" filter.
+    """
+    return el_kind == kind_filter
 
 
 def resolve_element(
