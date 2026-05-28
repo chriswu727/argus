@@ -21,6 +21,7 @@ import asyncio
 import os
 from pathlib import Path
 from typing import List, Optional
+from urllib.parse import urljoin
 
 from mcp.server.fastmcp import FastMCP
 
@@ -210,6 +211,22 @@ async def _auto_screenshot(s: Session, name: str, step: str) -> str:
     return path
 
 
+def _resolve_url(s: "Session", url: str) -> str:
+    """Resolve a possibly-relative URL against the current page.
+
+    Playwright's goto rejects bare paths like "/tasks"; agents (and our own
+    docstrings) routinely pass them. Join against the live page origin.
+    """
+    if url.startswith(("http://", "https://")):
+        return url
+    base = ""
+    if s.browser is not None and s.browser._page is not None:
+        base = s.browser._page.url
+    if not url:
+        return base
+    return urljoin(base, url) if base else url
+
+
 def _text_in_state(text: str, state: PageState) -> bool:
     """Check if text exists anywhere in page — page_text, elements, or item_lists."""
     text_lower = text.lower().strip()
@@ -227,6 +244,78 @@ def _text_in_state(text: str, state: PageState) -> bool:
             if text_lower in item.lower():
                 return True
     return False
+
+
+async def _run_reproduction_check(s: "Session", verify: dict) -> dict:
+    """Independently re-confirm a bug's observable symptom from a clean load.
+
+    The agent's current page may be stale or reflect a hallucinated element.
+    This re-navigates (fresh GET, no cached DOM) to the relevant URL and
+    checks present/absent against the agent's claim — twice, so a symptom
+    that only shows up once is flagged flaky rather than reported as solid.
+    We do NOT reset the fixture: that would wipe the agent's live session.
+    "Clean load" here means re-reading server truth, which is exactly what
+    exposes fake-persistence and hallucinated-element false positives.
+
+    Returns a receipt dict; never raises.
+    """
+    expect = (verify.get("expect") or "").strip().lower()
+    target = (verify.get("target_text") or verify.get("target") or "").strip()
+    at_url = (verify.get("at_url") or verify.get("after_url") or "").strip()
+
+    if expect not in ("present", "absent") or not target:
+        return {"attempted": False,
+                "reason": "verify needs expect in {present, absent} and a non-empty target_text"}
+    if s.mode != "web" or s.browser is None or s.browser._page is None:
+        return {"attempted": False,
+                "reason": "reproduction re-check is only available in web mode"}
+
+    restore_url = s.browser._page.url
+    nav_url = _resolve_url(s, at_url) if at_url else restore_url
+    observations = []
+    try:
+        for _ in range(2):
+            await s.browser.goto(nav_url)
+            state = await s.browser.get_state()
+            observations.append(_text_in_state(target, state))
+    except Exception as e:  # navigation/render failure — report, don't crash record_bug
+        return {"attempted": True, "reproduced": None, "at_url": nav_url,
+                "error": str(e)[:200]}
+    finally:
+        # Best-effort: return the agent to where it was so record_bug isn't a
+        # surprise navigation mid-flow.
+        try:
+            if s.browser._page is not None and s.browser._page.url != restore_url:
+                await s.browser.goto(restore_url)
+                s._last_elements = (await s.browser.get_state()).elements
+        except Exception:
+            pass
+
+    receipt = _receipt_verdict(observations, expect)
+    receipt.update({
+        "method": "fresh-load symptom re-check (server truth, no fixture reset)",
+        "target_text": target[:120],
+        "at_url": nav_url,
+        "observed_present": observations,
+    })
+    return receipt
+
+
+def _receipt_verdict(observations: list, expect: str) -> dict:
+    """Pure verdict from a list of present/absent observations vs the claim.
+
+    reproduced = every run matched the claim; flaky = some but not all did.
+    """
+    matches = [(p and expect == "present") or (not p and expect == "absent")
+               for p in observations]
+    hits = sum(1 for m in matches if m)
+    return {
+        "attempted": True,
+        "reproduced": bool(matches) and all(matches),
+        "flaky": 0 < hits < len(matches),
+        "runs": f"{hits}/{len(matches)}",
+        "expect": expect,
+    }
 
 
 async def _capture_browser_events(
@@ -2540,6 +2629,7 @@ async def record_bug(
     title: str,
     severity: str,
     evidence: Optional[dict] = None,
+    verify: Optional[dict] = None,
 ) -> str:
     """Record a confirmed bug you have identified during testing.
 
@@ -2555,6 +2645,23 @@ async def record_bug(
                   HIGH = data loss / security / payment / blocked flow.
                   MEDIUM = workflow friction / confusing UX / cross-page bug.
                   LOW = polish / suggestion-grade.
+        verify: Optional reproduction clause. When the bug has a
+            machine-checkable symptom (something present/absent on a fresh
+            page load), pass it and Argus will INDEPENDENTLY re-load the
+            page and confirm the symptom before recording — turning the
+            bug into a verified, reproducible finding instead of your
+            unverified say-so. This is Argus's anti-false-positive guard;
+            use it whenever the symptom is text-checkable. Shape:
+                {"expect": "present"|"absent",
+                 "target_text": "the text that proves the bug",
+                 "at_url": "/path"}   # optional, defaults to current page
+            Examples:
+              - Fake delete (item survives): {"expect":"present",
+                "target_text":"Buy groceries","at_url":"/tasks"}
+              - Save didn't persist (new value missing): {"expect":"absent",
+                "target_text":"EDITED-XYZ","at_url":"/tasks/1/edit"}
+            Omit for visual/layout/UX-judgment bugs that no single text
+            check captures — those record as observation-based findings.
         evidence: Optional dict with extra context. Recommended keys:
             description (str): Longer explanation including user impact.
                 Default = same as title.
@@ -2623,6 +2730,8 @@ async def record_bug(
         label = "".join(c if c.isalnum() else "_" for c in screenshot_directive.lower())[:40]
         screenshot_path = await _auto_screenshot(s, label, f"record_bug: {title[:60]}")
 
+    receipt = await _run_reproduction_check(s, verify) if verify else None
+
     bug = Bug(
         type=bug_type,
         severity=sev,
@@ -2631,6 +2740,7 @@ async def record_bug(
         url=url,
         steps_to_reproduce=list(steps),
         screenshot_path=screenshot_path,
+        reproduction_receipt=receipt,
     )
     s.bugs.append(bug)
     s.steps.append(f"record_bug: [{sev.value}] {title}")
@@ -2646,6 +2756,22 @@ async def record_bug(
     ]
     if screenshot_path:
         out.append(f"  screenshot: {screenshot_path}")
+    if receipt is not None:
+        if not receipt.get("attempted"):
+            out.append(f"  reproduction: not run — {receipt.get('reason', 'n/a')}")
+        elif receipt.get("reproduced") is True:
+            out.append(
+                f"  reproduction: CONFIRMED {receipt['runs']} from clean load "
+                f"({receipt['expect']} {receipt['target_text']!r} @ {receipt['at_url']})"
+            )
+        elif receipt.get("reproduced") is False:
+            tag = "FLAKY" if receipt.get("flaky") else "NOT REPRODUCED"
+            out.append(
+                f"  reproduction: {tag} {receipt['runs']} on clean reload — "
+                f"the symptom you reported did not hold up. Re-check before trusting this."
+            )
+        else:  # None — error during check
+            out.append(f"  reproduction: check errored — {receipt.get('error', 'unknown')}")
     out.append(f"  total bugs in session: {len(s.bugs)}")
     return "\n".join(out)
 
@@ -2691,7 +2817,7 @@ async def verify_persistence(
     s.steps.append(f'verify_persistence({expect_norm}, {target_text[:60]!r})')
 
     current_url = s.browser._page.url if s.browser._page else ""
-    nav_url = after_url or current_url
+    nav_url = _resolve_url(s, after_url) if after_url else current_url
     await s.browser.goto(nav_url)
     after_state = await s.browser.get_state()
     s._last_elements = after_state.elements
