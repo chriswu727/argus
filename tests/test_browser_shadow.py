@@ -62,6 +62,23 @@ async def test_observe_pierces_open_shadow_dom():
             assert by_text[label].shadow is True
 
 
+def test_build_selector_handles_multiline_and_special_chars():
+    """A card link's textContent is multi-line and full of CSS-hostile chars
+    ("[no image]\\n Name\\n $9.99"). The built selector must not contain a raw
+    newline (CSS BADSTRING) — regression for a real click failure found while
+    dogfooding the shop fixture."""
+    from argus.browser import BrowserDriver
+    el = InteractiveElement(
+        index=0, tag="a",
+        text="[no image]\n            Wireless Headphones\n            $89.99-50%$89.99",
+    )
+    sel = BrowserDriver._build_selector(el)
+    assert "\n" not in sel
+    assert sel.startswith("a:has-text(")
+    # the human-meaningful product name survives into the substring
+    assert "Wireless Headphones" in sel
+
+
 async def test_shadow_elements_are_actionable():
     """Every surfaced shadow element must produce a selector that clicks it —
     no 'visible but unreachable' half-feature. Text-only is the hard case:

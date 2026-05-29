@@ -985,7 +985,14 @@ class BrowserDriver:
         if el.role:
             return f'{el.tag}[role="{el.role}"]'
         if el.text and el.tag in ("a", "button"):
-            text_escaped = el.text[:50].replace('"', '\\"')
+            # textContent can be multi-line and carry CSS-hostile chars — a
+            # card link wraps "[no image]\n Name\n $9.99\n ...". A raw newline
+            # inside a CSS string literal is a parse error (BADSTRING), so
+            # collapse whitespace to a single line, then escape backslash and
+            # quote. has-text matches a (whitespace-normalised) substring, so
+            # a clean leading chunk still resolves the element.
+            snippet = " ".join(el.text.split())[:50]
+            text_escaped = snippet.replace("\\", "\\\\").replace('"', '\\"')
             # :has-text doesn't pierce shadow DOM; the standalone text engine
             # does. Use the piercing form only for shadow elements so the
             # light-DOM path keeps its proven substring semantics.
