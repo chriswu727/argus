@@ -75,9 +75,15 @@ async def _session_on_page(html: str):
     f.close()
     url = Path(f.name).as_uri()
     try:
-        await m.start_session.fn(url) if hasattr(m.start_session, "fn") else await m.start_session(url)
+        res = await (m.start_session.fn(url) if hasattr(m.start_session, "fn")
+                     else m.start_session(url))
     except Exception as exc:
         pytest.skip(f"Chromium/session unavailable: {exc}")
+    # start_session reports a failed browser launch as a string, not an
+    # exception — skip on that too, so the suite degrades gracefully when
+    # no Chromium build matches the installed Playwright.
+    if not m._session.active:
+        pytest.skip(f"Chromium/session unavailable: {res}")
     return url
 
 

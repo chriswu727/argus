@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  test-and-bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package (with dev extras)
+        run: pip install -e ".[dev]"
+
+      - name: Install Chromium for Playwright
+        # --with-deps pulls the OS libs Chromium needs on a clean runner,
+        # and Playwright fetches the browser build matching the installed
+        # version — no manual pinning, no version-mismatch surprises.
+        run: python -m playwright install --with-deps chromium
+
+      - name: Unit tests
+        run: python -m pytest -q
+
+      - name: Start fixtures
+        run: |
+          python test-site/app.py &
+          python human-eye-fixture/app.py &
+          # Wait for both fixtures' /api/test/state to answer before benching.
+          for url in http://127.0.0.1:5555 http://127.0.0.1:5556; do
+            for i in $(seq 1 30); do
+              curl -sf "$url/api/test/state" >/dev/null && break
+              sleep 1
+            done
+          done
+
+      - name: Bench — fails unless every target is 100 % recall
+        # `python -m argus.bench` exits non-zero if any fixture misses a
+        # single seeded bug, so this step is the 34 / 34 gate.
+        run: |
+          python -m argus.bench --target all \
+            --json bench-results/ci-matrix.json \
+            --md   bench-results/ci-matrix.md
+
+      - name: Upload bench artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-matrix
+          path: bench-results/ci-matrix.*
