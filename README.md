@@ -135,6 +135,9 @@ exercises the same MCP tools an LLM agent would call. We're answering
 *"what's findable through this surface?"* — separate from
 *"how often does any specific LLM remember to call the right tool?"*
 
+That second question — the **variance on top of the ceiling** — is what
+[live bench mode](#live-bench-mode-real-llm-driving) measures.
+
 ### BuggyTasks (mechanical bugs)
 
 22 seeded bugs in a small task-management app: console errors, dead
@@ -196,6 +199,40 @@ The script is read-only — it does not click, type, or move the mouse.
 Output element counts vary by app: simple system apps expose a few
 items at the menu-bar level; richer apps (browsers, IDEs) typically
 expose tens to hundreds.
+
+### Live bench mode (real LLM driving)
+
+The scripted matrix is a *ceiling*: it shows what the tool surface makes
+findable. It does **not** show how much of that ceiling a given model
+reaches on its own judgement. Live mode answers that — hand a real LLM
+the exact same web-mode tools and role-instruction block the MCP server
+ships, let it test the fixture freely until it calls `end_session`, then
+score it:
+
+```bash
+export ANTHROPIC_API_KEY=...        # or OPENAI_API_KEY, etc.
+python -m argus.bench --target all \
+    --agent anthropic/claude-sonnet-4-6 \
+    --max-turns 40 \
+    --json bench-results/live-matrix.json
+```
+
+How it works:
+
+- **Drive** — the model is given the allow-listed web tools (`observe`,
+  `click_what`, `verify_persistence`, `record_bug`, …) as function
+  schemas pulled straight from the MCP server, and the *same* role prompt
+  a real Claude Code / Cursor session loads. It is **not** given `eval_js`
+  — live mode is black-box, from the user's side of the screen.
+- **Judge** — because the model roams free, its bug titles won't
+  keyword-match the seeded list. An LLM-as-judge maps each reported bug
+  onto at most one seeded bug (one-to-one, paraphrase-tolerant, no credit
+  for vague topical overlap). Recall = matched seeded bugs / total.
+
+The model is anything [litellm](https://docs.litellm.ai/docs/providers)
+can address (`anthropic/…`, `openai/…`, `gemini/…`, a local endpoint).
+Unlike the scripted bench, live recall is **not** expected to be 100 % —
+that gap, and its variance across models and runs, is the measurement.
 
 ---
 
@@ -307,7 +344,8 @@ argus/
 │   ├── reporter.py            # HTML session report
 │   ├── models.py              # Bug / PageState / etc.
 │   ├── bench/
-│   │   ├── runner.py          # fixture-agnostic harness
+│   │   ├── runner.py          # fixture-agnostic harness (scripted)
+│   │   ├── live.py            # real-LLM driver + LLM-as-judge (--agent)
 │   │   ├── scenarios_buggytasks.py
 │   │   └── scenarios_darkshop.py
 │   └── screen/
@@ -343,9 +381,6 @@ Concrete next-up:
 
 - **Real-world OSS PR** — file a real bug report on a real OSS web
   app, with Argus's run as the evidence trail.
-- **Live LLM bench mode** — `python -m argus.bench --agent <model>`
-  swaps the scripted driver for a real LLM, so we measure variance on
-  top of capability ceiling.
 - **Screen-mode seeded fixture** — a deterministic macOS app with
   intentional bugs, so the matrix becomes 2 × 2 and screen-mode recall
   is measurable.

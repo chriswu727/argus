@@ -130,6 +130,9 @@ Don't record speculation, polish nits, or static a11y / SEO that
 - `argus-mcp --doctor` — macOS permission probes for screen mode.
 - `argus-mcp --unsafe` — turn on `eval_js` (off by default).
 - `python -m argus.bench --target all` — reproduce the 34 / 34 matrix.
+- `python -m argus.bench --target all --agent <litellm-model>` — live
+  mode: a real LLM drives the tools, an LLM-as-judge scores recall
+  (needs the provider's API key in the env).
 - `python -m argus.screen.validate <app names...>` — read-only AX walk
   over running apps, JSON output.
 

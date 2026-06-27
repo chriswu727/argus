@@ -5,9 +5,10 @@ the loop over scenarios. The *scenarios* live in fixture-specific
 modules (`scenarios_buggytasks`, `scenarios_darkshop`) — each module
 exposes a `BASE_URL` and a `SCENARIOS` list.
 
-Bench is intentionally simple: scripted competent-agent runs.
-A `--agent <model>` mode (real LLM driving the same MCP tools) will
-plug in here later by exposing the same `(bug_id, name, fn)` shape.
+Bench is intentionally simple: scripted competent-agent runs. The
+`--agent <model>` mode (a real LLM driving the same MCP tools, scored by
+an LLM-as-judge) lives in `live.py` and reuses these fixtures' scenario
+lists for its seeded-bug ground truth.
 """
 from __future__ import annotations
 

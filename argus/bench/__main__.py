@@ -1,10 +1,13 @@
 """Argus reproducible benchmark — `python -m argus.bench`.
 
 Drives Argus's MCP tools against one or more seeded fixtures and
-reports recall as a matrix. The "agent" is a fixed Python sequence
-per scenario; the point is to measure Argus's *capability ceiling*
-(what's findable with these tools) rather than the variability of
-any one LLM.
+reports recall as a matrix. By default the "agent" is a fixed Python
+sequence per scenario; the point is to measure Argus's *capability
+ceiling* (what's findable with these tools) rather than the variability
+of any one LLM.
+
+Pass `--agent <litellm-model>` for live mode: a real LLM drives the
+tools and an LLM-as-judge scores recall (see `live.py`).
 
 Usage:
     # one fixture at a time
@@ -15,6 +18,9 @@ Usage:
     python -m argus.bench --target all \\
         --json bench-results/matrix.json \\
         --md   bench-results/matrix.md
+
+    # live mode — a real LLM drives the tools, judged for recall
+    python -m argus.bench --target all --agent anthropic/claude-sonnet-4-6
 """
 from __future__ import annotations
 
@@ -22,6 +28,7 @@ import argparse
 import asyncio
 import json
 import sys
+import time
 from pathlib import Path
 from typing import List, Optional
 
@@ -202,6 +209,107 @@ async def run(targets: List[str], out_json: Optional[Path], out_md: Optional[Pat
     return 0 if all(r.caught == r.total for r in reports) else 1
 
 
+async def run_live(
+    targets: List[str],
+    model_name: str,
+    max_turns: int,
+    temperature: float,
+    out_json: Optional[Path],
+    out_md: Optional[Path],
+) -> int:
+    """Live mode — a real LLM drives the MCP tools per fixture, then an
+    LLM-as-judge scores recall against the seeded-bug list."""
+    from . import live as live_mod
+
+    for t in targets:
+        if t not in _TARGETS:
+            print(f"Unknown target: {t!r}. Choose from: {', '.join(_TARGETS)}.")
+            return 2
+
+    failures = []
+    for t in targets:
+        base, _ = _TARGETS[t]
+        err = fixture_healthy(base)
+        if err:
+            failures.append((t, base, err))
+    if failures:
+        print("Argus live bench: cannot start — fixture(s) not reachable.\n")
+        for t, base, err in failures:
+            print(f"  [{t}] {base}\n        {err}\n        start with: "
+                  f"python {target_to_app_hint(t)}\n")
+        return 2
+
+    model = live_mod.LiteLLMModel(model_name, temperature=temperature)
+    reports: List[live_mod.LiveReport] = []
+    errored = False
+
+    for t in targets:
+        base, scenarios = _TARGETS[t]
+        seeded = live_mod.seeded_specs(scenarios)
+        print(f"Argus live bench — {t}: {base}  (model: {model_name})")
+        print(f"Driving the agent (max {max_turns} turns)...")
+        started = time.time()
+        try:
+            run_result = await live_mod.drive(base, model, max_turns=max_turns)
+            print(f"  agent finished: {run_result.turns} turns, "
+                  f"{run_result.tool_calls} tool calls, stop={run_result.stop_reason}, "
+                  f"{len(run_result.bugs)} bug(s) reported")
+            print("  judging recall against seeded bugs...")
+            judge = live_mod.judge_recall(model, seeded, run_result.bugs)
+        except Exception as exc:
+            errored = True
+            print(f"  [{t}] live run failed: {exc}")
+            if "api key" in str(exc).lower() or "authentication" in str(exc).lower():
+                print("  hint: set the provider key (e.g. ANTHROPIC_API_KEY / "
+                      "OPENAI_API_KEY) in your environment before running --agent.\n")
+            else:
+                print()
+            continue
+        finished = time.time()
+
+        report = live_mod.LiveReport(
+            target=t, model=model_name, fixture_url=base,
+            seeded=seeded, run=run_result, judge=judge,
+            started_at=started, finished_at=finished,
+        )
+        reports.append(report)
+        print(f"  Recall: {report.caught} / {report.total} = "
+              f"{report.recall * 100:.0f} %  ({report.extra_reported} extra reported)\n")
+
+    if not reports:
+        print("No live runs completed.")
+        return 1
+
+    print("=" * 72)
+    print(f"LIVE MATRIX SUMMARY — model: {model_name}")
+    print("=" * 72)
+    for r in reports:
+        print(f"  {r.target:<12} {r.caught:>3} / {r.total:<3} = "
+              f"{r.recall * 100:>3.0f} %  in {r.finished_at - r.started_at:>5.1f}s")
+
+    if out_json:
+        out_json.parent.mkdir(parents=True, exist_ok=True)
+        payload = (reports[0].to_json() if len(reports) == 1
+                   else {"mode": "live", "model": model_name,
+                         "matrix": [r.to_json() for r in reports],
+                         "totals": {
+                             "caught": sum(r.caught for r in reports),
+                             "total": sum(r.total for r in reports),
+                             "recall_pct": round(
+                                 sum(r.caught for r in reports) /
+                                 max(1, sum(r.total for r in reports)) * 100, 1),
+                         }})
+        out_json.write_text(json.dumps(payload, indent=2))
+        print(f"\nJSON written: {out_json}")
+    if out_md:
+        out_md.parent.mkdir(parents=True, exist_ok=True)
+        out_md.write_text("\n\n".join(r.to_markdown() for r in reports))
+        print(f"Markdown written: {out_md}")
+
+    # Non-zero if any requested target failed to run, even if others succeeded.
+    return 1 if errored else 0
+
+
 def main() -> int:
     p = argparse.ArgumentParser(prog="python -m argus.bench")
     p.add_argument("--target", choices=list(_TARGETS) + ["all"], default="buggytasks",
@@ -210,6 +318,14 @@ def main() -> int:
                    help="Write the report (or matrix) as JSON.")
     p.add_argument("--md", type=Path, default=None,
                    help="Write the report (or matrix) as Markdown.")
+    p.add_argument("--agent", metavar="MODEL", default=None,
+                   help="Live mode: a real LLM (litellm id, e.g. "
+                        "'anthropic/claude-sonnet-4-6') drives the tools and an "
+                        "LLM-as-judge scores recall. Omit for the scripted bench.")
+    p.add_argument("--max-turns", type=int, default=40,
+                   help="Live mode: max model turns before the run is cut off.")
+    p.add_argument("--temperature", type=float, default=0.0,
+                   help="Live mode: sampling temperature for the driving model.")
     args = p.parse_args()
 
     if args.target == "all":
@@ -217,6 +333,11 @@ def main() -> int:
     else:
         targets = [args.target]
 
+    if args.agent:
+        return asyncio.run(run_live(
+            targets, args.agent, args.max_turns, args.temperature,
+            args.json, args.md,
+        ))
     return asyncio.run(run(targets, args.json, args.md))
 
 
