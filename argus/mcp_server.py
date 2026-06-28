@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+from collections import Counter
 from pathlib import Path
 from typing import List, Optional
 from urllib.parse import urljoin, urlparse
@@ -321,6 +322,111 @@ def _marker_visible(text: str, state: PageState) -> bool:
         if el.text and _token_present(text, el.text):
             return True
     return False
+
+
+_EXPECT_KEYS = {"count", "gains", "removes", "text_present", "text_absent", "toast", "url_changed"}
+
+
+def _as_bool(v) -> bool:
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, str):
+        return v.strip().lower() in ("true", "1", "yes", "y")
+    return bool(v)
+
+
+def _evaluate_expectation(before: PageState, after: PageState, expect: dict) -> list:
+    """Predict-then-check: evaluate a bounded predicate dict against the
+    before/after diff. Returns [(label, ok, detail)] where ok is:
+      True  = prediction held, False = SURPRISE (a bug lead),
+      None  = could not evaluate (unmeasurable) — NEVER a surprise.
+
+    The vocabulary is deliberately small — only the deltas the page state
+    already exposes — and judged HONESTLY so neither a false MATCH nor a false
+    SURPRISE can mislead the tester:
+      - gains/removes use set membership across whole before/after row sets
+        (a token present after but not before = a real add), so an in-place
+        row edit (priority/timestamp change) is NOT mistaken for an add+remove.
+      - text checks use VISIBLE text only (never an input value) and require
+        the text to have APPEARED (text_present), not merely pre-exist.
+      - an unmeasurable count (label not on the page) or an unknown key is
+        reported as UNCHECKED, not as a failed prediction.
+    Token matching is substring-on-word-boundary, so pass a distinctive item
+    text to avoid bleed onto a sibling row.
+    """
+    results = []
+
+    def _as_list(x):
+        return [x] if isinstance(x, str) else list(x or [])
+
+    def _in(item, state):
+        if _token_present(item, state.page_text):
+            return True
+        for el in state.elements:
+            if el.text and _token_present(item, el.text):
+                return True
+        for items in state.item_lists.values():
+            for row in items:
+                if _token_present(item, row):
+                    return True
+        return False
+
+    c = expect.get("count")
+    if c is not None:
+        if not (isinstance(c, dict) and c.get("label")):
+            results.append(("count (malformed — need {label, delta|value})", None, repr(c)[:60]))
+        else:
+            lab = c["label"]
+            b, a = before.counts.get(lab), after.counts.get(lab)
+            if a is None and b is None:
+                results.append((f"count {lab!r}", None, "label not among page counts — could not evaluate"))
+            elif "delta" in c:
+                try:
+                    want = int(c["delta"])
+                    actual = (a or 0) - (b or 0)
+                    results.append((f"count {lab!r} change {want:+d}", actual == want, f"{b} -> {a}"))
+                except (TypeError, ValueError):
+                    results.append((f"count {lab!r} delta", None, f"non-numeric delta {c['delta']!r}"))
+            elif "value" in c:
+                results.append((f"count {lab!r} == {c['value']}", a == c["value"], f"observed {a}"))
+            else:
+                results.append((f"count {lab!r} (malformed — need delta or value)", None, ""))
+
+    for item in _as_list(expect.get("gains")):
+        after_has, before_has = _in(item, after), _in(item, before)
+        ok = after_has and not before_has
+        detail = "newly present" if ok else ("already present before action" if before_has else "not present after")
+        results.append((f"list gains {item!r}", ok, detail))
+    for item in _as_list(expect.get("removes")):
+        after_has, before_has = _in(item, after), _in(item, before)
+        ok = before_has and not after_has
+        detail = "gone now" if ok else ("STILL present" if after_has else "was not present before action")
+        results.append((f"list removes {item!r}", ok, detail))
+
+    if "text_present" in expect:
+        t = expect["text_present"]
+        ok = _in(t, after) and not _in(t, before)
+        detail = "appeared" if ok else ("already there before action" if _in(t, before) else "not visible after")
+        results.append((f"text appears {t!r}", ok, detail))
+    if "text_absent" in expect:
+        t = expect["text_absent"]
+        ok = not _in(t, after)
+        results.append((f"text absent {t!r}", ok, "absent" if ok else "STILL visible"))
+    if "toast" in expect:
+        t = expect["toast"]
+        new_toasts = set(after.toast_messages) - set(before.toast_messages)
+        ok = any(_token_present(t, tm) for tm in new_toasts)
+        results.append((f"toast {t!r}", ok, "; ".join(list(new_toasts)[:2]) or "no new toast"))
+    if "url_changed" in expect:
+        want = _as_bool(expect["url_changed"])
+        changed = before.url != after.url
+        results.append((f"url changed == {want}", changed == want, f"{before.url} -> {after.url}"))
+
+    for k in expect:
+        if k not in _EXPECT_KEYS:
+            results.append((f"unknown key {k!r}", None, "not a recognised predicate — ignored"))
+
+    return results
 
 
 async def _run_reproduction_check(s: "Session", verify: dict) -> dict:
@@ -3280,25 +3386,31 @@ async def crawl_site(max_pages: int = 20) -> str:
 
 
 @mcp.tool()
-async def test_action(target: str, expectation: str = "") -> str:
-    """Click an element and observe the diff in one round-trip.
+async def test_action(target: str, expectation: str = "", expect: Optional[dict] = None) -> str:
+    """Click an element and observe the diff in one round-trip — optionally
+    predicting the outcome so Argus can catch the SURPRISE for you.
 
     Captures the state before and after a click on the element matching
     `target`, computes a structural diff, drains console/network events,
-    and screenshots the result. This is a convenience wrapper around
-    observe + click_what + observe — useful when you want a single
-    tool call to learn what changed.
+    and screenshots the result.
 
-    Argus does not auto-judge whether `expectation` was met. You read
-    the diff and decide; if you observed a real bug, call record_bug.
+    Pass `expect` to commit a machine-checkable prediction in user-observable
+    terms; Argus reports each as MATCH or SURPRISE against the real diff. This
+    is the senior-tester move — a SURPRISE on something nobody scripted is a
+    bug lead (fake delete, off-by-one count). It is an in-session OBSERVATION,
+    not a reproduced finding: to bank it, call record_bug with a verify clause.
 
     Args:
         target: Natural-language description of the element to click,
-                same syntax as click_what ("Login button", "Add Task",
-                "Delete near Buy groceries").
-        expectation: Optional one-line note on what you expected to
-                happen — used as the action description in the diff
-                output. Purely informational.
+                same syntax as click_what ("Login button", "Add Task").
+        expectation: Optional human note (informational, shown in the diff).
+        expect: Optional bounded prediction dict, any of:
+            {"count": {"label": "tasks", "delta": 1}}   count delta (or "value")
+            {"gains": "Buy milk"} / {"removes": "Buy milk"}  list membership
+            {"text_present": "Saved"} / {"text_absent": "Buy milk"}
+            {"toast": "Saved"}                          a new toast appeared
+            {"url_changed": true}
+          Multiple keys may be combined; all must hold.
     """
     s = _require_session()
 
@@ -3315,9 +3427,11 @@ async def test_action(target: str, expectation: str = "") -> str:
     s.browser.drain_errors()
     before = await s.browser.get_state()
 
-    selector = s.browser._build_selector(el)
     try:
-        await s.browser._page.click(selector, timeout=5000)
+        # Route through _locator so a duplicate-label target hits the resolved
+        # element, not the first DOM match (same fix as click_what).
+        idx = s._last_elements.index(el)
+        await s.browser._locator(idx, s._last_elements).click(timeout=5000)
         await s.browser._page.wait_for_load_state("networkidle", timeout=10_000)
     except Exception as exc:
         ss = await _auto_screenshot(s, "action_failed", step)
@@ -3366,6 +3480,32 @@ async def test_action(target: str, expectation: str = "") -> str:
         lines.append(f"\nEvent-bugs auto-captured ({len(new_bugs)} new):")
         for bug in new_bugs:
             lines.append(f"  [{bug.severity.value.upper()}] {bug.title[:80]}")
+
+    if expect:
+        checks = _evaluate_expectation(before, after, expect)
+        surprises = sum(1 for _, ok, _ in checks if ok is False)
+        unchecked = sum(1 for _, ok, _ in checks if ok is None)
+        lines.append("")
+        lines.append("EXPECTATION CHECK:")
+        for label, ok, detail in checks:
+            tag = "MATCH    " if ok is True else ("SURPRISE " if ok is False else "UNCHECKED")
+            lines.append(f"  [{tag}] {label}" + (f"  ({detail})" if detail else ""))
+        if not checks:
+            lines.append("  (no recognised predicate keys — see expect= docs)")
+        elif surprises:
+            lines.append(
+                f"\n{surprises} SURPRISE(S): the page did not do what you predicted — a "
+                "bug lead. To bank it, record_bug with a verify clause so it gets a "
+                "reproduction receipt (this check is an in-session observation, not a receipt)."
+            )
+        elif unchecked:
+            lines.append(
+                f"\nAll measurable predictions held, but {unchecked} could NOT be evaluated "
+                "(see UNCHECKED above) — fix the predicate or verify those by hand."
+            )
+        else:
+            lines.append("\nAll predictions held.")
+
     lines.append(
         "\nDecide: did anything you observed warrant a record_bug call? "
         "test_action does not infer that for you."
