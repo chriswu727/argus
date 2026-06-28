@@ -153,6 +153,56 @@ def test_ordinal_selects_nth_identical_control():
     assert r2.found is els[2]
 
 
+def test_short_verb_does_not_bleed_into_longer_word():
+    # F5: 'Add' must not resolve to 'Address line 1', 'Edit' not to 'Credit...'.
+    # With no real control by that name the answer is no_match, never a
+    # confident wrong pick.
+    els = [
+        make_element(0, tag="input", placeholder="Address line 1"),
+        make_element(1, tag="button", text="Save changes"),
+    ]
+    r = resolve_element("Add", els)
+    assert r.reason == "no_match" and r.found is None
+
+    els2 = [make_element(0, tag="input", placeholder="Credit card number")]
+    assert resolve_element("Edit", els2).reason == "no_match"
+
+
+def test_whole_word_substring_still_matches():
+    els = [make_element(0, tag="input", placeholder="Search tasks")]
+    r = resolve_element("search", els)
+    assert r.reason == "unique" and r.found is els[0]
+
+
+def test_sign_in_resolves_despite_in_stopword():
+    # F7: 'in' is a stopword; 'Sign in' must still beat 'Sign up'.
+    els = [make_element(0, tag="button", text="Sign in"),
+           make_element(1, tag="button", text="Sign up")]
+    assert resolve_element("Sign in", els).found is els[0]
+    assert resolve_element("Sign in button", els).found is els[0]
+
+    els2 = [make_element(0, tag="a", text="Log in"),
+            make_element(1, tag="a", text="Log out")]
+    assert resolve_element("Log in", els2).found is els2[0]
+
+
+def test_literal_hash_label_not_hijacked_as_ordinal():
+    # F4: 'Issue #42' is a real label, not "the 42nd Issue".
+    els = [make_element(0, tag="a", text="Issue #1"),
+           make_element(1, tag="a", text="Issue #2"),
+           make_element(2, tag="a", text="Issue #42")]
+    r = resolve_element("Issue #42", els)
+    assert r.reason == "unique" and r.found is els[2]
+
+    # ...even when the matching label is not in positional order (the old code
+    # silently returned band[0]).
+    els2 = [make_element(0, tag="a", text="Issue #42"),
+            make_element(1, tag="a", text="Issue #2"),
+            make_element(2, tag="a", text="Issue #1")]
+    r2 = resolve_element("Issue #1", els2)
+    assert r2.reason == "unique" and r2.found is els2[2]
+
+
 def test_ordinal_out_of_range_is_ambiguous():
     els = [make_element(i, tag="button", text="Delete") for i in range(3)]
     r = resolve_element("Delete #9", els)
