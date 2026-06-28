@@ -395,18 +395,34 @@ def _score_screen(el, core: str) -> int:
 
     score = 0
     for hay, base in ((title, 70), (value, 65), (desc, 60), (role_desc, 50)):
-        if hay and core in hay:
+        if _has_token(core, hay):
             score = max(score, base + min(20, len(core)))
 
-    haystack = " ".join([title, value, desc, role_desc, path_text])
+    # Word-set match, tiered by WHERE the words land (mirrors web _score):
+    # all on the element's own face is strong; some on the face + the rest in
+    # the ancestor path is a row-scoped match; path-only is barely there.
+    visible = " ".join([title, value, desc, role_desc])
+    extended = " ".join([visible, path_text])
     core_words = [w for w in core.split() if len(w) >= 2]
-    if core_words and all(w in haystack for w in core_words):
-        score = max(score, 50)
+    if core_words:
+        if all(_has_token(w, visible) for w in core_words):
+            score = max(score, 50)
+        elif all(_has_token(w, extended) for w in core_words):
+            own_hits = sum(1 for w in core_words if _has_token(w, visible))
+            score = max(score, 44 + 8 * own_hits if own_hits else 22)
 
-    if path_text and core in path_text:
+    if _has_token(core, path_text):
         score = max(score, 30)
 
     return score
+
+
+def _screen_label_equals(el, phrase: str) -> bool:
+    """True if a visible face of a ScreenElement equals `phrase`."""
+    for face in (el.title, el.value, el.description, el.role_description):
+        if face and " ".join(face.lower().split()) == phrase:
+            return True
+    return False
 
 
 def resolve_screen_element(
@@ -426,7 +442,9 @@ def resolve_screen_element(
     if not elements:
         return ResolveResult(found=None, candidates=[], reason="no_elements")
 
-    core, hinted_kind = split_description(description)
+    # Kept at parity with web resolve_element: kind from the full description,
+    # an exact-label fast path (stopwords kept), then ordinal + scoring.
+    raw_tokens, hinted_kind = _strip_kind(description)
     effective_kind = kind_filter or hinted_kind
 
     pool = elements
@@ -436,6 +454,19 @@ def resolve_screen_element(
             pool = filtered
         else:
             pool = filtered or elements
+
+    phrase = " ".join(raw_tokens)
+    if phrase:
+        exact = [el for el in pool if _screen_label_equals(el, phrase)]
+        if len(exact) == 1:
+            return ResolveResult(found=exact[0],
+                                 candidates=[(110, exact[0])], reason="unique")
+
+    description, ordinal = extract_ordinal(description)
+    core, _ = split_description(description)
+
+    if not core and effective_kind and len(pool) == 1:
+        return ResolveResult(found=pool[0], candidates=[(100, pool[0])], reason="unique")
 
     scored = []
     for el in pool:
@@ -449,6 +480,16 @@ def resolve_screen_element(
     scored.sort(key=lambda pair: -pair[0])
     top_score = scored[0][0]
     runner_up = scored[1][0] if len(scored) > 1 else 0
+
+    # Positional pick among identical labels, scanned in reading order
+    # (top-to-bottom, left-to-right) since screen elements carry coordinates.
+    if ordinal is not None:
+        band = [el for sc, el in scored if sc == top_score]
+        band.sort(key=lambda el: (getattr(el, "y", 0), getattr(el, "x", 0)))
+        if 1 <= ordinal <= len(band):
+            return ResolveResult(found=band[ordinal - 1],
+                                 candidates=[(top_score, band[ordinal - 1])], reason="unique")
+        return ResolveResult(found=None, candidates=scored[:5], reason="ambiguous")
 
     if len(scored) == 1 or top_score >= runner_up + 15:
         return ResolveResult(found=scored[0][1], candidates=scored[:3], reason="unique")

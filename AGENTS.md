@@ -37,7 +37,8 @@ read it on initialize. The short version:
   user. Suggesting code fixes. Generic SEO / a11y / Lighthouse scans.
   Mechanically firing every payload from a security textbook.
 - **THE RITUAL** (return to it on every tool call):
-  Map → Hypothesize → Act → Observe → Verify → Record → Cover.
+  Map → **Use it** (walk each goal end-to-end, carrying real state) →
+  Hypothesize → Act → Observe → Verify → Record → Cover.
 
 ## Tools you'll use most
 
@@ -54,9 +55,10 @@ read it on initialize. The short version:
 | `screenshot(name, element="", full_page=False)` | Full viewport, full page, or a tight crop of one element. |
 | `screenshot_diff(before, after)` | Pillow diff with red-tint overlay. |
 | `eval_js(code)` | Arbitrary JS in the page context. Off by default (`argus-mcp --unsafe` to enable). |
-| `record_bug(title, severity, evidence)` | Call this once you've **confirmed** a real bug. Severity: `critical / high / medium / low / info`. |
-| `get_errors()` | Drain captured console + network events (the channels you can't see in `observe`). |
-| `check_links()` / `check_performance()` / `crawl_site()` | Probe-style helpers — return raw data, no auto-bug. |
+| `record_bug(title, severity, evidence, verify=...)` | Call this once you've **confirmed** a real bug. Pass a `verify` clause (`expect`, `target_text`, `at_url`) to attach a reproduction receipt — `absent` checks need the `at_url` where the item should be. Severity: `critical / high / medium / low / info`. |
+| `get_errors()` | Drain captured console + network events. These are auto-filed as bugs, tagged "auto-captured / not independently verified" (they don't pass the receipt). |
+| `check_links()` / `check_performance()` | Probe-style helpers — return raw data, no auto-bug. |
+| `crawl_site()` | Page discovery: crawls internal links, auto-capturing only console/network events (tagged). Walk the surfaced pages and record_bug what you confirm. |
 | `end_session()` | Close session, write the HTML report. |
 
 ### Screen mode (macOS)
@@ -75,12 +77,14 @@ read it on initialize. The short version:
 ```
 start_session(url)
 observe()                              # MAP — what's on this page
+                                       # USE IT — pick a real goal, walk it
+                                       #   end-to-end, carrying state across pages
                                        # HYPOTHESIZE — what could go wrong
 click_what(...) / type_into(...) /     # ACT — one probe per call
 test_form({...})
 observe()                              # OBSERVE — what changed?
 verify_persistence(...)                # VERIFY (delete / save / submit / toggle)
-record_bug(...) when something is real # RECORD
+record_bug(..., verify={...})          # RECORD — verify clause attaches a receipt
 ... repeat ...
 end_session()                          # writes the HTML report
 ```

@@ -1048,13 +1048,20 @@ class BrowserDriver:
             # collapse whitespace to a single line, then escape backslash and
             # quote. has-text matches a (whitespace-normalised) substring, so
             # a clean leading chunk still resolves the element.
-            snippet = " ".join(el.text.split())[:50]
+            collapsed = " ".join(el.text.split())
+            snippet = collapsed[:50]
             text_escaped = snippet.replace("\\", "\\\\").replace('"', '\\"')
             # :has-text doesn't pierce shadow DOM; the standalone text engine
             # does. Use the piercing form only for shadow elements so the
-            # light-DOM path keeps its proven substring semantics.
+            # light-DOM path keeps its proven substring semantics. text="..."
+            # is an EXACT match, so a truncated snippet matches zero elements —
+            # only use it when the whole label fits; for longer shadow labels
+            # fall back to the unquoted substring form so a clean leading chunk
+            # still resolves (mirroring has-text).
             if el.shadow:
-                return f'{el.tag} >> text="{text_escaped}"'
+                if len(collapsed) <= 50:
+                    return f'{el.tag} >> text="{text_escaped}"'
+                return f'{el.tag} >> text={snippet}'
             return f'{el.tag}:has-text("{text_escaped}")'
         # Last resort: tag + type
         if el.type and el.tag == "input":
