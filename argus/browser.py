@@ -369,6 +369,9 @@ class BrowserDriver:
         self.network_log: List[Dict] = []
         # Request-mock routes registered by the agent. {pattern: {response_dict}}.
         self._mock_routes: Dict[str, Dict] = {}
+        # Live route handlers, kept out of _mock_routes (which is surfaced to the
+        # agent) so mocks can be suspended/restored around a clean re-load.
+        self._mock_handlers: Dict[str, object] = {}
         # JS dialog handling — agent queues a response, the handler pops one
         # for each fired alert/confirm/prompt, falls back to auto-dismiss.
         self._dialog_queue: List[Dict] = []
@@ -548,6 +551,7 @@ class BrowserDriver:
             "headers": headers or {},
             "body_preview": body[:200],
         }
+        self._mock_handlers[pattern] = _handler
 
     async def remove_route(self, pattern: str) -> bool:
         """Drop a previously-registered mock. Returns True if it existed."""
@@ -557,8 +561,39 @@ class BrowserDriver:
             except Exception:
                 pass
             self._mock_routes.pop(pattern, None)
+            self._mock_handlers.pop(pattern, None)
             return True
         return False
+
+    async def suspend_mocks(self) -> List[str]:
+        """Temporarily unroute every active mock; return the patterns suspended.
+
+        The reproduction re-check needs a genuinely clean load. Leaving the
+        agent's own forced responses live would let a self-inflicted symptom
+        (e.g. an injected 500) re-fire on reload and certify itself
+        'reproduced'. Pair with restore_mocks to put the session back.
+        """
+        suspended = list(self._mock_handlers)
+        for pattern in suspended:
+            handler = self._mock_handlers.get(pattern)
+            try:
+                if handler is not None:
+                    await self._page.unroute(pattern, handler)
+                else:
+                    await self._page.unroute(pattern)
+            except Exception:
+                pass
+        return suspended
+
+    async def restore_mocks(self, patterns: List[str]) -> None:
+        """Re-register mocks suspended by suspend_mocks (best-effort)."""
+        for pattern in patterns:
+            handler = self._mock_handlers.get(pattern)
+            if handler is not None:
+                try:
+                    await self._page.route(pattern, handler)
+                except Exception:
+                    pass
 
     async def clear_routes(self) -> int:
         """Drop all mocks. Returns the count cleared."""
@@ -810,11 +845,29 @@ class BrowserDriver:
 
     # -- actions --
 
+    def _locator(self, element_index: int, elements: List[InteractiveElement]):
+        """Locator for one element, disambiguating duplicate selectors by order.
+
+        _build_selector yields the same selector for several extracted elements
+        when they share identity attrs (N identical 'Delete' buttons all become
+        button:has-text("Delete")). page.click(selector) would silently act on
+        the first DOM match, discarding the specific row/ordinal element the
+        resolver deliberately chose — a silent wrong-action. Count how many
+        earlier extracted elements build the same selector and target that nth
+        match, so the action lands on the element the caller actually resolved.
+        Elements are extracted in document order, so this aligns with the DOM
+        match order. For a unique selector nth==0, identical to the old path.
+        """
+        selector = self._build_selector(elements[element_index])
+        nth = sum(
+            1 for other in elements[:element_index]
+            if self._build_selector(other) == selector
+        )
+        return self._page.locator(selector).nth(nth)
+
     async def click(self, element_index: int, elements: List[InteractiveElement]) -> bool:
-        el = elements[element_index]
-        selector = self._build_selector(el)
         try:
-            await self._page.click(selector, timeout=5_000)
+            await self._locator(element_index, elements).click(timeout=5_000)
             await self._page.wait_for_load_state("networkidle", timeout=10_000)
             return True
         except Exception:
@@ -823,10 +876,8 @@ class BrowserDriver:
     async def type_text(
         self, element_index: int, text: str, elements: List[InteractiveElement]
     ) -> bool:
-        el = elements[element_index]
-        selector = self._build_selector(el)
         try:
-            await self._page.fill(selector, text, timeout=5_000)
+            await self._locator(element_index, elements).fill(text, timeout=5_000)
             return True
         except Exception:
             return False
@@ -834,10 +885,8 @@ class BrowserDriver:
     async def select_option(
         self, element_index: int, value: str, elements: List[InteractiveElement]
     ) -> bool:
-        el = elements[element_index]
-        selector = self._build_selector(el)
         try:
-            await self._page.select_option(selector, value, timeout=5_000)
+            await self._locator(element_index, elements).select_option(value, timeout=5_000)
             return True
         except Exception:
             return False
@@ -845,10 +894,8 @@ class BrowserDriver:
     async def hover(
         self, element_index: int, elements: List[InteractiveElement]
     ) -> bool:
-        el = elements[element_index]
-        selector = self._build_selector(el)
         try:
-            await self._page.hover(selector, timeout=5_000)
+            await self._locator(element_index, elements).hover(timeout=5_000)
             return True
         except Exception:
             return False
@@ -856,10 +903,8 @@ class BrowserDriver:
     async def right_click(
         self, element_index: int, elements: List[InteractiveElement]
     ) -> bool:
-        el = elements[element_index]
-        selector = self._build_selector(el)
         try:
-            await self._page.click(selector, button="right", timeout=5_000)
+            await self._locator(element_index, elements).click(button="right", timeout=5_000)
             return True
         except Exception:
             return False
@@ -868,12 +913,9 @@ class BrowserDriver:
         self, source_index: int, target_index: int,
         elements: List[InteractiveElement],
     ) -> bool:
-        src = elements[source_index]
-        tgt = elements[target_index]
         try:
-            await self._page.drag_and_drop(
-                self._build_selector(src),
-                self._build_selector(tgt),
+            await self._locator(source_index, elements).drag_to(
+                self._locator(target_index, elements),
                 timeout=10_000,
             )
             return True
@@ -884,10 +926,8 @@ class BrowserDriver:
         self, element_index: int, paths: List[str],
         elements: List[InteractiveElement],
     ) -> bool:
-        el = elements[element_index]
-        selector = self._build_selector(el)
         try:
-            await self._page.set_input_files(selector, paths, timeout=5_000)
+            await self._locator(element_index, elements).set_input_files(paths, timeout=5_000)
             return True
         except Exception:
             return False
@@ -973,7 +1013,12 @@ class BrowserDriver:
     @staticmethod
     def _build_selector(el: InteractiveElement) -> str:
         if el.id:
-            return f"#{el.id}"
+            # Attribute form, not "#id": modern framework ids carry ':' (React
+            # useId ':r3:', Radix, MUI) or '.', which are CSS-special — a raw
+            # "#:r3:" is a parse error (element reported "obscured/stale") and
+            # "#ok.x" silently mis-targets. Escape like the other attr branches.
+            id_escaped = el.id.replace("\\", "\\\\").replace('"', '\\"')
+            return f'[id="{id_escaped}"]'
         if el.name:
             return f'{el.tag}[name="{el.name}"]'
         if el.placeholder:

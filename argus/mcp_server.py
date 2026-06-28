@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 from pathlib import Path
 from typing import List, Optional
 from urllib.parse import urljoin
@@ -244,21 +245,38 @@ def _resolve_url(s: "Session", url: str) -> str:
     return urljoin(base, url) if base else url
 
 
-def _text_in_state(text: str, state: PageState) -> bool:
-    """Check if text exists anywhere in page — page_text, elements, or item_lists."""
-    text_lower = text.lower().strip()
-    if not text_lower:
+def _token_present(needle: str, haystack: str) -> bool:
+    """Whitespace-normalised, word-boundary containment.
+
+    A bare substring scan lets a claimed symptom match incidentally — the
+    target living inside a longer word ('cat' in 'category', 'Delete' in
+    'Deleted') — which would stamp a VERIFIED receipt on a non-bug. Require
+    the needle to sit on word boundaries so only a token-level occurrence
+    counts. This does not prove the occurrence is *the* one claimed, but it
+    kills the mid-word / bleed-through false positives the receipt must avoid.
+    """
+    needle = " ".join(needle.lower().split())
+    haystack = " ".join(haystack.lower().split())
+    if not needle:
         return False
-    if text_lower in state.page_text.lower():
+    pattern = r"(?<!\w)" + re.escape(needle) + r"(?!\w)"
+    return re.search(pattern, haystack) is not None
+
+
+def _text_in_state(text: str, state: PageState) -> bool:
+    """Check if text is present as a token in page_text, elements, or item_lists."""
+    if not text.strip():
+        return False
+    if _token_present(text, state.page_text):
         return True
     for el in state.elements:
-        if el.text and text_lower in el.text.lower():
+        if el.text and _token_present(text, el.text):
             return True
-        if el.value and text_lower in el.value.lower():
+        if el.value and _token_present(text, el.value):
             return True
     for items in state.item_lists.values():
         for item in items:
-            if text_lower in item.lower():
+            if _token_present(text, item):
                 return True
     return False
 
@@ -290,6 +308,9 @@ async def _run_reproduction_check(s: "Session", verify: dict) -> dict:
     restore_url = s.browser._page.url
     nav_url = _resolve_url(s, at_url) if at_url else restore_url
     observations = []
+    # A clean load means none of the agent's own forced responses are live —
+    # otherwise an injected 500 re-fires on reload and certifies itself.
+    suspended_mocks = await s.browser.suspend_mocks()
     try:
         for _ in range(2):
             await s.browser.goto(nav_url)
@@ -297,14 +318,16 @@ async def _run_reproduction_check(s: "Session", verify: dict) -> dict:
             observations.append(_text_in_state(target, state))
     except Exception as e:  # navigation/render failure — report, don't crash record_bug
         return {"attempted": True, "reproduced": None, "at_url": nav_url,
-                "error": str(e)[:200]}
+                "error": str(e)[:200], "mocks_suspended": suspended_mocks}
     finally:
+        await s.browser.restore_mocks(suspended_mocks)
         # Best-effort: return the agent to where it was so record_bug isn't a
-        # surprise navigation mid-flow.
+        # surprise navigation mid-flow, and refresh the element cache — the page
+        # was reloaded twice even on a same-page (at_url omitted) check.
         try:
             if s.browser._page is not None and s.browser._page.url != restore_url:
                 await s.browser.goto(restore_url)
-                s._last_elements = (await s.browser.get_state()).elements
+            s._last_elements = (await s.browser.get_state()).elements
         except Exception:
             pass
 
@@ -315,6 +338,8 @@ async def _run_reproduction_check(s: "Session", verify: dict) -> dict:
         "at_url": nav_url,
         "observed_present": observations,
     })
+    if suspended_mocks:
+        receipt["mocks_suspended"] = suspended_mocks
     return receipt
 
 
