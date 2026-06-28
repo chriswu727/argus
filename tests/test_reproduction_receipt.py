@@ -37,6 +37,30 @@ def test_verdict_absent_claim_confirmed_when_text_gone():
     assert r["reproduced"] is True and r["runs"] == "2/2"
 
 
+# ── symptom matching is token-level, not bare substring ──────────────
+# A boundary-free substring scan would stamp VERIFIED on a non-bug when the
+# target text appears incidentally (inside a longer word or a longer item).
+
+def test_token_present_requires_word_boundaries():
+    assert m._token_present("category", "Browse by category here") is True
+    assert m._token_present("cat", "Browse by category here") is False
+    assert m._token_present("delete", "Recently Deleted: none") is False
+    assert m._token_present("buy groceries", "  buy   groceries  ") is True  # ws-normalised
+
+
+def test_text_in_state_does_not_match_incidental_substrings():
+    from tests.conftest import make_page_state, make_element
+    st = make_page_state(
+        page_text="Browse by category. Recently deleted: none.",
+        elements=[make_element(text="Deleted")],
+        item_lists={"tasks": ["Buy groceries supplies"]},
+    )
+    assert m._text_in_state("cat", st) is False
+    assert m._text_in_state("delete", st) is False
+    assert m._text_in_state("category", st) is True
+    assert m._text_in_state("Buy groceries", st) is True  # token run, even inside a longer item
+
+
 # ── relative-URL resolution ──────────────────────────────────────────
 
 class _FakePage:

@@ -79,6 +79,20 @@ def test_build_selector_handles_multiline_and_special_chars():
     assert "Wireless Headphones" in sel
 
 
+def test_build_selector_escapes_css_special_ids():
+    """Modern-framework ids carry ':' (React useId, Radix, MUI) or '.', which
+    are CSS-special. A raw "#:r3:" is a parse error and "#ok.x" mis-targets, so
+    the id branch must emit the quoted attribute form, not "#id"."""
+    from argus.browser import BrowserDriver
+    assert BrowserDriver._build_selector(
+        InteractiveElement(index=0, tag="button", id=":r3:")) == '[id=":r3:"]'
+    assert BrowserDriver._build_selector(
+        InteractiveElement(index=0, tag="div", id="ok.x")) == '[id="ok.x"]'
+    # a quote inside the id is escaped, not left to break the selector string
+    assert BrowserDriver._build_selector(
+        InteractiveElement(index=0, tag="div", id='a"b')) == '[id="a\\"b"]'
+
+
 async def test_shadow_elements_are_actionable():
     """Every surfaced shadow element must produce a selector that clicks it —
     no 'visible but unreachable' half-feature. Text-only is the hard case:
