@@ -110,6 +110,10 @@ class Bug:
     # Independent re-check of the bug's observable symptom from a clean load.
     # None = no machine-checkable symptom supplied (observation/visual finding).
     reproduction_receipt: Optional[Dict] = None
+    # Structured action trace since the previous bug — the deterministic steps a
+    # replay engine can re-drive (tool + description + value), parallel to the
+    # human-readable steps_to_reproduce.
+    replay_steps: List[Dict] = field(default_factory=list)
 
 
 @dataclass
