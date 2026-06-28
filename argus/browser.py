@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -9,6 +10,81 @@ from playwright.async_api import Browser, BrowserContext, Page, async_playwright
 from typing import Dict, List, Optional, Tuple
 
 from .models import InteractiveElement, PageState
+
+# Cap on how much of a (redacted) response body we keep for inspection.
+_BODY_CAP = 16 * 1024
+
+# Field-name fragment that marks a secret-bearing key (matched anywhere in the
+# key, so authToken / id_token / sessionId / x-csrf all hit).
+_SECRET_KEY = (
+    r"(?:[\w-]*(?:password|passwd|secret|token|jwt|bearer|auth|api[_-]?key|"
+    r"access[_-]?key|session|sid|csrf|xsrf|credential|cookie)[\w-]*)"
+)
+_RE_JSON_STR = re.compile(r'("' + _SECRET_KEY + r'"\s*:\s*)"[^"]*"', re.IGNORECASE)
+# Non-string secret values (numbers, bare words) — but not objects/arrays/strings.
+_RE_JSON_BARE = re.compile(r'("' + _SECRET_KEY + r'"\s*:\s*)(?!["{\[])([^\s,}\]]+)', re.IGNORECASE)
+_RE_FORM = re.compile(r'(?i)\b(' + _SECRET_KEY + r')=([^&\s]+)')
+_RE_JWT = re.compile(r'eyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]+')
+_RE_BEARER = re.compile(r'(?i)(bearer\s+)[A-Za-z0-9._\-]+')
+
+_SENSITIVE_HEADERS = {
+    "cookie", "set-cookie", "authorization", "proxy-authorization",
+    "x-api-key", "x-auth-token", "x-csrf-token", "x-xsrf-token",
+}
+
+
+def _redact(text: str) -> str:
+    """Mask credentials in a free-text/JSON/form blob before it's surfaced.
+
+    Layered because secrets arrive in many shapes: a generic JWT pattern, JSON
+    string + bare values under secret-named keys, form-encoded pairs, and bare
+    Bearer tokens. Not a guarantee against every exotic encoding, but it kills
+    the common JWT/token/cookie/password leaks.
+    """
+    if not text:
+        return text
+    text = _RE_JWT.sub("[redacted-jwt]", text)
+    text = _RE_JSON_STR.sub(r'\1"[redacted]"', text)
+    text = _RE_JSON_BARE.sub(r"\1[redacted]", text)
+    text = _RE_FORM.sub(r"\1=[redacted]", text)
+    text = _RE_BEARER.sub(r"\1[redacted]", text)
+    return text
+
+
+def _redact_headers(headers: dict) -> dict:
+    """Mask whole values of credential-bearing headers; redact the rest in place."""
+    out = {}
+    for k, v in (headers or {}).items():
+        out[k] = "[redacted]" if k.lower() in _SENSITIVE_HEADERS else _redact(str(v))
+    return out
+
+
+def _capture_body(raw: bytes, headers: dict) -> Optional[str]:
+    """Decode a response body for the agent — text/json only, redacted, capped.
+
+    Redaction runs on the FULL decoded body before truncation, so a secret that
+    straddles the size cap can't leak its prefix. Binary payloads are skipped.
+    """
+    if not raw:
+        return None
+    ctype = ""
+    for k, v in (headers or {}).items():
+        if k.lower() == "content-type":
+            ctype = (v or "").lower()
+            break
+    texty = ("json", "text/", "xml", "javascript", "x-www-form-urlencoded")
+    if ctype and not any(t in ctype for t in texty):
+        return None  # image/font/video/octet-stream/etc — not human-readable
+    if not ctype and b"\x00" in raw[:2048]:
+        return None  # no content-type + NUL bytes -> almost certainly binary
+    try:
+        text = raw.decode("utf-8", errors="replace")
+    except Exception:
+        return None
+    text = _redact(text)
+    if len(text) > _BODY_CAP:
+        text = text[:_BODY_CAP] + f"\n…[truncated, {len(raw)} bytes total]"
+    return text
 
 # JS snippet to extract visible interactive elements from the page.
 # Walks open shadow roots too: querySelectorAll does not cross shadow
@@ -502,8 +578,15 @@ class BrowserDriver:
                 try:
                     body = await response.body()
                     entry["response_size"] = len(body) if body else 0
+                    # Keep the decoded body (capped/redacted) — the agent needs
+                    # to read the payload behind a misleading toast (e.g. a 200
+                    # whose body is {"error": ...}). Previously fetched only for
+                    # its length and discarded.
+                    entry["response_body"] = _capture_body(
+                        body, entry.get("response_headers") or {})
                 except Exception:
                     entry["response_size"] = None
+                    entry["response_body"] = None
                 entry["finished_at"] = datetime.now().isoformat()
         except Exception:
             pass
@@ -679,6 +762,64 @@ class BrowserDriver:
             return True
         except Exception:
             return False
+
+    # -- state capsules (full client identity snapshot) --
+
+    async def capsule_capture(self) -> Dict:
+        """Snapshot the full client-side state: cookies + both web storages + url."""
+        return {
+            "url": self._page.url if self._page else "",
+            "cookies": await self.cookies_get(),
+            "local": await self.storage_get("local"),
+            "session": await self.storage_get("session"),
+        }
+
+    async def capsule_apply(self, capsule: Dict) -> Dict:
+        """Restore a captured capsule as a CLEAN REPLACE of the current identity.
+
+        Existing cookies + web storage are cleared first so a prior identity
+        can't bleed into the restored one (a merged session can read 'live'
+        while actually being a mix). Cookies go on the context; web storage is
+        written only once we've confirmed the post-nav page is on the capsule's
+        origin (a protected URL may redirect to a cross-origin SSO host).
+
+        Returns counts of what was actually applied vs expected, so the caller
+        can warn on a silent shortfall.
+        """
+        from urllib.parse import urlparse
+        applied = {"cookies": 0, "cookies_expected": 0, "local": 0, "local_expected": 0,
+                   "session": 0, "session_expected": 0, "origin_ok": True}
+        try:
+            await self.cookies_clear()
+        except Exception:
+            pass
+        cookies = capsule.get("cookies") or []
+        applied["cookies_expected"] = len(cookies)
+        if cookies:
+            applied["cookies"] = await self.cookies_set(cookies)
+        url = capsule.get("url") or ""
+        if not url:
+            return applied
+        await self.goto(url)
+        want = urlparse(url).netloc
+        cur = urlparse(self._page.url).netloc if self._page else ""
+        if want and cur and want != cur:
+            # Redirected cross-origin (e.g. to an IdP) — writing storage here
+            # would land it on the wrong origin. Bail rather than corrupt.
+            applied["origin_ok"] = False
+            return applied
+        for kind in ("local", "session"):
+            items = capsule.get(kind) or {}
+            applied[f"{kind}_expected"] = len(items)
+            try:
+                await self.storage_clear(kind)
+            except Exception:
+                pass
+            for k, v in items.items():
+                if await self.storage_set(k, v, kind):
+                    applied[kind] += 1
+        await self.goto(url)
+        return applied
 
     # -- multi-tab --
 
