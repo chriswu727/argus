@@ -22,11 +22,11 @@ import os
 import re
 from pathlib import Path
 from typing import List, Optional
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 from mcp.server.fastmcp import FastMCP
 
-from .browser import BrowserDriver
+from .browser import BrowserDriver, _redact, _redact_headers
 from .detector import Detector
 from .differ import compute_changes
 from .models import Bug, BugType, ExplorationResult, InteractiveElement, PageState, Screenshot, Severity
@@ -172,6 +172,11 @@ class Session:
         self._last_elements = []
         self._last_screen_elements = []
         self._screenshot_counter = 0
+        # Liveness marker of the most recently restored state capsule (or None).
+        # record_bug re-checks it against the CURRENT page so a finding made
+        # while the capsule's server session is dead gets flagged — and one made
+        # after re-minting state through the UI does NOT (no sticky latch).
+        self._capsule_marker: Optional[str] = None
         # Lazy-initialised screen-mode safety state. Populated by
         # start_screen_session; consulted by every screen-mode tool.
         self._safety = None  # type: Optional["argus.screen.safety.SafetyState"]
@@ -300,6 +305,21 @@ def _text_in_state(text: str, state: PageState) -> bool:
         for item in items:
             if _token_present(text, item):
                 return True
+    return False
+
+
+def _marker_visible(text: str, state: PageState) -> bool:
+    """Like _text_in_state but VISIBLE text only — never matches an input's
+    `value`. A liveness marker (a user's name/email) is commonly pre-filled into
+    a logged-out login form's value, which would falsely read as 'logged in'.
+    """
+    if not text.strip():
+        return False
+    if _token_present(text, state.page_text):
+        return True
+    for el in state.elements:
+        if el.text and _token_present(text, el.text):
+            return True
     return False
 
 
@@ -2066,10 +2086,11 @@ async def network_request(
         "",
         "Request headers:",
     ]
-    for k, v in (e.get("headers") or {}).items():
+    for k, v in _redact_headers(e.get("headers") or {}).items():
         lines.append(f"  {k}: {v}")
     if e.get("post_data"):
-        body = e["post_data"]
+        # The request body of a login POST is the plaintext password — redact.
+        body = _redact(e["post_data"])
         lines.append("")
         lines.append("Request body:")
         lines.append("  " + (body[:1500] + ("…[truncated]" if len(body) > 1500 else "")))
@@ -2085,11 +2106,18 @@ async def network_request(
             lines.append(f"  body size: {size} bytes")
         if e.get("finished_at"):
             lines.append(f"  finished:  {e['finished_at']}")
-        rh = e.get("response_headers") or {}
+        rh = _redact_headers(e.get("response_headers") or {})
         if rh:
             lines.append("  Response headers:")
             for k, v in rh.items():
                 lines.append(f"    {k}: {v}")
+        rbody = e.get("response_body")
+        if rbody:
+            lines.append("")
+            lines.append("Response body:")
+            # The whole point: read what the server actually returned — a 200
+            # whose body says {"error": ...} is the deception behind a toast.
+            lines.append(rbody)
 
     return "\n".join(lines)
 
@@ -2329,6 +2357,134 @@ async def storage_clear(kind: str = "local") -> str:
     label = "localStorage" if kind == "local" else "sessionStorage"
     s.steps.append(f"storage_clear({label})")
     return f"Cleared {label}." if ok else "storage_clear: failed."
+
+
+# -- state capsules --
+
+def _capsule_dir() -> Path:
+    return Path(_output_dir()) / ".argus" / "capsules"
+
+
+def _capsule_path(origin: str, name: str) -> Path:
+    safe_origin = re.sub(r"[^A-Za-z0-9._-]", "_", origin or "default")
+    safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", name or "default")
+    # Capsules hold raw auth cookies. They live under .argus/ (gitignored), and
+    # capsule_save also drops a defensive `.gitignore: *` so they can never be
+    # committed even if ARGUS_OUTPUT_DIR points outside the default tree.
+    return _capsule_dir() / safe_origin / f"{safe_name}.json"
+
+
+@mcp.tool()
+async def capsule_save(name: str, liveness_marker: str = "") -> str:
+    """Snapshot the current logged-in / seeded state as a named, restorable capsule.
+
+    Captures cookies + localStorage + sessionStorage + the current URL. Mint the
+    state through the REAL UI first (sign up, create data) and THEN save — that
+    keeps it honest (if onboarding is broken, you felt it). Pass a
+    `liveness_marker`: text visible ONLY while the capsule is still valid (e.g.
+    the logged-in user's name) so a later restore can tell live from stale.
+
+    Args:
+        name: Capsule name to save under (per-origin).
+        liveness_marker: Text that proves the restored state is still valid.
+    """
+    s = _require_session()
+    if s.mode != "web" or s.browser is None or s.browser._page is None:
+        return "capsule_save: this tool is web-mode only."
+    capsule = await s.browser.capsule_capture()
+    capsule["liveness_marker"] = liveness_marker.strip()
+    origin = urlparse(capsule.get("url") or "").netloc or "default"
+    path = _capsule_path(origin, name)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # Defensive: capsules carry live auth cookies — never let them be
+        # committed, even under a non-default ARGUS_OUTPUT_DIR.
+        gi = _capsule_dir() / ".gitignore"
+        if not gi.exists():
+            gi.write_text("*\n")
+        import json as _json
+        path.write_text(_json.dumps(capsule, indent=2))
+    except Exception as exc:
+        return f"capsule_save: could not write capsule — {type(exc).__name__}: {str(exc)[:120]}"
+    s.steps.append(f"capsule_save({name!r})")
+    n_c = len(capsule.get("cookies") or [])
+    n_l = len(capsule.get("local") or {})
+    n_s = len(capsule.get("session") or {})
+    tail = (f" Liveness marker: {liveness_marker.strip()!r}." if liveness_marker.strip()
+            else " No liveness marker set — restore can't verify validity (recommend setting one).")
+    return (f"Saved capsule {name!r} for {origin} "
+            f"({n_c} cookies, {n_l} localStorage, {n_s} sessionStorage).{tail}")
+
+
+@mcp.tool()
+async def capsule_restore(name: str) -> str:
+    """Restore a saved capsule onto this session and verify it is still live.
+
+    Sets the cookies + storage, navigates to the captured URL, then checks the
+    saved liveness marker. Returns whether the restored state is LIVE or STALE.
+    A STALE capsule (the server session expired) cannot be trusted — any bug you
+    record afterwards is flagged unreliable until you re-mint the state.
+
+    Args:
+        name: Capsule name to restore (looked up for the current origin).
+    """
+    s = _require_session()
+    if s.mode != "web" or s.browser is None or s.browser._page is None:
+        return "capsule_restore: this tool is web-mode only."
+    # Look up by the current origin first, but fall back to scanning every saved
+    # origin for this name — so restore works from about:blank or after the app
+    # moved to a different port/host alias (the whole point is to skip re-login).
+    origin = urlparse(s.browser._page.url).netloc or "default"
+    path = _capsule_path(origin, name)
+    if not path.exists():
+        safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", name or "default")
+        matches = list((Path(_output_dir()) / ".argus" / "capsules").glob(f"*/{safe_name}.json"))
+        if len(matches) == 1:
+            path = matches[0]
+        elif len(matches) > 1:
+            origins = ", ".join(p.parent.name for p in matches)
+            return (f"capsule_restore: {name!r} exists for multiple origins ({origins}); "
+                    f"navigate to the target origin first to disambiguate.")
+        else:
+            return (f"capsule_restore: no capsule named {name!r}. "
+                    f"capsule_save({name!r}, liveness_marker=...) it first.")
+    try:
+        import json as _json
+        capsule = _json.loads(path.read_text())
+        applied = await s.browser.capsule_apply(capsule)
+    except Exception as exc:
+        return f"capsule_restore: failed to apply — {type(exc).__name__}: {str(exc)[:120]}"
+    state = await s.browser.get_state()
+    s._last_elements = state.elements
+    s.steps.append(f"capsule_restore({name!r})")
+
+    warn = ""
+    if not applied.get("origin_ok", True):
+        warn = (" WARNING: navigating to the capsule URL redirected cross-origin "
+                "(likely an expired session bouncing to login) — storage was NOT applied.")
+    elif applied.get("cookies_expected", 0) and applied.get("cookies", 0) == 0:
+        warn = " WARNING: zero cookies were applied (injection failed) — you are likely NOT authenticated."
+
+    marker = (capsule.get("liveness_marker") or "").strip()
+    if not marker:
+        s._capsule_marker = None
+        return (f"Restored capsule {name!r} "
+                f"({applied.get('cookies', 0)} cookies, {applied.get('local', 0)} localStorage, "
+                f"{applied.get('session', 0)} sessionStorage), but no liveness marker was saved — "
+                f"validity is unverified; observe() to confirm.{warn}")
+    s._capsule_marker = marker
+    if not _marker_visible(marker, state):
+        # SPAs render identity after networkidle (a /me fetch + hydration) —
+        # give the marker a beat to appear before declaring the session dead.
+        await s.browser.wait_for_text(marker, timeout_s=5)
+        state = await s.browser.get_state()
+        s._last_elements = state.elements
+    if _marker_visible(marker, state):
+        return (f"Restored capsule {name!r} — appears LIVE (marker {marker!r} is visible; "
+                f"confirm it's genuinely auth-gated).{warn}")
+    return (f"Restored capsule {name!r} — STALE: liveness marker {marker!r} is not visible. "
+            f"The server session has likely expired; re-mint the state through the UI. "
+            f"Bugs recorded while it stays absent are flagged unreliable.{warn}")
 
 
 # -- multi-tab + waits --
@@ -2839,6 +2995,20 @@ async def record_bug(
         screenshot_path = await _auto_screenshot(s, label, f"record_bug: {title[:60]}")
 
     receipt = await _run_reproduction_check(s, verify) if verify else None
+
+    # If a state capsule is in play, re-check its liveness against the CURRENT
+    # page (not a sticky latch): a finding made while the marker is absent is
+    # untrustworthy, but one made after re-minting state through the UI is fine.
+    if (s._capsule_marker and s.mode == "web" and s.browser is not None
+            and s.browser._page is not None):
+        try:
+            if not _marker_visible(s._capsule_marker, await s.browser.get_state()):
+                description = (description.rstrip()
+                              + "\n\n[UNRELIABLE: the restored state capsule's liveness marker "
+                                f"({s._capsule_marker!r}) is not present now — the session may have "
+                                "expired. Re-mint state and re-confirm before trusting this.]")
+        except Exception:
+            pass
 
     bug = Bug(
         type=bug_type,

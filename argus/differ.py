@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 from typing import List
 
 from .models import PageState
@@ -48,12 +49,28 @@ def compute_changes(
     for toast in new_toasts:
         changes.append(f"Toast appeared: '{toast[:100]}'")
 
-    # Item list changes
+    # Item list changes — multiset membership, not just length, so the oracle
+    # can check "the list GAINED / REMOVED X" (a swap keeps the count but
+    # changes membership) AND catch duplicate-row bugs (a dup adds an
+    # occurrence the set-based view would hide).
     for key in set(list(before.item_lists.keys()) + list(after.item_lists.keys())):
         b_items = before.item_lists.get(key, [])
         a_items = after.item_lists.get(key, [])
+        gained = Counter(a_items) - Counter(b_items)  # surplus occurrences in after
+        lost = Counter(b_items) - Counter(a_items)
         if len(b_items) != len(a_items):
             changes.append(f"List '{key[:30]}': {len(b_items)} items -> {len(a_items)} items")
+
+        def _emit(label: str, counter):
+            items = list(counter.items())
+            for item, n in items[:5]:
+                suffix = f" (x{n})" if n > 1 else ""
+                changes.append(f"List '{key[:30]}' {label}: '{item[:50]}'{suffix}")
+            if len(items) > 5:
+                changes.append(f"List '{key[:30]}' {label}: (+{len(items) - 5} more)")
+
+        _emit("removed", lost)
+        _emit("gained", gained)
 
     # Count changes
     for label in set(list(before.counts.keys()) + list(after.counts.keys())):

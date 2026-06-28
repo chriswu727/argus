@@ -8,6 +8,8 @@ build/
 .venv/
 venv/
 argus-reports/
+.argus/
+**/.argus/
 *.png
 .env
 test-reports/
