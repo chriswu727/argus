@@ -110,8 +110,12 @@ def kind_of(el: InteractiveElement) -> str:
     return el.tag
 
 
-def split_description(desc: str) -> Tuple[str, Optional[str]]:
-    """Strip stopwords and a trailing kind-hint, return (core, kind_hint)."""
+def _strip_kind(desc: str) -> Tuple[List[str], Optional[str]]:
+    """Lowercase + tokenise, remove the first kind-hint word; keep stopwords.
+
+    Shared by split_description (which then drops stopwords) and the
+    exact-label fast path (which must NOT drop them — 'in' is a real label
+    word in 'Sign in', not filler)."""
     raw = [w for w in desc.lower().strip().split() if w]
     kind: Optional[str] = None
     # A kind word can sit anywhere ("Submit button", "the Delete button for
@@ -121,6 +125,12 @@ def split_description(desc: str) -> Tuple[str, Optional[str]]:
             kind = _KIND_HINTS[w]
             raw = raw[:i] + raw[i + 1:]
             break
+    return raw, kind
+
+
+def split_description(desc: str) -> Tuple[str, Optional[str]]:
+    """Strip stopwords and a trailing kind-hint, return (core, kind_hint)."""
+    raw, kind = _strip_kind(desc)
     words = [w for w in raw if w not in _STOPWORDS]
     if not words:
         # Stopword filter ate everything — preserve the raw tokens. A
@@ -128,6 +138,26 @@ def split_description(desc: str) -> Tuple[str, Optional[str]]:
         # labels that the agent will reasonably pass verbatim.
         words = raw
     return " ".join(words), kind
+
+
+def _has_token(core: str, hay: str) -> bool:
+    """Word-boundary containment: 'add' matches 'add task' but not 'address'.
+
+    Bare substring matching let short verbs bleed into longer neighbours
+    ('Add'->'Address', 'Edit'->'Credit') and still win as a confident unique
+    pick. Require the needle to sit on word boundaries so only token-level
+    hits count."""
+    if not core or not hay:
+        return False
+    return re.search(r"(?<!\w)" + re.escape(core) + r"(?!\w)", hay) is not None
+
+
+def _label_equals(el: InteractiveElement, phrase: str) -> bool:
+    """True if a visible face of `el` equals `phrase` (whitespace-normalised)."""
+    for face in (el.text, el.aria_label, el.placeholder, el.value):
+        if face and " ".join(face.lower().split()) == phrase:
+            return True
+    return False
 
 
 def _score(el: InteractiveElement, core: str) -> int:
@@ -154,18 +184,18 @@ def _score(el: InteractiveElement, core: str) -> int:
         return 88
 
     score = 0
-    if core in text:
+    if _has_token(core, text):
         score = max(score, 70 + min(20, len(core)))
-    if core in aria:
+    if _has_token(core, aria):
         score = max(score, 65 + min(15, len(core)))
-    if core in placeholder:
+    if _has_token(core, placeholder):
         score = max(score, 60 + min(15, len(core)))
     # id/name are internal identifiers, not what a user sees. They earn a
     # token presence so a label-less form field is still reachable, but at
     # a weight that can never outrank a real visible/aria/placeholder hit.
-    if core in name:
+    if _has_token(core, name):
         score = max(score, 22)
-    if core in id_:
+    if _has_token(core, id_):
         score = max(score, 20)
 
     # Word-set match: all core words present, tiered by WHERE they land.
@@ -183,13 +213,13 @@ def _score(el: InteractiveElement, core: str) -> int:
     if core_words:
         visible = " ".join([text, aria, placeholder])
         extended = " ".join([visible, name, id_, parent])
-        if all(w in visible for w in core_words):
+        if all(_has_token(w, visible) for w in core_words):
             score = max(score, 50)
-        elif all(w in extended for w in core_words):
-            own_hits = sum(1 for w in core_words if w in visible)
+        elif all(_has_token(w, extended) for w in core_words):
+            own_hits = sum(1 for w in core_words if _has_token(w, visible))
             score = max(score, 44 + 8 * own_hits if own_hits else 22)
 
-    if core in parent:
+    if _has_token(core, parent):
         score = max(score, 30)
 
     return score
@@ -230,8 +260,9 @@ def resolve_element(
     if not elements:
         return ResolveResult(found=None, candidates=[], reason="no_elements")
 
-    description, ordinal = extract_ordinal(description)
-    core, hinted_kind = split_description(description)
+    # Kind hint comes from the full description; the ordinal token (if any)
+    # carries no kind word, so detect kind before stripping anything.
+    raw_tokens, hinted_kind = _strip_kind(description)
     effective_kind = kind_filter or hinted_kind
 
     pool = elements
@@ -241,6 +272,23 @@ def resolve_element(
             pool = filtered  # may end up empty — that's the caller's choice
         else:
             pool = filtered or elements
+
+    # Exact-label fast path. Match the full description (kind hint removed,
+    # stopwords KEPT) against each element's visible label before stopword
+    # stripping or ordinal extraction. A label that equals the description
+    # verbatim is unambiguous, which fixes two bugs at once: stopword
+    # stripping reducing 'Sign in' -> 'sign' (ties with 'Sign up'), and
+    # extract_ordinal hijacking a literal 'Issue #42' as ordinal 42. A
+    # literal label always beats a positional or stopword-stripped guess.
+    phrase = " ".join(raw_tokens)
+    if phrase:
+        exact = [el for el in pool if _label_equals(el, phrase)]
+        if len(exact) == 1:
+            return ResolveResult(found=exact[0],
+                                 candidates=[(110, exact[0])], reason="unique")
+
+    description, ordinal = extract_ordinal(description)
+    core, _ = split_description(description)
 
     # Kind-only call: the description was just a kind word ("dropdown",
     # "button", "the textbox") and after stripping it `core` is empty.
