@@ -744,7 +744,58 @@ async def _run_replay_receipt(s: "Session", verify: dict, actions: list) -> dict
                              "to these steps (pre-existing / residual state)")
     else:
         receipt["reproduced"] = bool(held_after)
+
+    # Optional minimization: narrow a confirmed reproduction to the minimal
+    # sufficient steps — but ONLY for a write-free journey (re-running subsets
+    # of a journey with writes would re-execute those writes many times).
+    if verify.get("minimize") and receipt["reproduced"] is True and len(actions) > 1:
+        if receipt.get("writes_replayed", 0) > 0:
+            receipt["minimize_skipped"] = ("journey re-executes writes — minimizing would repeat "
+                                           "them; skipped")
+        else:
+            minimal = await _minimize_replay(s, expect, target, start_url, actions)
+            receipt["minimal_count"] = len(minimal)
+            receipt["minimal_steps"] = [
+                (f"{a.get('tool')} {a.get('description') or a.get('value') or ''}").strip()
+                for a in minimal
+            ]
     return receipt
+
+
+async def _minimize_replay(s: "Session", expect: str, target: str, start_url: str,
+                           actions: list, max_replays: int = 40) -> list:
+    """Greedy 1-minimal subset of a CONFIRMED, write-free replay: drop any step
+    whose removal still reproduces (flip holds, no divergence, still zero writes).
+    Bounded by max_replays. Caller guarantees the full journey was write-free."""
+    def _holds(state):
+        present = _visible_text_in_state(target, state)
+        return present if expect == "present" else (not present)
+
+    async def _reproduces(subset: list) -> bool:
+        res = await s.browser.replay(start_url, subset)
+        if res["diverged"] or res.get("writes", 0) > 0:
+            return False
+        if _holds(res.get("baseline_state")):
+            return False
+        return bool(_holds(res.get("final_state")))
+
+    current = list(actions)
+    budget = max_replays
+    changed = True
+    while changed and budget > 0:
+        changed = False
+        for i in range(len(current)):
+            if budget <= 0:
+                break
+            candidate = current[:i] + current[i + 1:]
+            if not candidate:
+                continue
+            budget -= 1
+            if await _reproduces(candidate):
+                current = candidate
+                changed = True
+                break
+    return current
 
 
 async def _capture_browser_events(
@@ -3278,6 +3329,10 @@ async def record_bug(
             time (real side effect; the receipt reports writes_replayed). Use the
             plain clean-load verify (no replay) for destructive flows, or accept
             the re-run.
+            Add "minimize": true to also narrow a confirmed reproduction to the
+            minimal sufficient steps ("you don't need all 7 — 2 and 5 suffice").
+            Minimization runs ONLY for a write-free journey (it re-runs subsets,
+            which would repeat any writes); it is skipped with a note otherwise.
             Omit verify entirely for visual/layout/UX-judgment bugs that no
             single text check captures — those record as observation-based.
         evidence: Optional dict with extra context. Recommended keys:
@@ -3410,6 +3465,11 @@ async def record_bug(
             if is_replay:
                 out.append(f"  reproduction: CONFIRMED by replaying {receipt.get('steps')} step(s) "
                            f"from a cold start ({receipt['expect']} {receipt['target_text']!r})")
+                if receipt.get("minimal_count") is not None and receipt["minimal_count"] < receipt.get("steps", 0):
+                    out.append(f"  minimal repro: {receipt['minimal_count']} of {receipt['steps']} step(s) "
+                               f"suffice — {receipt.get('minimal_steps')}")
+                elif receipt.get("minimize_skipped"):
+                    out.append(f"  minimize: {receipt['minimize_skipped']}")
             else:
                 out.append(f"  reproduction: CONFIRMED {receipt['runs']} from clean load "
                            f"({receipt['expect']} {receipt['target_text']!r} @ {receipt['at_url']})")
