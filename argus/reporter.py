@@ -55,15 +55,27 @@ def _repro_badge(receipt: Optional[dict]) -> str:
         return ('<span class="rp" style="background:#6e7781">'
                 'VERIFY NOT RUN · clause rejected</span>')
     reproduced = receipt.get("reproduced")
+    is_replay = receipt.get("mode") == "replay"
     if reproduced is True:
-        color, label = "#1a7f37", f"VERIFIED · reproduced {receipt.get('runs', '')} from clean load"
+        if is_replay:
+            label = f"VERIFIED · reproduced by replaying {receipt.get('steps', '?')} steps from a cold start"
+        else:
+            label = f"VERIFIED · reproduced {receipt.get('runs', '')} from clean load"
+        color = "#1a7f37"
     elif reproduced is False:
-        if receipt.get("flaky"):
+        if is_replay:
+            color, label = "#b35900", f"NOT REPRODUCED · replayed {receipt.get('steps', '?')} steps, symptom absent"
+        elif receipt.get("flaky"):
             color, label = "#9a6700", f"INTERMITTENT · {receipt.get('runs', '')} on reload"
         else:
             color, label = "#b35900", "NOT REPRODUCED · absent on clean reload (may be intermittent — re-check)"
-    else:
-        color, label = "#6e7781", "repro check errored"
+    else:  # None — inconclusive
+        if is_replay and receipt.get("diverged"):
+            color, label = "#6e7781", "INCONCLUSIVE · replay path diverged (a step no longer resolves)"
+        elif is_replay:
+            color, label = "#6e7781", "INCONCLUSIVE · symptom pre-existed the journey (not caused by these steps)"
+        else:
+            color, label = "#6e7781", "repro check errored"
     return (f'<span class="rp" style="background:{color}">{_esc(label)}</span>')
 
 

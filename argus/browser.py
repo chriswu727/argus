@@ -934,17 +934,18 @@ class BrowserDriver:
 
     # -- state extraction --
 
-    async def get_state(self) -> PageState:
-        if self._page is None:
+    async def get_state(self, page=None) -> PageState:
+        page = page or self._page
+        if page is None:
             raise RuntimeError(
                 "No open page — all tabs were closed. Call navigate(url) or "
                 "start_session(url) to recover."
             )
-        elements = await self._extract_elements()
-        content = await self._extract_page_content()
+        elements = await self._extract_elements(page)
+        content = await self._extract_page_content(page)
         return PageState(
-            url=self._page.url,
-            title=await self._page.title(),
+            url=page.url,
+            title=await page.title(),
             elements=elements,
             page_text=content.get("pageText", ""),
             toast_messages=[t["text"] for t in content.get("toasts", []) if t.get("visible")],
@@ -984,19 +985,19 @@ class BrowserDriver:
             return {"found": False}
 
 
-    async def _extract_elements(self) -> List[InteractiveElement]:
-        raw = await self._page.evaluate(_EXTRACT_ELEMENTS_JS)
+    async def _extract_elements(self, page=None) -> List[InteractiveElement]:
+        raw = await (page or self._page).evaluate(_EXTRACT_ELEMENTS_JS)
         return [InteractiveElement(**el) for el in raw]
 
-    async def _extract_page_content(self) -> Dict:
+    async def _extract_page_content(self, page=None) -> Dict:
         try:
-            return await self._page.evaluate(_EXTRACT_PAGE_CONTENT_JS)
+            return await (page or self._page).evaluate(_EXTRACT_PAGE_CONTENT_JS)
         except Exception:
             return {}
 
     # -- actions --
 
-    def _locator(self, element_index: int, elements: List[InteractiveElement]):
+    def _locator(self, element_index: int, elements: List[InteractiveElement], page=None):
         """Locator for one element, disambiguating duplicate selectors by order.
 
         _build_selector yields the same selector for several extracted elements
@@ -1014,7 +1015,96 @@ class BrowserDriver:
             1 for other in elements[:element_index]
             if self._build_selector(other) == selector
         )
-        return self._page.locator(selector).nth(nth)
+        return (page or self._page).locator(selector).nth(nth)
+
+    async def replay(self, start_url: str, actions: List[Dict]) -> Dict:
+        """Re-drive a recorded action trace from a cold start and report what the
+        page looked like BEFORE the steps and AFTER, so the caller can require
+        the symptom to FLIP because of the journey (not pre-exist).
+
+        Runs in an ISOLATED context (a fresh new_context seeded with a copy of
+        the live context's storage_state for auth), so re-driven navigation does
+        not disturb the agent's live page/DOM. NOTE: the steps still re-execute
+        real writes against the shared backend (re-clicking Save/Delete/Add re-
+        performs those side effects) — that is inherent to replaying a journey.
+
+        Returns {steps, diverged, baseline_state, final_state}. diverged=True
+        (a step could not be re-resolved/applied, or a load returned 4xx/5xx)
+        means the path is no longer the same -> INCONCLUSIVE, never certified.
+        The isolated context is always closed.
+        """
+        from .resolver import resolve_element
+        try:
+            storage = await self._context.storage_state()
+        except Exception:
+            storage = None
+        ctx = await self._browser.new_context(viewport=self.viewport, storage_state=storage)
+        page = await ctx.new_page()
+        steps: List[Dict] = []
+        diverged = False
+        baseline = None
+        try:
+            if start_url:
+                try:
+                    resp = await page.goto(start_url, wait_until="networkidle", timeout=30_000)
+                    if resp is not None and resp.status >= 400:
+                        return {"steps": [{"act": f"goto {start_url}", "ok": False,
+                                           "reason": f"HTTP {resp.status}"}],
+                                "diverged": True, "baseline_state": None, "final_state": None}
+                except Exception as e:
+                    return {"steps": [{"act": f"goto {start_url}", "ok": False, "reason": str(e)[:80]}],
+                            "diverged": True, "baseline_state": None, "final_state": None}
+            baseline = await self.get_state(page)
+            for act in actions:
+                tool = act.get("tool")
+                desc = act.get("description") or ""
+                val = act.get("value")
+                if tool == "navigate":
+                    try:
+                        resp = await page.goto(val, wait_until="networkidle", timeout=30_000)
+                        if resp is not None and resp.status >= 400:
+                            steps.append({"act": f"navigate {val}", "ok": False, "reason": f"HTTP {resp.status}"})
+                            diverged = True
+                            break
+                        steps.append({"act": f"navigate {val}", "ok": True})
+                    except Exception as e:
+                        steps.append({"act": f"navigate {val}", "ok": False, "reason": str(e)[:80]})
+                        diverged = True
+                        break
+                    continue
+                kind = {"type_into": "input", "select_into": "select"}.get(tool)
+                elements = await self._extract_elements(page)
+                r = resolve_element(desc, elements, kind_filter=kind, strict_kind=bool(kind))
+                if r.reason != "unique" or r.found is None:
+                    steps.append({"act": f"{tool} {desc!r}", "ok": False, "reason": f"re-resolve {r.reason}"})
+                    diverged = True
+                    break
+                try:
+                    loc = self._locator(elements.index(r.found), elements, page=page)
+                    if tool == "click_what":
+                        await loc.click(timeout=5_000)
+                        await page.wait_for_load_state("networkidle", timeout=10_000)
+                    elif tool == "type_into":
+                        await loc.fill(val or "", timeout=5_000)
+                    elif tool == "select_into":
+                        await loc.select_option(val or "", timeout=5_000)
+                    else:
+                        steps.append({"act": f"{tool} {desc!r}", "ok": False, "reason": "unknown tool"})
+                        diverged = True
+                        break
+                    steps.append({"act": f"{tool} {desc!r}", "ok": True})
+                except Exception as e:
+                    steps.append({"act": f"{tool} {desc!r}", "ok": False, "reason": str(e)[:80]})
+                    diverged = True
+                    break
+            final = None if diverged else await self.get_state(page)
+            return {"steps": steps, "diverged": diverged,
+                    "baseline_state": baseline, "final_state": final}
+        finally:
+            try:
+                await ctx.close()
+            except Exception:
+                pass
 
     async def click(self, element_index: int, elements: List[InteractiveElement]) -> bool:
         try:
