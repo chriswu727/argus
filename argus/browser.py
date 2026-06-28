@@ -784,11 +784,21 @@ class BrowserDriver:
     # -- navigation --
 
     async def goto(self, url: str):
+        if self._page is None:
+            # All tabs were closed; reopen one so navigation recovers the
+            # session instead of dereferencing a None page.
+            self._page = await self._context.new_page()
+            self._attach_page_listeners(self._page)
         await self._page.goto(url, wait_until="networkidle", timeout=30_000)
 
     # -- state extraction --
 
     async def get_state(self) -> PageState:
+        if self._page is None:
+            raise RuntimeError(
+                "No open page — all tabs were closed. Call navigate(url) or "
+                "start_session(url) to recover."
+            )
         elements = await self._extract_elements()
         content = await self._extract_page_content()
         return PageState(
@@ -940,6 +950,8 @@ class BrowserDriver:
             return False
 
     async def scroll_down(self):
+        if self._page is None:
+            return
         await self._page.evaluate("window.scrollBy(0, 500)")
         await asyncio.sleep(0.5)
 

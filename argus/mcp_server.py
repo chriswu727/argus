@@ -193,6 +193,28 @@ def _require_session() -> Session:
     return _session
 
 
+async def _teardown_active_session() -> None:
+    """Cleanly stop whichever backend the current session holds.
+
+    Both start_session and start_screen_session switch modes; tearing down
+    only `.browser` crashed when the prior session was screen-mode
+    (None.stop()), and only `.screen` would leak the browser. Stop whatever
+    is set, best-effort.
+    """
+    if not _session.active:
+        return
+    if _session.browser is not None:
+        try:
+            await _session.browser.stop()
+        except Exception:
+            pass
+    if _session.screen is not None:
+        try:
+            await _session.screen.stop()
+        except Exception:
+            pass
+
+
 def _output_dir() -> str:
     return os.environ.get("ARGUS_OUTPUT_DIR", "./argus-reports")
 
@@ -289,8 +311,14 @@ async def _run_reproduction_check(s: "Session", verify: dict) -> dict:
     checks present/absent against the agent's claim — twice, so a symptom
     that only shows up once is flagged flaky rather than reported as solid.
     We do NOT reset the fixture: that would wipe the agent's live session.
-    "Clean load" here means re-reading server truth, which is exactly what
-    exposes fake-persistence and hallucinated-element false positives.
+    "Clean load" here is a fresh same-context reload — it re-reads
+    server-backed state (cookies/session persist, so auth survives) and any
+    active request mocks are suspended for the check. It does NOT clear
+    localStorage/sessionStorage: a symptom that lives purely in client web
+    storage can survive the reload, so an `expect=absent` claim against
+    client-only state may read present. This is the right boundary for the
+    common case (don't log the agent out), but it means the receipt proves
+    "server-backed truth", not "all client state cleared".
 
     Returns a receipt dict; never raises.
     """
@@ -393,8 +421,7 @@ async def start_session(
     """
     global _session
 
-    if _session.active:
-        await _session.browser.stop()
+    await _teardown_active_session()
 
     new_session = Session()
     new_session.mode = "web"
@@ -501,11 +528,7 @@ async def start_screen_session(target_app: str = "") -> str:
         except OSError:
             pass
 
-    if _session.active:
-        if _session.browser is not None:
-            await _session.browser.stop()
-        if _session.screen is not None:
-            await _session.screen.stop()
+    await _teardown_active_session()
 
     _session = Session()
     _session.mode = "screen"
@@ -707,6 +730,13 @@ async def observe() -> str:
     here — that's your judgment to make.
     """
     s = _require_session()
+    if s.mode != "web" or s.browser is None:
+        # Mode-aware (the docstring promises page/app/screen): a screen
+        # session observes via the AX tree, not Playwright.
+        return await (screen_observe.fn if hasattr(screen_observe, "fn") else screen_observe)()
+    if s.browser._page is None:
+        return ("observe: no open page — all tabs were closed. Call "
+                "navigate(url) or start_session(url) to recover.")
     state = await s.browser.get_state()
     s._last_elements = state.elements
     if state.url not in s.pages_visited:
@@ -2315,8 +2345,11 @@ async def tabs_switch(index: int) -> str:
     ok = await s.browser.tabs_switch(index)
     if not ok:
         return f"tabs_switch: no tab at index {index}. Call tabs_list to see available tabs."
+    # The active page changed — refresh the resolver pool so the next
+    # click_what/type_into resolves against THIS tab, not the previous one.
+    s._last_elements = (await s.browser.get_state()).elements
     s.steps.append(f"tabs_switch({index})")
-    return f"Switched to tab {index}: {s.browser._page.url}"
+    return f"Switched to tab {index}: {s.browser._page.url}. observe() to see its elements."
 
 
 @mcp.tool()
@@ -2330,7 +2363,12 @@ async def tabs_close(index: int) -> str:
     if not ok:
         return f"tabs_close: no tab at index {index}."
     s.steps.append(f"tabs_close({index})")
-    return f"Closed tab {index}."
+    if s.browser._page is None:
+        return ("Closed the last tab — no open page remains. Call "
+                "navigate(url) or start_session(url) to continue.")
+    # Focus may have moved to another tab — refresh the resolver pool.
+    s._last_elements = (await s.browser.get_state()).elements
+    return f"Closed tab {index}. Active page is now {s.browser._page.url}."
 
 
 @mcp.tool()
@@ -2408,6 +2446,8 @@ async def navigate(url: str) -> str:
         url: The URL to navigate to
     """
     s = _require_session()
+    if s.mode != "web" or s.browser is None:
+        return "navigate: this tool is web-mode only."
     step = f"Navigate to {url}"
     s.steps.append(step)
 
@@ -2424,6 +2464,8 @@ async def navigate(url: str) -> str:
 async def go_back() -> str:
     """Go back to the previous page."""
     s = _require_session()
+    if s.mode != "web" or s.browser is None:
+        return "go_back: this tool is web-mode only."
     s.steps.append("Go back")
 
     ok = await s.browser.go_back()
@@ -2438,6 +2480,8 @@ async def go_back() -> str:
 async def scroll_down() -> str:
     """Scroll the page down to reveal more content."""
     s = _require_session()
+    if s.mode != "web" or s.browser is None:
+        return "scroll_down: this tool is web-mode only."
     s.steps.append("Scroll down")
     await s.browser.scroll_down()
     return "Scrolled down. Call observe() to see what's now in view."
