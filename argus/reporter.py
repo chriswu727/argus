@@ -42,16 +42,26 @@ def _repro_badge(receipt: Optional[dict]) -> str:
     Empty string when there's no receipt — most bugs are observation-based
     and shouldn't carry a misleading 'unverified' mark.
     """
-    if not receipt or not receipt.get("attempted"):
-        return ""
+    if not receipt:
+        return ""  # observation-based finding — no machine-checkable symptom
+    if not receipt.get("attempted"):
+        # A receipt that exists but wasn't attempted is either an
+        # auto-captured event bug or a verify clause that was rejected. Render
+        # each distinctly so the reader never confuses them with a confirmed
+        # finding (or with an observation-based bug, which carries no receipt).
+        if receipt.get("auto_captured"):
+            return ('<span class="rp" style="background:#6e7781">'
+                    'AUTO-CAPTURED EVENT · not independently verified</span>')
+        return ('<span class="rp" style="background:#6e7781">'
+                'VERIFY NOT RUN · clause rejected</span>')
     reproduced = receipt.get("reproduced")
     if reproduced is True:
         color, label = "#1a7f37", f"VERIFIED · reproduced {receipt.get('runs', '')} from clean load"
     elif reproduced is False:
         if receipt.get("flaky"):
-            color, label = "#9a6700", f"FLAKY · only {receipt.get('runs', '')} on reload"
+            color, label = "#9a6700", f"INTERMITTENT · {receipt.get('runs', '')} on reload"
         else:
-            color, label = "#b35900", "UNCONFIRMED · symptom did not hold on clean reload"
+            color, label = "#b35900", "NOT REPRODUCED · absent on clean reload (may be intermittent — re-check)"
     else:
         color, label = "#6e7781", "repro check errored"
     return (f'<span class="rp" style="background:{color}">{_esc(label)}</span>')

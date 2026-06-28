@@ -308,8 +308,11 @@ async def _run_reproduction_check(s: "Session", verify: dict) -> dict:
 
     The agent's current page may be stale or reflect a hallucinated element.
     This re-navigates (fresh GET, no cached DOM) to the relevant URL and
-    checks present/absent against the agent's claim — twice, so a symptom
-    that only shows up once is flagged flaky rather than reported as solid.
+    checks present/absent against the agent's claim — twice. Two consecutive
+    loads catch a symptom that flips between them (marked intermittent), but
+    they are close together, so a genuine timing/race symptom can read a
+    steady 2/2 or 0/2; treat the receipt as confirming fresh-load presence,
+    not as a flakiness measurement.
     We do NOT reset the fixture: that would wipe the agent's live session.
     "Clean load" here is a fresh same-context reload — it re-reads
     server-backed state (cookies/session persist, so auth survives) and any
@@ -402,6 +405,25 @@ async def _capture_browser_events(
     bugs = s.detector.process_console_errors(console_errs, state.url, recent)
     bugs.extend(s.detector.process_network_errors(network_errs, state.url, recent))
     return bugs
+
+
+# Sentinel receipt for console/network events the listener captured. These are
+# factual Playwright events, not agent-judged findings, and they do NOT pass
+# through the reproduction receipt — so tag them rather than letting them blend
+# with the independently re-confirmed findings the precision moat is about.
+_AUTO_CAPTURED_RECEIPT = {
+    "attempted": False,
+    "auto_captured": True,
+    "reason": "console/network event captured by listener — not independently re-confirmed",
+}
+
+
+def _file_event_bugs(s: "Session", new_bugs: list) -> None:
+    """Append detector-captured event bugs to the session, tagged auto-captured."""
+    for bug in new_bugs:
+        if bug.reproduction_receipt is None:
+            bug.reproduction_receipt = dict(_AUTO_CAPTURED_RECEIPT)
+    s.bugs += new_bugs
 
 
 @mcp.tool()
@@ -2689,7 +2711,7 @@ async def get_errors() -> str:
         for bug in new_bugs:
             bug.screenshot_path = ss_path
 
-    s.bugs.extend(new_bugs)
+    _file_event_bugs(s, new_bugs)
 
     if not new_bugs and not console_errs and not network_errs:
         return f"No new console or network events. Total bugs in session: {len(s.bugs)}"
@@ -3000,10 +3022,11 @@ async def check_performance() -> str:
 
 @mcp.tool()
 async def crawl_site(max_pages: int = 20) -> str:
-    """Crawl the entire site starting from the current page. Visits all internal links,
-    runs all detectors on each page, and checks links and performance.
+    """Discover pages: crawl internal links from the current page, auto-capturing
+    only console/network events (tagged auto-captured) and checking links per page.
 
-    This is the most thorough scan — it discovers pages automatically and tests everything.
+    This is page DISCOVERY, not a judgment pass — it does not decide what's a bug
+    for you. Walk the surfaced pages with observe() and record_bug what you confirm.
     Can take 30-120 seconds depending on site size.
 
     Args:
@@ -3058,7 +3081,7 @@ async def crawl_site(max_pages: int = 20) -> str:
             for bug in new_bugs:
                 bug.screenshot_path = ss_path
 
-        s.bugs.extend(new_bugs)
+        _file_event_bugs(s, new_bugs)
         page_results.append((state.url, len(new_bugs), len(dead)))
 
         # Discover new internal links to visit (deduplicated by path)
@@ -3147,7 +3170,7 @@ async def test_action(target: str, expectation: str = "") -> str:
     ss_path = await _auto_screenshot(s, f"action_{label[:20]}", step)
     for bug in new_bugs:
         bug.screenshot_path = ss_path
-    s.bugs.extend(new_bugs)
+    _file_event_bugs(s, new_bugs)
 
     lines = [
         f'ACTION: Clicked "{label[:60]}" via target {target!r}',
@@ -3326,7 +3349,7 @@ async def test_form(
     ss_path = await _auto_screenshot(s, "form_result", f"Form: {submit_label}")
     for bug in new_bugs:
         bug.screenshot_path = ss_path
-    s.bugs.extend(new_bugs)
+    _file_event_bugs(s, new_bugs)
 
     lines = [
         f'FORM SUBMISSION via "{submit_label}"',
@@ -3379,23 +3402,10 @@ async def end_session() -> str:
     s = _require_session()
 
     if s.mode == "web" and s.browser is not None:
-        # Final error drain (web mode only — console/network are web concepts).
-        console_errs, network_errs = s.browser.drain_errors()
-        current_url = s.browser._page.url if s.browser._page else ""
-        recent = s.steps[s._steps_since_last_bug:]
-        final_bugs = s.detector.process_console_errors(
-            console_errs, current_url, recent
-        )
-        final_bugs.extend(s.detector.process_network_errors(
-            network_errs, current_url, recent
-        ))
-        if final_bugs:
-            ss_path = await _auto_screenshot(
-                s, "final_errors", f"Final errors on {current_url}"
-            )
-            for bug in final_bugs:
-                bug.screenshot_path = ss_path
-        s.bugs.extend(final_bugs)
+        # No blind final drain here: auto-filing console/network bugs after the
+        # agent has stopped means they can never be judged or re-confirmed.
+        # Events captured during the session were already filed (tagged
+        # auto-captured) via get_errors / test_action / test_form / crawl_site.
         await s.browser.stop()
     elif s.mode == "screen" and s.screen is not None:
         await s.screen.stop()
@@ -3442,40 +3452,9 @@ async def end_session() -> str:
 
 
 def _argus_version() -> str:
-    """Resolve the installed Argus version.
-
-    For source-checkout / editable installs we prefer pyproject.toml on
-    disk — pip's metadata gets stamped at install time and lags when
-    you `git pull` or bump the version locally. For wheel installs there's
-    no pyproject.toml next to the package, so we fall back to
-    importlib.metadata.
-    """
-    from pathlib import Path
-
-    # Source-checkout fast path.
-    try:
-        root = Path(__file__).resolve().parent.parent
-        pp = root / "pyproject.toml"
-        if pp.exists():
-            for line in pp.read_text().splitlines():
-                stripped = line.strip()
-                if stripped.startswith("version"):
-                    parts = stripped.split("=", 1)
-                    if len(parts) == 2:
-                        return parts[1].strip().strip('"').strip("'")
-    except Exception:
-        pass
-
-    # Wheel-install fallback.
-    try:
-        from importlib.metadata import version, PackageNotFoundError
-        try:
-            return version("argus-testing")
-        except PackageNotFoundError:
-            pass
-    except ImportError:
-        pass
-    return "unknown"
+    """The Argus version — single source is argus.__version__."""
+    from . import __version__
+    return __version__
 
 
 def main():

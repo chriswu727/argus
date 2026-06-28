@@ -311,6 +311,26 @@ def test_screen_resolve_uses_path_for_disambiguation():
     assert r.found.path == ["Login dialog"]
 
 
+def test_screen_ordinal_selects_nth_identical_control():
+    # Parity with the web resolver (F13): ordinal disambiguation in screen mode,
+    # scanned in reading order (top-to-bottom).
+    from argus.resolver import resolve_screen_element
+    els = [_screen_element("AXButton", title="Delete", y=10 * i) for i in range(4)]
+    r = resolve_screen_element("Delete #2", els)
+    assert r.reason == "unique"
+    assert r.found is els[1]
+
+
+def test_screen_exact_label_survives_stopword():
+    # "Sign in" must not collapse to "sign" and tie with "Sign up" (F13 parity).
+    from argus.resolver import resolve_screen_element
+    els = [_screen_element("AXButton", title="Sign in"),
+           _screen_element("AXButton", title="Sign up")]
+    r = resolve_screen_element("Sign in", els)
+    assert r.reason == "unique"
+    assert r.found is els[0]
+
+
 def test_describe_screen_includes_role_and_coords():
     from argus.resolver import describe_screen
     el = _screen_element("AXButton", title="Save", x=120, y=80, w=80, h=30,

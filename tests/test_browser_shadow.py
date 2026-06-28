@@ -79,6 +79,22 @@ def test_build_selector_handles_multiline_and_special_chars():
     assert "Wireless Headphones" in sel
 
 
+def test_build_selector_shadow_long_label_uses_substring_form():
+    """A shadow label >50 chars can't use exact text="..." (a truncated snippet
+    matches zero elements); it must fall back to the unquoted substring form."""
+    from argus.browser import BrowserDriver
+    long_label = ("This is a very long shadow web-component menu item label that "
+                  "clearly exceeds fifty characters")
+    sel = BrowserDriver._build_selector(
+        InteractiveElement(index=0, tag="button", text=long_label, shadow=True))
+    assert sel.startswith("button >> text=")
+    assert 'text="' not in sel  # NOT the exact-quoted form
+    # a short shadow label keeps the precise exact-quoted form
+    assert BrowserDriver._build_selector(
+        InteractiveElement(index=0, tag="button", text="OK", shadow=True)
+    ) == 'button >> text="OK"'
+
+
 def test_build_selector_escapes_css_special_ids():
     """Modern-framework ids carry ':' (React useId, Radix, MUI) or '.', which
     are CSS-special. A raw "#:r3:" is a parse error and "#ok.x" mis-targets, so

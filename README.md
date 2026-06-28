@@ -318,7 +318,7 @@ argus/
 │
 ├── test-site/                 # BuggyTasks fixture (22 mechanical bugs)
 ├── human-eye-fixture/         # DarkShop fixture (12 human-eye bugs)
-├── tests/                     # 45 unit tests (resolver, detector, safety, …)
+├── tests/                     # unit + live tests (resolver, receipt, bench, browser, lifecycle, …)
 └── bench-results/             # checked-in artifacts (json + md)
 ```
 
