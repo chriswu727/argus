@@ -429,6 +429,52 @@ def _evaluate_expectation(before: PageState, after: PageState, expect: dict) -> 
     return results
 
 
+_MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+def _reconcile_action(new_reqs: list, before: PageState, after: PageState) -> tuple:
+    """Surface the network a click produced as EVIDENCE for the agent to judge —
+    deliberately NOT an auto-verdict. Returns (evidence_lines, check_or_None).
+
+    Argus does not assert "deceptive success" from heuristics: request->action
+    attribution is fuzzy (background polls / telemetry land in the same window),
+    "no network write" is legitimate for optimistic UI and client-side/offline
+    persistence, and success/failure copy is open-vocabulary. So it shows what
+    fired (methods, statuses, errors) and, when a message appeared, nudges the
+    agent to CONFIRM the claim persisted — the reliable oracle is a fresh
+    reload, not the wire. This is the seam pure-FE tests (never see persistence)
+    and pure-BE tests (never see the UI claim) both miss; the agent makes the
+    call.
+    """
+    mutating = [r for r in new_reqs if (r.get("method") or "").upper() in _MUTATING_METHODS]
+    failed = [r for r in new_reqs if (r.get("status") or 0) >= 400]
+    new_toasts = set(after.toast_messages) - set(before.toast_messages)
+
+    evidence = [f"Requests fired by this action: {len(new_reqs)} ({len(mutating)} mutating)"]
+    for r in new_reqs[:6]:
+        st = r.get("status")
+        evidence.append(f"  {(r.get('method') or '?'):6} "
+                        f"{(str(st) if st is not None else 'pending'):>7}  {(r.get('url') or '')[:80]}")
+    if len(new_reqs) > 6:
+        evidence.append(f"  (+{len(new_reqs) - 6} more)")
+    for r in failed:
+        evidence.append(f"  error: {r.get('method')} {(r.get('url') or '')[:60]} -> HTTP {r.get('status')}")
+
+    check = None
+    if new_toasts:
+        names = "; ".join(list(new_toasts)[:2])[:80]
+        if not mutating:
+            check = (f"a message appeared ({names!r}) but this click fired NO mutating request. "
+                     "If it claims a saved/changed state, confirm it actually persisted on a fresh "
+                     "reload (verify_persistence) — optimistic UI / client-side persistence are "
+                     "legitimate, a lying toast is not.")
+        elif failed:
+            check = (f"a message appeared ({names!r}) and a request this click fired returned an "
+                     "error (above). If the message claims success, that may be success copy over a "
+                     "failed write — read the response body (network_request) or reload to confirm.")
+    return evidence, check
+
+
 async def _run_reproduction_check(s: "Session", verify: dict) -> dict:
     """Independently re-confirm a bug's observable symptom from a clean load.
 
@@ -3426,6 +3472,7 @@ async def test_action(target: str, expectation: str = "", expect: Optional[dict]
 
     s.browser.drain_errors()
     before = await s.browser.get_state()
+    net_pre = len(s.browser.network_log)  # bracket the requests THIS click fires
 
     try:
         # Route through _locator so a duplicate-label target hits the resolved
@@ -3480,6 +3527,16 @@ async def test_action(target: str, expectation: str = "", expect: Optional[dict]
         lines.append(f"\nEvent-bugs auto-captured ({len(new_bugs)} new):")
         for bug in new_bugs:
             lines.append(f"  [{bug.severity.value.upper()}] {bug.title[:80]}")
+
+    new_reqs = s.browser.network_log[net_pre:]
+    xs_evidence, xs_check = _reconcile_action(new_reqs, before, after)
+    if new_reqs or xs_check:
+        lines.append("")
+        lines.append("CROSS-STACK (UI claim vs wire):")
+        for e in xs_evidence:
+            lines.append(f"  {e}")
+        if xs_check:
+            lines.append(f"  CHECK: {xs_check}")
 
     if expect:
         checks = _evaluate_expectation(before, after, expect)
