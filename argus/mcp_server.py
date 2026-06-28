@@ -228,12 +228,8 @@ async def _teardown_active_session() -> None:
 
 
 def _record_action(s: "Session", tool: str, description: str = "", value: Optional[str] = None) -> None:
-    """Append a structured, replayable action to the session trace, stamped with
-    the URL the action started on (so a replay knows where the journey began)."""
-    url = ""
-    if s.browser is not None and s.browser._page is not None:
-        url = s.browser._page.url
-    s.action_trace.append({"tool": tool, "description": description, "value": value, "url": url})
+    """Append a structured, replayable action to the session trace."""
+    s.action_trace.append({"tool": tool, "description": description, "value": value})
 
 
 def _output_dir() -> str:
@@ -277,7 +273,10 @@ def _write_journal(s: "Session") -> None:
         if r.get("mode") == "replay":
             continue
         expect, target = r.get("expect"), r.get("target_text")
-        if expect in ("present", "absent") and target:
+        # Only journal findings Argus actually CONFIRMED (reproduced). A
+        # not-reproduced / errored finding would otherwise resurface next run as
+        # a phantom "no-longer-reproduces (likely fixed)".
+        if r.get("reproduced") is True and expect in ("present", "absent") and target:
             fresh.append({
                 "fingerprint": _bug_fingerprint(b),
                 "title": b.title[:120], "severity": b.severity.value, "type": b.type.value,
@@ -546,11 +545,11 @@ def _reconcile_action(new_reqs: list, before: PageState, after: PageState) -> tu
     for r in new_reqs[:6]:
         st = r.get("status")
         evidence.append(f"  {(r.get('method') or '?'):6} "
-                        f"{(str(st) if st is not None else 'pending'):>7}  {(r.get('url') or '')[:80]}")
+                        f"{(str(st) if st is not None else 'pending'):>7}  {_redact(r.get('url') or '')[:90]}")
     if len(new_reqs) > 6:
         evidence.append(f"  (+{len(new_reqs) - 6} more)")
     for r in failed:
-        evidence.append(f"  error: {r.get('method')} {(r.get('url') or '')[:60]} -> HTTP {r.get('status')}")
+        evidence.append(f"  error: {r.get('method')} {_redact(r.get('url') or '')[:70]} -> HTTP {r.get('status')}")
 
     check = None
     if new_toasts:
@@ -565,6 +564,19 @@ def _reconcile_action(new_reqs: list, before: PageState, after: PageState) -> tu
                      "error (above). If the message claims success, that may be success copy over a "
                      "failed write — read the response body (network_request) or reload to confirm.")
     return evidence, check
+
+
+_LOGOUT_PHRASES = ("please log in", "please sign in", "log in to", "sign in to",
+                   "session expired", "session has expired", "you have been logged out",
+                   "you are logged out", "log in to continue", "sign in to continue")
+
+
+def _looks_logged_out(state: PageState) -> bool:
+    """Heuristic: the page is a login wall (so an auth-gated symptom is absent
+    because we're logged out, not because the bug was fixed). Conservative full
+    phrases, not the bare word 'login' (which appears on logged-in pages too)."""
+    t = (state.page_text or "").lower()
+    return any(p in t for p in _LOGOUT_PHRASES)
 
 
 async def _run_reproduction_check(s: "Session", verify: dict) -> dict:
@@ -606,10 +618,19 @@ async def _run_reproduction_check(s: "Session", verify: dict) -> dict:
     # A clean load means none of the agent's own forced responses are live —
     # otherwise an injected 500 re-fires on reload and certifies itself.
     suspended_mocks = await s.browser.suspend_mocks()
+    inconclusive = None
     try:
         for _ in range(2):
-            await s.browser.goto(nav_url)
+            resp = await s.browser.goto(nav_url)
             state = await s.browser.get_state()
+            # A 4xx/5xx page or a login wall makes the symptom absent for the
+            # wrong reason — never certify (esp. expect=absent) off that.
+            if resp is not None and resp.status >= 400:
+                inconclusive = f"clean load returned HTTP {resp.status} — can't attribute the symptom"
+                break
+            if _looks_logged_out(state):
+                inconclusive = "clean load hit a login wall — the session may have expired"
+                break
             observations.append(_text_in_state(target, state))
     except Exception as e:  # navigation/render failure — report, don't crash record_bug
         return {"attempted": True, "reproduced": None, "at_url": nav_url,
@@ -625,6 +646,11 @@ async def _run_reproduction_check(s: "Session", verify: dict) -> dict:
             s._last_elements = (await s.browser.get_state()).elements
         except Exception:
             pass
+
+    if inconclusive is not None:
+        return {"attempted": True, "reproduced": None, "at_url": nav_url,
+                "reason": inconclusive, "target_text": target[:120], "expect": expect,
+                "mocks_suspended": suspended_mocks}
 
     receipt = _receipt_verdict(observations, expect)
     receipt.update({
@@ -690,7 +716,7 @@ async def _run_replay_receipt(s: "Session", verify: dict, actions: list) -> dict
 
     receipt = {
         "attempted": True, "mode": "replay", "steps": len(actions),
-        "diverged": res["diverged"], "at_url": start_url,
+        "diverged": res["diverged"], "at_url": start_url, "writes_replayed": res.get("writes", 0),
         "target_text": target[:120], "expect": expect,
         "method": f"cold replay of {len(actions)} recorded step(s) in a fresh isolated context",
     }
@@ -2349,7 +2375,7 @@ async def network_requests(
         f"({len(log)} total this session)."
     ]
     for e in shown:
-        url_display = (e.get("url") or "")[:90]
+        url_display = _redact(e.get("url") or "")[:90]
         status = e.get("status")
         status_s = str(status) if status is not None else "pending"
         size = e.get("response_size")
@@ -2393,7 +2419,7 @@ async def network_request(
     e = matches[-1]
     import json as _json
     lines = [
-        f"Request: {e.get('method')} {e.get('url')}",
+        f"Request: {e.get('method')} {_redact(e.get('url') or '')}",
         f"  resource_type: {e.get('resource_type')}",
         f"  page_url:      {e.get('page_url')}",
         f"  started:       {e.get('started_at')}",
@@ -3241,12 +3267,17 @@ async def record_bug(
                 "target_text":"EDITED-XYZ","at_url":"/tasks/1/edit"}
             For a MULTI-STEP bug (the symptom only appears after a journey),
             add "replay": true — Argus re-drives the recorded action trace
-            (click_what/type_into/select_into/navigate) in a fresh cold page
+            (click_what/type_into/select_into/navigate) in a fresh cold context
             and checks the symptom there, giving a stronger "reproduced by
             replaying N steps from a cold start" receipt (or INCONCLUSIVE if a
             step no longer resolves). Shape:
                 {"replay": true, "expect": "present"|"absent",
                  "target_text": "the text that proves the bug"}
+            CAUTION: replay re-EXECUTES the journey's steps against the live
+            backend, so any Save/Delete/Add/checkout in the trace runs a second
+            time (real side effect; the receipt reports writes_replayed). Use the
+            plain clean-load verify (no replay) for destructive flows, or accept
+            the re-run.
             Omit verify entirely for visual/layout/UX-judgment bugs that no
             single text check captures — those record as observation-based.
         evidence: Optional dict with extra context. Recommended keys:
@@ -3325,17 +3356,23 @@ async def record_bug(
     else:
         receipt = None
 
-    # If a state capsule is in play, re-check its liveness against the CURRENT
-    # page (not a sticky latch): a finding made while the marker is absent is
-    # untrustworthy, but one made after re-minting state through the UI is fine.
+    # If a state capsule is in play, flag the finding ONLY when there's positive
+    # evidence the session died — the marker is absent AND the page is a login
+    # wall. (A marker simply not rendering on a legitimate authenticated page —
+    # checkout, settings, a modal — must not falsely flag a real bug.) When it
+    # does fire, also neutralize the receipt so an expired-session artifact can't
+    # read as VERIFIED.
     if (s._capsule_marker and s.mode == "web" and s.browser is not None
             and s.browser._page is not None):
         try:
-            if not _marker_visible(s._capsule_marker, await s.browser.get_state()):
+            cur = await s.browser.get_state()
+            if not _marker_visible(s._capsule_marker, cur) and _looks_logged_out(cur):
                 description = (description.rstrip()
-                              + "\n\n[UNRELIABLE: the restored state capsule's liveness marker "
-                                f"({s._capsule_marker!r}) is not present now — the session may have "
-                                "expired. Re-mint state and re-confirm before trusting this.]")
+                              + "\n\n[UNRELIABLE: the restored state capsule's session appears expired "
+                                "(login wall present, marker absent) — re-mint state and re-confirm.]")
+                if isinstance(receipt, dict) and receipt.get("attempted"):
+                    receipt = {**receipt, "reproduced": None,
+                               "reason": "recorded against an expired capsule session"}
         except Exception:
             pass
 
