@@ -173,6 +173,11 @@ class Session:
         self._last_elements = []
         self._last_screen_elements = []
         self._screenshot_counter = 0
+        # Structured, replayable action trace (parallel to the human-readable
+        # self.steps). Each entry: {tool, description, value}. record_bug slices
+        # the actions since the previous bug onto Bug.replay_steps.
+        self.action_trace: List[dict] = []
+        self._actions_since_last_bug: int = 0
         # Liveness marker of the most recently restored state capsule (or None).
         # record_bug re-checks it against the CURRENT page so a finding made
         # while the capsule's server session is dead gets flagged — and one made
@@ -219,6 +224,11 @@ async def _teardown_active_session() -> None:
             await _session.screen.stop()
         except Exception:
             pass
+
+
+def _record_action(s: "Session", tool: str, description: str = "", value: Optional[str] = None) -> None:
+    """Append a structured, replayable action to the session trace."""
+    s.action_trace.append({"tool": tool, "description": description, "value": value})
 
 
 def _output_dir() -> str:
@@ -1769,15 +1779,15 @@ async def click_what(description: str) -> str:
     step = f'click_what({description!r}) -> "{label[:60]}"'
     s.steps.append(step)
 
-    selector = s.browser._build_selector(el)
-    try:
-        await s.browser._page.click(selector, timeout=5000)
-        await s.browser._page.wait_for_load_state("networkidle", timeout=10_000)
-    except Exception as exc:
+    # Route through browser.click so a duplicate-label target hits the RESOLVED
+    # element (nth-aware), not the first DOM match.
+    ok = await s.browser.click(s._last_elements.index(el), s._last_elements)
+    if not ok:
         return (
-            f'click_what({description!r}) — failed to click "{label[:60]}": {exc}\n'
+            f'click_what({description!r}) — failed to click "{label[:60]}".\n'
             "The element may be obscured, stale, or removed. Try observe() again."
         )
+    _record_action(s, "click_what", description)
 
     new_state = await s.browser.get_state()
     s._last_elements = new_state.elements
@@ -1808,14 +1818,13 @@ async def type_into(description: str, text: str) -> str:
     label = el.placeholder or el.name or el.aria_label or el.id or el.tag
     s.steps.append(f'type_into({description!r}, ...) -> {label[:60]}')
 
-    selector = s.browser._build_selector(el)
-    try:
-        await s.browser._page.fill(selector, text, timeout=5000)
-    except Exception as exc:
+    ok = await s.browser.type_text(s._last_elements.index(el), text, s._last_elements)
+    if not ok:
         return (
-            f"type_into({description!r}) — failed: {type(exc).__name__}. "
+            f"type_into({description!r}) — failed. "
             f"The element may be disabled or the page may have re-rendered."
         )
+    _record_action(s, "type_into", description, text)
     return f'Typed into "{label[:60]}" (via description {description!r}).'
 
 
@@ -1832,15 +1841,14 @@ async def select_into(description: str, value: str) -> str:
     label = el.aria_label or el.name or el.id or el.tag
     s.steps.append(f'select_into({description!r}, {value!r}) -> {label[:60]}')
 
-    selector = s.browser._build_selector(el)
-    try:
-        await s.browser._page.select_option(selector, value, timeout=5000)
-    except Exception as exc:
+    ok = await s.browser.select_option(s._last_elements.index(el), value, s._last_elements)
+    if not ok:
         return (
-            f"select_into({description!r}, {value!r}) — failed: "
-            f"{type(exc).__name__}. Make sure the dropdown actually has "
-            f"that option (call inspect_element to list the choices)."
+            f"select_into({description!r}, {value!r}) — failed. "
+            f"Make sure the dropdown actually has that option "
+            f"(call inspect_element to list the choices)."
         )
+    _record_action(s, "select_into", description, value)
     return f'Selected "{value}" in "{label[:60]}".'
 
 
@@ -2786,6 +2794,7 @@ async def navigate(url: str) -> str:
     s._last_elements = state.elements
     if state.url not in s.pages_visited:
         s.pages_visited.append(state.url)
+    _record_action(s, "navigate", value=url)
 
     return f"Navigated to {state.url} — {state.title} ({len(state.elements)} elements)"
 
@@ -3171,12 +3180,14 @@ async def record_bug(
         steps_to_reproduce=list(steps),
         screenshot_path=screenshot_path,
         reproduction_receipt=receipt,
+        replay_steps=list(s.action_trace[s._actions_since_last_bug:]),
     )
     s.bugs.append(bug)
     s.steps.append(f"record_bug: [{sev.value}] {title}")
-    # Reset the per-bug step cursor so the *next* record_bug only shows
-    # actions taken between this call and that one.
+    # Reset the per-bug cursors so the *next* record_bug only carries actions
+    # taken between this call and that one.
     s._steps_since_last_bug = len(s.steps)
+    s._actions_since_last_bug = len(s.action_trace)
 
     out = [
         f"Recorded bug [{sev.value.upper()}] {title}",
@@ -3493,6 +3504,7 @@ async def test_action(target: str, expectation: str = "", expect: Optional[dict]
     s._last_elements = after.elements
     if after.url not in s.pages_visited:
         s.pages_visited.append(after.url)
+    _record_action(s, "click_what", target)
 
     console_errs, network_errs = s.browser.drain_errors()
     new_bugs = await _capture_browser_events(s, after, console_errs, network_errs)
