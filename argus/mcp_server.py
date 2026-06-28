@@ -227,8 +227,12 @@ async def _teardown_active_session() -> None:
 
 
 def _record_action(s: "Session", tool: str, description: str = "", value: Optional[str] = None) -> None:
-    """Append a structured, replayable action to the session trace."""
-    s.action_trace.append({"tool": tool, "description": description, "value": value})
+    """Append a structured, replayable action to the session trace, stamped with
+    the URL the action started on (so a replay knows where the journey began)."""
+    url = ""
+    if s.browser is not None and s.browser._page is not None:
+        url = s.browser._page.url
+    s.action_trace.append({"tool": tool, "description": description, "value": value, "url": url})
 
 
 def _output_dir() -> str:
@@ -331,6 +335,24 @@ def _marker_visible(text: str, state: PageState) -> bool:
     for el in state.elements:
         if el.text and _token_present(text, el.text):
             return True
+    return False
+
+
+def _visible_text_in_state(text: str, state: PageState) -> bool:
+    """Visible-content match: page text, element text, and list rows — but NOT
+    input `value` (the replay just typed into those; matching them would certify
+    a symptom off the text the replay itself entered)."""
+    if not text.strip() or state is None:
+        return False
+    if _token_present(text, state.page_text):
+        return True
+    for el in state.elements:
+        if el.text and _token_present(text, el.text):
+            return True
+    for items in state.item_lists.values():
+        for row in items:
+            if _token_present(text, row):
+                return True
     return False
 
 
@@ -571,6 +593,72 @@ def _receipt_verdict(observations: list, expect: str) -> dict:
         "runs": f"{hits}/{len(matches)}",
         "expect": expect,
     }
+
+
+async def _run_replay_receipt(s: "Session", verify: dict, actions: list) -> dict:
+    """Reproduce a multi-step bug by REPLAYING the recorded journey from a cold
+    page, then checking the symptom — stronger than re-reading one URL.
+
+    Three-state verdict, protecting the moat:
+      reproduced True  — every step re-drove AND the symptom held,
+      reproduced False — steps re-drove but the symptom did NOT hold,
+      reproduced None  — a step could not be re-resolved/applied (path diverged):
+                         INCONCLUSIVE, never a certified reproduction.
+    Runs in a fresh page (cold DOM, server re-loaded; same context so auth
+    carries), so it does not disturb the agent's live page. Never raises.
+    """
+    expect = (verify.get("expect") or "").strip().lower()
+    target = (verify.get("target_text") or verify.get("target") or "").strip()
+    if expect not in ("present", "absent") or not target:
+        return {"attempted": False,
+                "reason": "replay receipt needs expect in {present, absent} and a non-empty target_text"}
+    if s.mode != "web" or s.browser is None or s.browser._page is None:
+        return {"attempted": False, "reason": "replay is only available in web mode"}
+    if not actions:
+        return {"attempted": False,
+                "reason": "no recorded steps to replay — drive the bug via click_what/type_into/"
+                          "select_into/navigate so the action trace is captured"}
+
+    start_url = next((a.get("value") for a in actions
+                      if a.get("tool") == "navigate" and a.get("value")), None)
+    start_url = _resolve_url(s, start_url) if start_url else (s.url or s.browser._page.url)
+    try:
+        res = await s.browser.replay(start_url, actions)
+    except Exception as e:
+        return {"attempted": True, "mode": "replay", "reproduced": None, "diverged": True,
+                "steps": len(actions), "error": str(e)[:200], "at_url": start_url}
+
+    receipt = {
+        "attempted": True, "mode": "replay", "steps": len(actions),
+        "diverged": res["diverged"], "at_url": start_url,
+        "target_text": target[:120], "expect": expect,
+        "method": f"cold replay of {len(actions)} recorded step(s) in a fresh isolated context",
+    }
+    if res["diverged"]:
+        receipt["reproduced"] = None
+        receipt["step_log"] = res["steps"][-3:]
+        return receipt
+
+    # The symptom must FLIP because of the journey: hold AFTER but NOT BEFORE.
+    # Visible-text only (never an input value the replay just typed). If it
+    # already held at baseline (pre-existing text, localStorage residue, an
+    # error/blank page where expect=absent is trivially true), we cannot
+    # attribute it to the steps -> INCONCLUSIVE, never certified.
+    def _holds(state):
+        present = _visible_text_in_state(target, state)
+        return present if expect == "present" else (not present)
+
+    held_before = _holds(res.get("baseline_state"))
+    held_after = _holds(res.get("final_state"))
+    receipt["symptom_before"] = held_before
+    receipt["symptom_after"] = held_after
+    if held_before:
+        receipt["reproduced"] = None
+        receipt["reason"] = ("symptom already held before the journey — not attributable "
+                             "to these steps (pre-existing / residual state)")
+    else:
+        receipt["reproduced"] = bool(held_after)
+    return receipt
 
 
 async def _capture_browser_events(
@@ -3085,8 +3173,16 @@ async def record_bug(
                 "target_text":"Buy groceries","at_url":"/tasks"}
               - Save didn't persist (new value missing): {"expect":"absent",
                 "target_text":"EDITED-XYZ","at_url":"/tasks/1/edit"}
-            Omit for visual/layout/UX-judgment bugs that no single text
-            check captures — those record as observation-based findings.
+            For a MULTI-STEP bug (the symptom only appears after a journey),
+            add "replay": true — Argus re-drives the recorded action trace
+            (click_what/type_into/select_into/navigate) in a fresh cold page
+            and checks the symptom there, giving a stronger "reproduced by
+            replaying N steps from a cold start" receipt (or INCONCLUSIVE if a
+            step no longer resolves). Shape:
+                {"replay": true, "expect": "present"|"absent",
+                 "target_text": "the text that proves the bug"}
+            Omit verify entirely for visual/layout/UX-judgment bugs that no
+            single text check captures — those record as observation-based.
         evidence: Optional dict with extra context. Recommended keys:
             description (str): Longer explanation including user impact.
                 Default = same as title.
@@ -3155,7 +3251,13 @@ async def record_bug(
         label = "".join(c if c.isalnum() else "_" for c in screenshot_directive.lower())[:40]
         screenshot_path = await _auto_screenshot(s, label, f"record_bug: {title[:60]}")
 
-    receipt = await _run_reproduction_check(s, verify) if verify else None
+    replay_slice = list(s.action_trace[s._actions_since_last_bug:])
+    if verify and verify.get("replay"):
+        receipt = await _run_replay_receipt(s, verify, replay_slice)
+    elif verify:
+        receipt = await _run_reproduction_check(s, verify)
+    else:
+        receipt = None
 
     # If a state capsule is in play, re-check its liveness against the CURRENT
     # page (not a sticky latch): a finding made while the marker is absent is
@@ -3180,7 +3282,7 @@ async def record_bug(
         steps_to_reproduce=list(steps),
         screenshot_path=screenshot_path,
         reproduction_receipt=receipt,
-        replay_steps=list(s.action_trace[s._actions_since_last_bug:]),
+        replay_steps=replay_slice,
     )
     s.bugs.append(bug)
     s.steps.append(f"record_bug: [{sev.value}] {title}")
@@ -3198,21 +3300,33 @@ async def record_bug(
     if screenshot_path:
         out.append(f"  screenshot: {screenshot_path}")
     if receipt is not None:
+        is_replay = receipt.get("mode") == "replay"
         if not receipt.get("attempted"):
             out.append(f"  reproduction: not run — {receipt.get('reason', 'n/a')}")
         elif receipt.get("reproduced") is True:
-            out.append(
-                f"  reproduction: CONFIRMED {receipt['runs']} from clean load "
-                f"({receipt['expect']} {receipt['target_text']!r} @ {receipt['at_url']})"
-            )
+            if is_replay:
+                out.append(f"  reproduction: CONFIRMED by replaying {receipt.get('steps')} step(s) "
+                           f"from a cold start ({receipt['expect']} {receipt['target_text']!r})")
+            else:
+                out.append(f"  reproduction: CONFIRMED {receipt['runs']} from clean load "
+                           f"({receipt['expect']} {receipt['target_text']!r} @ {receipt['at_url']})")
         elif receipt.get("reproduced") is False:
-            tag = "FLAKY" if receipt.get("flaky") else "NOT REPRODUCED"
-            out.append(
-                f"  reproduction: {tag} {receipt['runs']} on clean reload — "
-                f"the symptom you reported did not hold up. Re-check before trusting this."
-            )
-        else:  # None — error during check
-            out.append(f"  reproduction: check errored — {receipt.get('error', 'unknown')}")
+            if is_replay:
+                out.append(f"  reproduction: NOT REPRODUCED — replayed {receipt.get('steps')} step(s) "
+                           "but the symptom was absent. Re-check before trusting this.")
+            else:
+                tag = "FLAKY" if receipt.get("flaky") else "NOT REPRODUCED"
+                out.append(f"  reproduction: {tag} {receipt['runs']} on clean reload — "
+                           "the symptom you reported did not hold up. Re-check before trusting this.")
+        else:  # None — inconclusive
+            if is_replay and receipt.get("diverged"):
+                out.append("  reproduction: INCONCLUSIVE — replay path diverged (a recorded step no "
+                           "longer resolves), so the journey couldn't be re-driven. Not a confirmation.")
+            elif is_replay:
+                out.append("  reproduction: INCONCLUSIVE — the symptom already held before the journey, "
+                           "so it can't be attributed to these steps. Not a confirmation.")
+            else:
+                out.append(f"  reproduction: check errored — {receipt.get('error', 'unknown')}")
     out.append(f"  total bugs in session: {len(s.bugs)}")
     return "\n".join(out)
 
