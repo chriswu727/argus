@@ -50,12 +50,15 @@ read it on initialize. The short version:
 | `observe()` | URL + interactive elements (description-keyed) + visible feedback + counts + ARIA + viewport state. Read this first, after every action. |
 | `click_what(description)` | Click the element matching `description`. Returns the top candidates if ambiguous — rephrase rather than guess. |
 | `type_into(description, text)` / `select_into(description, value)` | Inputs and dropdowns by description. |
+| `test_action(target, expect=...)` | Click + before/after diff in one call. Pass `expect` to PREDICT the outcome ({"count":{"label":"tasks","delta":1}}, {"gains":"Buy milk"}, {"removes":...}, {"text_present":...}, {"toast":...}, {"url_changed":true}) and Argus reports MATCH / SURPRISE — a surprise is a bug lead. Also shows CROSS-STACK: which requests the click fired (methods/statuses) and a CHECK nudge when a message appeared without a matching write. |
 | `verify_persistence(expect, target_text, after_url)` | Forces a fresh GET; reports whether `target_text` is `present` / `absent`. The "Saved!" toast is not proof — this is. |
+| `capsule_save(name, liveness_marker)` / `capsule_restore(name)` | Snapshot the logged-in/seeded state (cookies+storage) after minting it through the UI, then restore it later (with a mandatory live/stale re-check). Restore is a CLEAN replace, so save→branch A→restore→branch B runs two journeys from a byte-identical state for differential testing. |
+| `regression_check()` | Re-test the findings journaled in prior runs against the CURRENT build: STILL-PRESENT / NO-LONGER-REPRODUCES / INCONCLUSIVE. "Did my fix land, did anything come back?" |
 | `inspect_element(description)` | Computed styles + ARIA + outerHTML + truncation flag for one element. |
 | `screenshot(name, element="", full_page=False)` | Full viewport, full page, or a tight crop of one element. |
 | `screenshot_diff(before, after)` | Pillow diff with red-tint overlay. |
 | `eval_js(code)` | Arbitrary JS in the page context. Off by default (`argus-mcp --unsafe` to enable). |
-| `record_bug(title, severity, evidence, verify=...)` | Call this once you've **confirmed** a real bug. Pass a `verify` clause (`expect`, `target_text`, `at_url`) to attach a reproduction receipt — `absent` checks need the `at_url` where the item should be. Severity: `critical / high / medium / low / info`. |
+| `record_bug(title, severity, evidence, verify=...)` | Call this once you've **confirmed** a real bug. Pass a `verify` clause (`expect`, `target_text`, `at_url`) to attach a reproduction receipt — `absent` checks need the `at_url` where the item should be. For a MULTI-STEP bug add `"replay": true` to re-drive the recorded journey from a cold start (reproduced / not / inconclusive). Severity: `critical / high / medium / low / info`. |
 | `get_errors()` | Drain captured console + network events. These are auto-filed as bugs, tagged "auto-captured / not independently verified" (they don't pass the receipt). |
 | `check_links()` / `check_performance()` | Probe-style helpers — return raw data, no auto-bug. |
 | `crawl_site()` | Page discovery: crawls internal links, auto-capturing only console/network events (tagged). Walk the surfaced pages and record_bug what you confirm. |
