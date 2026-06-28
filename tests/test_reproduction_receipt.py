@@ -237,6 +237,39 @@ async def test_receipt_flags_intermittent_symptom_as_flaky():
         srv.shutdown()
 
 
+class _LoginWallHandler(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html")
+        self.end_headers()
+        self.wfile.write(b"<html><body><h1>Please log in to continue</h1></body></html>")
+
+
+async def test_clean_load_login_wall_is_inconclusive():
+    # Session expired -> the clean GET hits a login wall, so an expect=absent
+    # target is absent because we're logged out, NOT because the bug is fixed.
+    # Must be INCONCLUSIVE, never a false VERIFIED.
+    class _S(socketserver.ThreadingTCPServer):
+        allow_reuse_address = True
+
+    srv = _S(("127.0.0.1", 0), _LoginWallHandler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_address[1]}"
+    await _start_session_url(base + "/")
+    try:
+        await _record(title="x", severity="low", evidence={"screenshot": "skip"},
+                      verify={"expect": "absent", "target_text": "some-task", "at_url": "/"})
+        r = m._session.bugs[-1].reproduction_receipt
+        assert r["reproduced"] is None
+        assert "login wall" in r.get("reason", "")
+    finally:
+        await _end()
+        srv.shutdown()
+
+
 async def test_receipt_reports_none_on_navigation_failure():
     srv, base = _start_server()
     await _start_session_url(base + "/")

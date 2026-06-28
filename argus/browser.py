@@ -930,7 +930,9 @@ class BrowserDriver:
             # session instead of dereferencing a None page.
             self._page = await self._context.new_page()
             self._attach_page_listeners(self._page)
-        await self._page.goto(url, wait_until="networkidle", timeout=30_000)
+        # Returns the main-frame Response so callers can detect 4xx/5xx (a fresh
+        # load that errored must not certify a symptom by its absence).
+        return await self._page.goto(url, wait_until="networkidle", timeout=30_000)
 
     # -- state extraction --
 
@@ -1039,6 +1041,11 @@ class BrowserDriver:
         except Exception:
             storage = None
         ctx = await self._browser.new_context(viewport=self.viewport, storage_state=storage)
+        # Count writes the replay re-executes against the backend, so the caller
+        # can warn the agent that re-driving the journey re-performs side effects.
+        writes: List[str] = []
+        ctx.on("request", lambda req: writes.append(req.method)
+               if (req.method or "").upper() in ("POST", "PUT", "PATCH", "DELETE") else None)
         page = await ctx.new_page()
         steps: List[Dict] = []
         diverged = False
@@ -1098,7 +1105,7 @@ class BrowserDriver:
                     diverged = True
                     break
             final = None if diverged else await self.get_state(page)
-            return {"steps": steps, "diverged": diverged,
+            return {"steps": steps, "diverged": diverged, "writes": len(writes),
                     "baseline_state": baseline, "final_state": final}
         finally:
             try:

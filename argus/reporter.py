@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from .browser import _redact
 from .models import Bug, BugType, ExplorationResult, Screenshot, Severity
 
 _BUGTYPE_LABELS = {
@@ -142,7 +143,7 @@ class Reporter:
                 for nl in bug.network_logs:
                     network += (
                         f'<div class="nl"><code>{nl.get("method", "")} '
-                        f'{nl.get("url", "")} → {nl.get("status", "")}</code></div>'
+                        f'{_esc(_redact(nl.get("url", "")))} → {nl.get("status", "")}</code></div>'
                     )
                 ss = ""
                 if bug.screenshot_path:
@@ -156,7 +157,7 @@ class Reporter:
 <span class="bt">{_BUGTYPE_LABELS.get(bug.type, bug.type.value)}</span>{repro}</div>
 <h3>{_esc(bug.title)}</h3>
 <p>{_esc(bug.description)}</p>
-<div class="bu">URL: {_esc(bug.url)}</div>
+<div class="bu">URL: {_esc(_redact(bug.url))}</div>
 <div class="st"><strong>Steps to reproduce:</strong><ol>{steps}</ol></div>
 {console}{network}{ss}</div>"""
 
