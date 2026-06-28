@@ -18,6 +18,7 @@ Then in Claude Code just say:
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import re
 from collections import Counter
@@ -237,6 +238,65 @@ def _record_action(s: "Session", tool: str, description: str = "", value: Option
 
 def _output_dir() -> str:
     return os.environ.get("ARGUS_OUTPUT_DIR", "./argus-reports")
+
+
+# ── persistent test journal (cross-run regression) ──────────────────
+
+def _journal_path(origin: str) -> Path:
+    safe = re.sub(r"[^A-Za-z0-9._-]", "_", origin or "default")
+    return Path(_output_dir()) / ".argus" / "journal" / f"{safe}.json"
+
+
+def _bug_fingerprint(bug: "Bug") -> str:
+    """Stable identity for cross-run dedup — from the receipt's structural fields
+    (type + url path + expect + target), never the LLM-authored title, so a
+    genuinely new bug is never silently collapsed into an old one."""
+    r = bug.reproduction_receipt or {}
+    path = urlparse(r.get("at_url") or bug.url or "").path or "/"
+    return f"{bug.type.value}|{path}|{r.get('expect', '')}|{(r.get('target_text') or '')[:80]}"
+
+
+def _journal_entries(origin: str) -> list:
+    path = _journal_path(origin)
+    if not path.exists():
+        return []
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return []
+
+
+def _write_journal(s: "Session") -> None:
+    """Persist re-checkable findings (those with a clean-load verify clause) so a
+    later run can re-test them. Replay-mode receipts are skipped — re-driving
+    them re-executes writes, so they're not safe to auto-regression-check."""
+    origin = urlparse(s.url or "").netloc or "default"
+    fresh = []
+    for b in s.bugs:
+        r = b.reproduction_receipt or {}
+        if r.get("mode") == "replay":
+            continue
+        expect, target = r.get("expect"), r.get("target_text")
+        if expect in ("present", "absent") and target:
+            fresh.append({
+                "fingerprint": _bug_fingerprint(b),
+                "title": b.title[:120], "severity": b.severity.value, "type": b.type.value,
+                "verify": {"expect": expect, "target_text": target, "at_url": r.get("at_url", "")},
+            })
+    if not fresh:
+        return
+    merged = {e["fingerprint"]: e for e in _journal_entries(origin)}
+    for e in fresh:
+        merged[e["fingerprint"]] = e
+    path = _journal_path(origin)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        gi = path.parent / ".gitignore"  # journals embed app text — keep out of git
+        if not gi.exists():
+            gi.write_text("*\n")
+        path.write_text(json.dumps(list(merged.values()), indent=2))
+    except Exception:
+        pass
 
 
 async def _auto_screenshot(s: Session, name: str, step: str) -> str:
@@ -761,12 +821,18 @@ async def start_session(
     _session._last_elements = state.elements
     element_count = len(state.elements)
 
+    hint = ""
+    n_journaled = len(_journal_entries(urlparse(url).netloc or "default"))
+    if n_journaled:
+        hint = (f"\n{n_journaled} finding(s) from prior runs are journaled for this site — "
+                "call regression_check() to re-test whether they're fixed or back.")
+
     return (
         f"Web session started.\n"
         f"Page: {state.title}\n"
         f"URL: {state.url}\n"
         f"Found {element_count} interactive elements. "
-        f"Call observe() to see them."
+        f"Call observe() to see them.{hint}"
     )
 
 
@@ -3887,12 +3953,63 @@ async def test_form(
 
 
 @mcp.tool()
+async def regression_check() -> str:
+    """Re-test previously-recorded findings for this site against the CURRENT
+    build — "did my fix land, and did anything I'd fixed come back?".
+
+    Findings with a clean-load verify clause are journaled at end_session (per
+    origin). This re-runs each one's INDEPENDENT clean-load check now and
+    classifies it: STILL-PRESENT (the bug is still there), NO-LONGER-REPRODUCES
+    (the symptom is gone — likely fixed; confirm the surface still exists), or
+    INCONCLUSIVE. Each carried finding is treated as a hypothesis and re-checked
+    from scratch — nothing is trusted from the prior run. Read-only (clean GETs);
+    replay-mode findings are not auto-re-driven (that would re-execute writes).
+    """
+    s = _require_session()
+    if s.mode != "web" or s.browser is None or s.browser._page is None:
+        return "regression_check: this tool is web-mode only."
+    origin = (urlparse(s.browser._page.url).netloc
+              or urlparse(s.url or "").netloc or "default")
+    entries = _journal_entries(origin)
+    if not entries:
+        return (f"regression_check: no journaled findings for {origin}. Findings with a "
+                "verify clause are journaled when you call end_session.")
+
+    lines = [f"Regression re-check for {origin} — {len(entries)} journaled finding(s):", ""]
+    still = gone = incon = 0
+    for e in entries:
+        receipt = await _run_reproduction_check(s, e.get("verify") or {})
+        rep = receipt.get("reproduced")
+        if rep is True:
+            tag, n = "STILL-PRESENT       ", "still"
+            still += 1
+        elif rep is False:
+            tag, n = "NO-LONGER-REPRODUCES", "gone"
+            gone += 1
+        else:
+            tag, n = "INCONCLUSIVE        ", "incon"
+            incon += 1
+        lines.append(f"  [{tag}] [{e.get('severity', '?').upper()}] {e.get('title', '')[:80]}")
+    lines.append("")
+    lines.append(f"{still} still present · {gone} no longer reproduce (likely fixed — "
+                 f"confirm the surface still exists) · {incon} inconclusive.")
+    return "\n".join(lines)
+
+
+@mcp.tool()
 async def end_session() -> str:
     """End the testing session, close the browser, and generate an HTML error report.
 
     Returns the path to the generated report and a summary of findings.
     """
     s = _require_session()
+
+    if s.mode == "web":
+        # Persist re-checkable findings so a later run can regression-test them.
+        try:
+            _write_journal(s)
+        except Exception:
+            pass
 
     if s.mode == "web" and s.browser is not None:
         # No blind final drain here: auto-filing console/network bugs after the
