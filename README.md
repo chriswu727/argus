@@ -109,6 +109,17 @@ argus-mcp --doctor
 It probes both, reports status, and gives you the
 `x-apple.systempreferences:` deep-link for any missing grant.
 
+### Regression in CI (zero-LLM)
+
+Findings recorded with a verify clause are journaled per origin when a session
+ends. Re-test them against a fresh build without an LLM — exits non-zero if any
+previously-confirmed bug is still present, so CI can gate on it:
+
+```bash
+argus-regression http://localhost:3000
+# STILL-PRESENT / FIXED / INCONCLUSIVE per finding; non-zero exit on STILL-PRESENT
+```
+
 ### Reproduce the bench
 
 ```bash

@@ -86,3 +86,77 @@ def main(url, config_file, focus, max_steps, headed, output, model, api_base, ap
 async def _run(cfg: Config):
     explorer = Explorer(cfg)
     return await explorer.run()
+
+
+@click.command()
+@click.argument("url")
+@click.option("--output", "-o", default="./argus-reports", help="Where the journal lives (ARGUS_OUTPUT_DIR)")
+@click.option("--headed", is_flag=True, help="Show browser window")
+def regression(url, output, headed):
+    """Re-test journaled findings for URL's origin against the CURRENT build.
+
+    Zero-LLM, read-only (clean GETs). Re-runs each previously-recorded finding's
+    independent clean-load receipt and prints STILL-PRESENT / FIXED /
+    INCONCLUSIVE. Exits non-zero if anything is STILL-PRESENT, so CI can gate on
+    it — the shift-left "did my change reintroduce a known bug?" check.
+
+    Findings are journaled when an agent session calls end_session; this command
+    replays those receipts without an LLM.
+    """
+    code = asyncio.run(_run_regression(url, output, headless=not headed))
+    sys.exit(code)
+
+
+async def _run_regression(url: str, output: str, headless: bool = True) -> int:
+    import os
+    from urllib.parse import urlparse
+
+    import argus.mcp_server as mcp
+    from .browser import BrowserDriver
+
+    os.environ["ARGUS_OUTPUT_DIR"] = output
+    origin = urlparse(url).netloc or "default"
+    entries = mcp._journal_entries(origin)
+    if not entries:
+        console.print(f"[dim]No journaled findings for {origin}. Nothing to regression-test.[/]")
+        return 0
+
+    sess = mcp.Session()
+    sess.mode = "web"
+    sess.url = url
+    sess.browser = BrowserDriver(headless=headless)
+    try:
+        await sess.browser.start()
+        await sess.browser.goto(url)
+    except Exception as exc:
+        console.print(f"[red]Could not load {url}:[/] {type(exc).__name__}: {exc}")
+        try:
+            await sess.browser.stop()
+        except Exception:
+            pass
+        return 2
+
+    still = gone = incon = 0
+    try:
+        console.print(f"Re-testing {len(entries)} journaled finding(s) for {origin}:\n")
+        for e in entries:
+            r = await mcp._run_reproduction_check(sess, e.get("verify") or {})
+            rep = r.get("reproduced")
+            if rep is True:
+                tag, color = "STILL-PRESENT", "red"
+                still += 1
+            elif rep is False:
+                tag, color = "FIXED        ", "green"
+                gone += 1
+            else:
+                tag, color = "INCONCLUSIVE ", "yellow"
+                incon += 1
+            console.print(f"  [{color}]{tag}[/] [{e.get('severity', '?').upper()}] {e.get('title', '')[:70]}")
+    finally:
+        try:
+            await sess.browser.stop()
+        except Exception:
+            pass
+
+    console.print(f"\n{still} still present · {gone} fixed · {incon} inconclusive")
+    return 1 if still else 0
