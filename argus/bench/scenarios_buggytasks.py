@@ -10,7 +10,13 @@ from __future__ import annotations
 
 from typing import Awaitable, Callable, List
 
-from .runner import call, reset as _reset, bugs_added_since as _bugs_added_since, records_match as _records_match
+from .runner import (
+    call,
+    reset as _reset,
+    bugs_added_since as _bugs_added_since,
+    records_match as _records_match,
+    receipt_rejected as _receipt_rejected,
+)
 import argus.mcp_server as mcp_module
 
 
@@ -542,7 +548,57 @@ async def s22_zero_remaining_red(s):
     return _records_match(new, ["alarming", "celebrat", "remaining"]), "agent-record"
 
 
-SCENARIOS: List[tuple[int, str, Callable[[object], Awaitable[tuple[bool, str]]]]] = [
+# ── False-positive baits — exercise the reproduction receipt ────────
+#
+# Recall scenarios prove Argus *finds* seeded bugs. These prove it does NOT
+# stamp a confident VERIFIED on a symptom that isn't real — the precision side
+# of the moat, and the only scenarios that drive a `verify=` clause. "Caught"
+# here means the receipt came back UNCONFIRMED (reproduced=False), i.e. the
+# false symptom was resisted.
+
+
+async def _fp_record_and_check(s, title, severity, verify):
+    pre = len(s.bugs)
+    await call(mcp_module.record_bug, title=title, severity=severity,
+               evidence={"screenshot": "skip"}, verify=verify)
+    new = _bugs_added_since(s, pre)
+    resisted = bool(new) and _receipt_rejected(new[-1])
+    return resisted, "fp-resisted" if resisted else "fp-LEAKED"
+
+
+async def fp01_hallucinated_chart(s):
+    # Agent "sees" an element that does not exist and files it broken.
+    await _reset("seeded")
+    await call(mcp_module.navigate, BASE + "/")
+    return await _fp_record_and_check(
+        s, title="(FP bait) Quarterly Revenue Chart renders blank", severity="medium",
+        verify={"expect": "present", "target_text": "Quarterly Revenue Chart"},
+    )
+
+
+async def fp02_real_task_claimed_missing(s):
+    # Over-eager "data loss" report against a task that is plainly present on
+    # the task list. at_url pins the receipt to the page where the task lives,
+    # so "absent" is genuinely false and must be resisted.
+    await _reset("seeded")
+    await call(mcp_module.navigate, BASE + "/tasks")
+    return await _fp_record_and_check(
+        s, title="(FP bait) Task 'Buy groceries' silently dropped from list",
+        severity="high",
+        verify={"expect": "absent", "target_text": "Buy groceries", "at_url": "/tasks"},
+    )
+
+
+async def fp03_hallucinated_banner(s):
+    # A second hallucinated element on a different surface.
+    await call(mcp_module.navigate, BASE + "/login")
+    return await _fp_record_and_check(
+        s, title="(FP bait) Premium plan upsell banner overlaps form", severity="low",
+        verify={"expect": "present", "target_text": "Premium plan upsell"},
+    )
+
+
+SCENARIOS: List[tuple] = [
     (1,  "Console ReferenceError on homepage (appConfig)",       s01_console_appconfig),
     (2,  "Dead nav link /help -> 404",                            s02_dead_help_link),
     (3,  "POST /api/newsletter -> 500",                           s03_newsletter_500),
@@ -565,5 +621,9 @@ SCENARIOS: List[tuple[int, str, Callable[[object], Awaitable[tuple[bool, str]]]]
     (20, "Navbar still shows 'Login' after authentication",       s20_navbar_after_auth),
     (21, "Whitespace-only task title creates empty task",         s21_whitespace_title),
     (22, "0 tasks remaining shown in alarming red",               s22_zero_remaining_red),
+    # False-positive baits (kind="fp"): the receipt must refuse to confirm.
+    (101, "(FP) Hallucinated 'Quarterly Revenue Chart' element",   fp01_hallucinated_chart, "fp"),
+    (102, "(FP) Real task 'Buy groceries' falsely reported gone",  fp02_real_task_claimed_missing, "fp"),
+    (103, "(FP) Hallucinated 'Premium plan upsell' banner",        fp03_hallucinated_banner, "fp"),
 ]
 

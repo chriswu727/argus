@@ -7,7 +7,11 @@ isn't installed.
 """
 from __future__ import annotations
 
+import functools
+import http.server
+import socketserver
 import tempfile
+import threading
 from pathlib import Path
 
 import pytest
@@ -134,3 +138,115 @@ async def test_receipt_confirms_true_symptom_and_flags_false_one():
         assert by_title["visual"].reproduction_receipt is None
     finally:
         await _end()
+
+
+# ── divergence: the receipt must read SERVER truth, not the live DOM ──
+# A file:// page can't show this — the current DOM and a fresh GET are
+# byte-identical, so the E2E would pass even if the re-check never reloaded.
+# These use a stateful HTTP server and mutate the live DOM out from under the
+# receipt, then assert the verdict follows the server, not the stale client.
+
+
+class _StatefulHandler(http.server.BaseHTTPRequestHandler):
+    persisted = "Persisted Item"
+    flaky_hits = 0
+
+    def log_message(self, *a):
+        pass
+
+    def _send(self, body: str):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html")
+        self.end_headers()
+        self.wfile.write(body.encode())
+
+    def do_GET(self):
+        if self.path.startswith("/flaky"):
+            # Toggle FlakyText on every GET, so two consecutive re-check loads
+            # always disagree -> flaky.
+            type(self).flaky_hits += 1
+            shown = "FlakyText" if type(self).flaky_hits % 2 == 0 else "stable only"
+            self._send(f"<html><body><p>{shown}</p></body></html>")
+        else:
+            self._send(f"<html><body><ul><li>{type(self).persisted}</li></ul></body></html>")
+
+
+def _start_server():
+    class _Srv(socketserver.ThreadingTCPServer):
+        allow_reuse_address = True
+
+    srv = _Srv(("127.0.0.1", 0), _StatefulHandler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv, f"http://127.0.0.1:{srv.server_address[1]}"
+
+
+async def _start_session_url(url: str):
+    try:
+        await (m.start_session.fn if hasattr(m.start_session, "fn") else m.start_session)(url)
+    except Exception as exc:
+        pytest.skip(f"Chromium/session unavailable: {exc}")
+
+
+async def test_receipt_follows_server_not_stale_client_dom():
+    _StatefulHandler.flaky_hits = 0
+    srv, base = _start_server()
+    await _start_session_url(base + "/")
+    try:
+        page = m._session.browser._page
+        # Mutate the live DOM away from server truth: drop the persisted item,
+        # inject a phantom one. A receipt that scanned the current DOM would be
+        # fooled; one that re-GETs the server must not be.
+        await page.evaluate(
+            "() => { document.querySelector('li').remove();"
+            " const li=document.createElement('li'); li.textContent='Phantom Item';"
+            " document.querySelector('ul').appendChild(li); }"
+        )
+
+        # Claim it's absent — but the server still serves it -> must NOT confirm.
+        await _record(title="A", severity="low", evidence={"screenshot": "skip"},
+                      verify={"expect": "absent", "target_text": "Persisted Item"})
+        # Claim the phantom is present — server never had it -> must NOT confirm.
+        await _record(title="B", severity="low", evidence={"screenshot": "skip"},
+                      verify={"expect": "present", "target_text": "Phantom Item"})
+        # Sanity: the server-true symptom DOES confirm.
+        await _record(title="C", severity="low", evidence={"screenshot": "skip"},
+                      verify={"expect": "present", "target_text": "Persisted Item"})
+
+        by_title = {b.title: b for b in m._session.bugs}
+        assert by_title["A"].reproduction_receipt["reproduced"] is False
+        assert by_title["B"].reproduction_receipt["reproduced"] is False
+        assert by_title["C"].reproduction_receipt["reproduced"] is True
+    finally:
+        await _end()
+        srv.shutdown()
+
+
+async def test_receipt_flags_intermittent_symptom_as_flaky():
+    _StatefulHandler.flaky_hits = 0
+    srv, base = _start_server()
+    await _start_session_url(base + "/flaky")
+    try:
+        await _record(title="flaky", severity="low", evidence={"screenshot": "skip"},
+                      verify={"expect": "present", "target_text": "FlakyText", "at_url": "/flaky"})
+        receipt = m._session.bugs[-1].reproduction_receipt
+        assert receipt["flaky"] is True
+        assert receipt["reproduced"] is False
+        assert receipt["runs"] == "1/2"
+    finally:
+        await _end()
+        srv.shutdown()
+
+
+async def test_receipt_reports_none_on_navigation_failure():
+    srv, base = _start_server()
+    await _start_session_url(base + "/")
+    try:
+        await _record(title="naverr", severity="low", evidence={"screenshot": "skip"},
+                      verify={"expect": "present", "target_text": "x",
+                              "at_url": "http://127.0.0.1:1/unreachable"})
+        receipt = m._session.bugs[-1].reproduction_receipt
+        assert receipt["reproduced"] is None
+        assert "error" in receipt
+    finally:
+        await _end()
+        srv.shutdown()

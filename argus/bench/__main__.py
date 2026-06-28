@@ -42,12 +42,22 @@ def matrix_md(reports: List[BenchReport]) -> str:
     total_total = sum(r.total for r in reports)
     total_pct = (total_caught / total_total * 100) if total_total else 0
     total_dur = sum(r.finished_at - r.started_at for r in reports)
+    fp_resisted = sum(r.fp_resisted for r in reports)
+    fp_total = sum(r.fp_total for r in reports)
 
     lines = [
         "# Argus benchmark matrix",
         "",
-        f"**{total_caught} / {total_total} = {total_pct:.0f} %** in "
+        f"**Recall {total_caught} / {total_total} = {total_pct:.0f} %** in "
         f"{total_dur:.1f} s across {len(reports)} fixture(s).",
+    ]
+    if fp_total:
+        fp_pct = fp_resisted / fp_total * 100
+        lines.append(
+            f"**FP-resistance {fp_resisted} / {fp_total} = {fp_pct:.0f} %** "
+            f"(false symptoms the reproduction receipt refused to confirm)."
+        )
+    lines += [
         "",
         "| Fixture     | Recall            | Duration | Fixture URL                  |",
         "|-------------|-------------------|----------|------------------------------|",
@@ -113,6 +123,8 @@ def _per_target_table(r: BenchReport) -> str:
 
 
 def matrix_json(reports: List[BenchReport]) -> dict:
+    fp_resisted = sum(r.fp_resisted for r in reports)
+    fp_total = sum(r.fp_total for r in reports)
     return {
         "matrix": [r.to_json() for r in reports],
         "totals": {
@@ -124,6 +136,9 @@ def matrix_json(reports: List[BenchReport]) -> dict:
                     max(1, sum(r.total for r in reports)) * 100, 1
                 )
             ),
+            "fp_resisted": fp_resisted,
+            "fp_total": fp_total,
+            "fp_resistance_pct": round(fp_resisted / max(1, fp_total) * 100, 1),
         },
     }
 
@@ -178,9 +193,10 @@ async def run(targets: List[str], out_json: Optional[Path], out_md: Optional[Pat
         print("MATRIX SUMMARY")
         print("=" * 72)
         for r in reports:
+            fp = (f"  FP {r.fp_resisted}/{r.fp_total}" if r.fp_total else "")
             print(
                 f"  {r.target:<12} {r.caught:>3} / {r.total:<3} = "
-                f"{r.recall * 100:>3.0f} %  in {r.finished_at - r.started_at:>5.1f}s"
+                f"{r.recall * 100:>3.0f} %  in {r.finished_at - r.started_at:>5.1f}s{fp}"
             )
 
     if out_json:
@@ -198,8 +214,9 @@ async def run(targets: List[str], out_json: Optional[Path], out_md: Optional[Pat
             out_md.write_text(matrix_md(reports))
         print(f"Markdown written: {out_md}")
 
-    # Return code: 0 only if every report hit 100 % recall
-    return 0 if all(r.caught == r.total for r in reports) else 1
+    # Return code: 0 only if every report hit 100 % recall AND resisted every
+    # false-positive bait (no false VERIFIED emitted).
+    return 0 if all(r.passed for r in reports) else 1
 
 
 def main() -> int:

@@ -34,10 +34,11 @@ os.environ.setdefault("ARGUS_UNSAFE_EVAL", "1")
 class ScenarioResult:
     bug_id: int
     name: str
-    caught: bool
-    method: str  # "auto-event" | "agent-record" | "skipped" | "error"
+    caught: bool  # recall: bug found. fp: false symptom correctly resisted.
+    method: str  # "auto-event" | "agent-record" | "fp-resisted" | "skipped" | "error"
     notes: str = ""
     elapsed_s: float = 0.0
+    kind: str = "recall"  # "recall" (seeded real bug) | "fp" (false-positive bait)
 
 
 @dataclass
@@ -48,17 +49,48 @@ class BenchReport:
     finished_at: float
     results: List[ScenarioResult] = field(default_factory=list)
 
+    # Recall is measured over seeded real bugs only; FP-bait scenarios are
+    # scored separately as false-positive resistance (the precision side of
+    # the moat). A bench that only reports recall is structurally blind to the
+    # spurious-bug rate the differentiation pitch is built on.
+    @property
+    def _recall_results(self) -> List[ScenarioResult]:
+        return [r for r in self.results if r.kind == "recall"]
+
+    @property
+    def _fp_results(self) -> List[ScenarioResult]:
+        return [r for r in self.results if r.kind == "fp"]
+
     @property
     def caught(self) -> int:
-        return sum(1 for r in self.results if r.caught)
+        return sum(1 for r in self._recall_results if r.caught)
 
     @property
     def total(self) -> int:
-        return len(self.results)
+        return len(self._recall_results)
 
     @property
     def recall(self) -> float:
         return (self.caught / self.total) if self.total else 0.0
+
+    @property
+    def fp_resisted(self) -> int:
+        return sum(1 for r in self._fp_results if r.caught)
+
+    @property
+    def fp_total(self) -> int:
+        return len(self._fp_results)
+
+    @property
+    def fp_resistance(self) -> float:
+        """Fraction of false-positive baits the receipt refused to confirm.
+        1.0 when there are no FP scenarios (nothing to get wrong)."""
+        return (self.fp_resisted / self.fp_total) if self.fp_total else 1.0
+
+    @property
+    def passed(self) -> bool:
+        """Bench passes only if recall is complete AND every FP bait resisted."""
+        return self.caught == self.total and self.fp_resisted == self.fp_total
 
     def to_json(self) -> dict:
         return {
@@ -70,10 +102,14 @@ class BenchReport:
             "caught": self.caught,
             "total": self.total,
             "recall_pct": round(self.recall * 100, 1),
+            "fp_resisted": self.fp_resisted,
+            "fp_total": self.fp_total,
+            "fp_resistance_pct": round(self.fp_resistance * 100, 1),
             "results": [
                 {
                     "bug_id": r.bug_id,
                     "name": r.name,
+                    "kind": r.kind,
                     "caught": r.caught,
                     "method": r.method,
                     "notes": r.notes,
@@ -93,8 +129,14 @@ class BenchReport:
             f"- Duration: {self.finished_at - self.started_at:.1f} s",
             f"- **Recall: {self.caught} / {self.total} "
             f"= {self.recall * 100:.0f} %**",
-            "",
         ]
+        if self.fp_total:
+            lines.append(
+                f"- **FP-resistance: {self.fp_resisted} / {self.fp_total} "
+                f"= {self.fp_resistance * 100:.0f} %** "
+                f"(false symptoms the receipt refused to confirm)"
+            )
+        lines.append("")
         if show_notes:
             lines.append(
                 "| #  | Seeded bug                                              "
@@ -164,6 +206,17 @@ def records_match(bugs: List[Bug], substrs: List[str]) -> bool:
     return False
 
 
+def receipt_rejected(bug: Bug) -> bool:
+    """True if the bug's reproduction receipt refused to confirm the symptom.
+
+    The FP-resistance scenarios deliberately file a tempting-but-false symptom
+    with a verify clause; the moat is working iff the receipt comes back
+    reproduced=False (UNCONFIRMED), i.e. no false VERIFIED was emitted.
+    """
+    r = bug.reproduction_receipt
+    return bool(r) and r.get("attempted") is True and r.get("reproduced") is False
+
+
 # ── Fixture health-check ────────────────────────────────────────────
 
 
@@ -216,7 +269,9 @@ async def run_scenarios(
         started_at=started, finished_at=started,
     )
 
-    for bug_id, name, fn in scenarios:
+    for scenario in scenarios:
+        bug_id, name, fn = scenario[:3]
+        kind = scenario[3] if len(scenario) > 3 else "recall"
         t0 = time.time()
         err_str = None
         try:
@@ -227,7 +282,7 @@ async def run_scenarios(
         elapsed = time.time() - t0
         report.results.append(ScenarioResult(
             bug_id=bug_id, name=name, caught=caught, method=method,
-            notes=(err_str or "")[:60], elapsed_s=elapsed,
+            notes=(err_str or "")[:60], elapsed_s=elapsed, kind=kind,
         ))
         mark = "[Y]" if caught else "[ ]"
         suffix = f" ({err_str})" if err_str else ""
@@ -238,6 +293,9 @@ async def run_scenarios(
 
     print(f"\nRecall: {report.caught} / {report.total} = "
           f"{report.recall * 100:.0f} %")
+    if report.fp_total:
+        print(f"FP-resistance: {report.fp_resisted} / {report.fp_total} = "
+              f"{report.fp_resistance * 100:.0f} %")
     print(f"Duration: {report.finished_at - report.started_at:.1f} s")
 
     if out_json:
