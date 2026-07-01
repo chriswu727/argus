@@ -150,24 +150,30 @@ exercises the same MCP tools an LLM agent would call. We're answering
 
 `python -m argus.bench.agent_runner` (set a provider key, e.g.
 `DEEPSEEK_API_KEY`, and `BENCH_MODEL`) has an **actual model** drive the tools
-and scores recall/precision/cost across N trials — the true agent number, not
-the ceiling. Measured on BuggyTasks (3 trials each, hard cost cap):
+and scores recall/moat-engagement/cost across N trials — the true agent number,
+not the ceiling. Measured on BuggyTasks (5 trials each, hard cost cap):
 
-| model (driver)      | mean recall | verified (moat engaged) | cost   |
-|---------------------|-------------|-------------------------|--------|
-| `deepseek-chat` V3  | ~1.3 / 22   | 0 of its findings       | ≈¥0.07 |
-| `deepseek-v4-pro`   | ~3.0 / 22   | 2–3 of its findings     | ≈¥0.25 |
+| model (driver)      | recall/22 per trial | mean | variance | moat engaged | cost   |
+|---------------------|---------------------|------|----------|--------------|--------|
+| `deepseek-chat` V3  | 4,2,2,2,3           | 2.6  | 0.64     | 3/5          | ≈¥0.12 |
+| `deepseek-v4-flash` | 1,3,3,1,4           | 2.4  | 1.44     | 3/5          | ≈¥0.14 |
+| `deepseek-v4-pro`   | 1,0,4,0,1           | 1.2  | 2.16     | 2/5          | ≈¥0.37 |
 
-Two honest takeaways the `34/34` ceiling hides: (1) real recall is far below the
-ceiling and scales with model strength; (2) the precision moat is opt-in, so its
-engagement scales with the driver too — a strong model attaches a `verify`
-clause to most findings, a weak one rarely does. Safe adoption nudges (an
-imperative RECORD instruction, accepting the target via `evidence`, and a
-no-receipt reminder) moved `deepseek-chat` from **0** verified findings to
-*occasionally* engaging (2 in one of three trials) without ever guessing the
-symptom (which would risk a false VERIFIED); reliable engagement still wants a
-capable driver. The `34/34` is what's *findable*; this is what a given model
-*finds and proves*.
+Honest takeaways (the whole point of measuring variance, not a single run):
+
+1. **Real recall is far below the `34/34` ceiling** — ~1–3 of 22 per pass. The
+   ceiling is what's *findable*; this is what a model *finds*.
+2. **Variance is high enough that these tiers are not cleanly separable at this
+   N.** An earlier 3-trial run looked like a tidy "stronger model finds ~2×
+   more" curve — 5 trials erased it (V4-pro even came out lowest here, two
+   passes finding 0). Don't rank models on a handful of noisy agent runs.
+3. **The precision moat is opt-in, and adoption scales with the driver.** A
+   weak model rarely attaches a `verify` clause. Safe nudges (an imperative
+   RECORD instruction, accepting the target via `evidence`, a no-receipt
+   reminder) moved `deepseek-chat` from **0** verified findings (pre-nudge) to
+   engaging in ~half its trials — without ever guessing the symptom (which
+   would risk a false VERIFIED). Reliable engagement still favors a capable
+   driver.
 
 ### BuggyTasks (mechanical bugs)
 
