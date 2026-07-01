@@ -3404,7 +3404,16 @@ async def record_bug(
         )
     sev = _SEVERITY_BY_NAME[sev_key]
 
-    ev = evidence or {}
+    # Be forgiving about `evidence`: agents (esp. weaker models) pass a bare
+    # string instead of a dict. A string used to crash record_bug
+    # ('str' has no .get) — losing the whole finding. Treat a string as the
+    # description; anything non-dict becomes empty.
+    if isinstance(evidence, dict):
+        ev = evidence
+    elif isinstance(evidence, str) and evidence.strip():
+        ev = {"description": evidence.strip()}
+    else:
+        ev = {}
     description = ev.get("description") or title
     # Default to the steps taken *since the last record_bug* — otherwise
     # consecutive bug reports accumulate earlier bugs' actions and the
@@ -3449,12 +3458,12 @@ async def record_bug(
     # passed but the evidence dict carries a checkable target, build one from it.
     # (The agent still supplies the target — we never GUESS it, which would risk
     # a false VERIFIED; we only accept it from a second, more natural place.)
-    if verify is None and isinstance(evidence, dict) and (evidence.get("target_text") or evidence.get("target")):
+    if verify is None and (ev.get("target_text") or ev.get("target")):
         verify = {
-            "expect": (evidence.get("expect") or "present"),
-            "target_text": evidence.get("target_text") or evidence.get("target"),
-            "at_url": evidence.get("at_url") or evidence.get("after_url") or "",
-            "replay": bool(evidence.get("replay")),
+            "expect": (ev.get("expect") or "present"),
+            "target_text": ev.get("target_text") or ev.get("target"),
+            "at_url": ev.get("at_url") or ev.get("after_url") or "",
+            "replay": bool(ev.get("replay")),
         }
 
     replay_slice = list(s.action_trace[s._actions_since_last_bug:])

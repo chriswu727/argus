@@ -153,6 +153,16 @@ def test_ordinal_selects_nth_identical_control():
     assert r2.found is els[2]
 
 
+def test_quoted_labels_resolve():
+    # Agents habitually quote the label: `link "Tasks"`, `input "you@x"`.
+    els = [make_element(0, tag="a", text="Tasks"), make_element(1, tag="a", text="Home")]
+    r = resolve_element('link "Tasks"', els)
+    assert r.reason == "unique" and r.found is els[0]
+    els2 = [make_element(0, tag="input", type="email", placeholder="you@example.com")]
+    r2 = resolve_element('input "you@example.com"', els2)
+    assert r2.reason == "unique" and r2.found is els2[0]
+
+
 def test_short_verb_does_not_bleed_into_longer_word():
     # F5: 'Add' must not resolve to 'Address line 1', 'Edit' not to 'Credit...'.
     # With no real control by that name the answer is no_match, never a
