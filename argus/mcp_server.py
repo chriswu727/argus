@@ -205,6 +205,18 @@ def _require_session() -> Session:
     return _session
 
 
+def _require_web_session(s: "Session", tool: str) -> Optional[str]:
+    """Return an error string if this isn't a live web session, else None.
+
+    Replaces the `if s.mode != "web" or s.browser is None: return "..."` guard
+    that was copy-pasted across ~30 tools (the duplication that once let a
+    missing guard slip through). Tools that also need an open page keep their
+    explicit `_page is None` check."""
+    if s.mode != "web" or s.browser is None:
+        return f"{tool}: this tool is web-mode only."
+    return None
+
+
 async def _teardown_active_session() -> None:
     """Cleanly stop whichever backend the current session holds.
 
@@ -2096,8 +2108,9 @@ async def hover_what(description: str) -> str:
     fall back to eval_js.
     """
     s = _require_session()
-    if s.mode != "web" or s.browser is None:
-        return "hover_what: this tool is web-mode only."
+    err = _require_web_session(s, "hover_what")
+    if err:
+        return err
     el, err = _resolve_or_error(s, description)
     if err:
         return err
@@ -2120,8 +2133,9 @@ async def right_click(description: str) -> str:
     set_dialog_handler).
     """
     s = _require_session()
-    if s.mode != "web" or s.browser is None:
-        return "right_click: this tool is web-mode only."
+    err = _require_web_session(s, "right_click")
+    if err:
+        return err
     el, err = _resolve_or_error(s, description)
     if err:
         return err
@@ -2145,8 +2159,9 @@ async def drag_what(from_description: str, to_description: str) -> str:
     other element types the agent may need to scroll first.
     """
     s = _require_session()
-    if s.mode != "web" or s.browser is None:
-        return "drag_what: this tool is web-mode only."
+    err = _require_web_session(s, "drag_what")
+    if err:
+        return err
     src, err = _resolve_or_error(s, from_description)
     if err:
         return f"drag_what(from): {err}"
@@ -2186,8 +2201,9 @@ async def upload_file(description: str, paths: list) -> str:
                pass a one-element list.
     """
     s = _require_session()
-    if s.mode != "web" or s.browser is None:
-        return "upload_file: this tool is web-mode only."
+    err = _require_web_session(s, "upload_file")
+    if err:
+        return err
     if not paths:
         return "upload_file: paths is empty."
     el, err = _resolve_or_error(s, description, kind_filter="input")
@@ -2222,8 +2238,9 @@ async def set_dialog_handler(action: str = "accept", text: str = "") -> str:
               for alert/confirm.
     """
     s = _require_session()
-    if s.mode != "web" or s.browser is None:
-        return "set_dialog_handler: this tool is web-mode only."
+    err = _require_web_session(s, "set_dialog_handler")
+    if err:
+        return err
     if action not in ("accept", "dismiss"):
         return "set_dialog_handler: action must be 'accept' or 'dismiss'."
     s.browser.queue_dialog_response(action, text)
@@ -2406,8 +2423,9 @@ async def network_requests(
         limit: cap the returned list (default 30).
     """
     s = _require_session()
-    if s.mode != "web" or s.browser is None:
-        return "network_requests: this tool is web-mode only."
+    err = _require_web_session(s, "network_requests")
+    if err:
+        return err
 
     log = s.browser.network_log_snapshot()
     filtered = _filter_network_log(log, url_substring or None, method or None,
@@ -2453,8 +2471,9 @@ async def network_request(
     For the list view, use network_requests.
     """
     s = _require_session()
-    if s.mode != "web" or s.browser is None:
-        return "network_request: this tool is web-mode only."
+    err = _require_web_session(s, "network_request")
+    if err:
+        return err
     if not url_substring:
         return "network_request: pass a url_substring to identify the request."
 
@@ -2535,8 +2554,9 @@ async def network_mock(
         content_type: response Content-Type header.
     """
     s = _require_session()
-    if s.mode != "web" or s.browser is None:
-        return "network_mock: this tool is web-mode only."
+    err = _require_web_session(s, "network_mock")
+    if err:
+        return err
     if not url_pattern:
         return "network_mock: pass a url_pattern."
     try:
@@ -2559,8 +2579,9 @@ async def network_mock(
 async def network_unmock(url_pattern: str) -> str:
     """Drop a mock previously registered via network_mock."""
     s = _require_session()
-    if s.mode != "web" or s.browser is None:
-        return "network_unmock: this tool is web-mode only."
+    err = _require_web_session(s, "network_unmock")
+    if err:
+        return err
     try:
         removed = await s.browser.remove_route(url_pattern)
     except Exception as exc:
@@ -2574,8 +2595,9 @@ async def network_unmock(url_pattern: str) -> str:
 async def network_clear_mocks() -> str:
     """Drop every mock registered this session."""
     s = _require_session()
-    if s.mode != "web" or s.browser is None:
-        return "network_clear_mocks: this tool is web-mode only."
+    err = _require_web_session(s, "network_clear_mocks")
+    if err:
+        return err
     n = await s.browser.clear_routes()
     return f"Cleared {n} mock(s)."
 
@@ -2585,8 +2607,9 @@ async def network_clear_log() -> str:
     """Drop the captured request/response log (the mocks themselves stay
     registered). Useful between scenarios to isolate the call set."""
     s = _require_session()
-    if s.mode != "web" or s.browser is None:
-        return "network_clear_log: this tool is web-mode only."
+    err = _require_web_session(s, "network_clear_log")
+    if err:
+        return err
     n = s.browser.clear_network_log()
     return f"Cleared {n} captured request entries."
 
@@ -2607,8 +2630,9 @@ async def cookies_get(url: str = "") -> str:
              Empty = return every cookie on the context.
     """
     s = _require_session()
-    if s.mode != "web" or s.browser is None:
-        return "cookies_get: this tool is web-mode only."
+    err = _require_web_session(s, "cookies_get")
+    if err:
+        return err
     cookies = await s.browser.cookies_get(url or None)
     if not cookies:
         return "No cookies." + (f" (filter: url={url})" if url else "")
@@ -2649,8 +2673,9 @@ async def cookies_set(cookies: list) -> str:
                    "url": "http://127.0.0.1:5555"}]
     """
     s = _require_session()
-    if s.mode != "web" or s.browser is None:
-        return "cookies_set: this tool is web-mode only."
+    err = _require_web_session(s, "cookies_set")
+    if err:
+        return err
     if not cookies:
         return "cookies_set: pass a non-empty list of cookie dicts."
     n = await s.browser.cookies_set(cookies)
@@ -2665,8 +2690,9 @@ async def cookies_set(cookies: list) -> str:
 async def cookies_clear() -> str:
     """Clear every cookie on the browser context (logout-all-the-things)."""
     s = _require_session()
-    if s.mode != "web" or s.browser is None:
-        return "cookies_clear: this tool is web-mode only."
+    err = _require_web_session(s, "cookies_clear")
+    if err:
+        return err
     ok = await s.browser.cookies_clear()
     s.steps.append("cookies_clear")
     return "Cleared all cookies." if ok else "cookies_clear: failed."
@@ -2682,8 +2708,9 @@ async def storage_get(kind: str = "local") -> str:
               sessionStorage.
     """
     s = _require_session()
-    if s.mode != "web" or s.browser is None:
-        return "storage_get: this tool is web-mode only."
+    err = _require_web_session(s, "storage_get")
+    if err:
+        return err
     if kind not in ("local", "session"):
         return "storage_get: kind must be 'local' or 'session'."
     items = await s.browser.storage_get(kind)
@@ -2712,8 +2739,9 @@ async def storage_set(key: str, value: str, kind: str = "local") -> str:
         kind: "local" or "session" (default "local").
     """
     s = _require_session()
-    if s.mode != "web" or s.browser is None:
-        return "storage_set: this tool is web-mode only."
+    err = _require_web_session(s, "storage_set")
+    if err:
+        return err
     if kind not in ("local", "session"):
         return "storage_set: kind must be 'local' or 'session'."
     ok = await s.browser.storage_set(key, value, kind)
@@ -2726,8 +2754,9 @@ async def storage_set(key: str, value: str, kind: str = "local") -> str:
 async def storage_remove(key: str, kind: str = "local") -> str:
     """Delete a single key from localStorage or sessionStorage."""
     s = _require_session()
-    if s.mode != "web" or s.browser is None:
-        return "storage_remove: this tool is web-mode only."
+    err = _require_web_session(s, "storage_remove")
+    if err:
+        return err
     if kind not in ("local", "session"):
         return "storage_remove: kind must be 'local' or 'session'."
     ok = await s.browser.storage_remove(key, kind)
@@ -2740,8 +2769,9 @@ async def storage_remove(key: str, kind: str = "local") -> str:
 async def storage_clear(kind: str = "local") -> str:
     """Clear all keys from localStorage or sessionStorage on this page."""
     s = _require_session()
-    if s.mode != "web" or s.browser is None:
-        return "storage_clear: this tool is web-mode only."
+    err = _require_web_session(s, "storage_clear")
+    if err:
+        return err
     if kind not in ("local", "session"):
         return "storage_clear: kind must be 'local' or 'session'."
     ok = await s.browser.storage_clear(kind)
@@ -2890,8 +2920,9 @@ async def tabs_list() -> str:
     spawned context.
     """
     s = _require_session()
-    if s.mode != "web" or s.browser is None:
-        return "tabs_list: this tool is web-mode only."
+    err = _require_web_session(s, "tabs_list")
+    if err:
+        return err
     tabs = await s.browser.tabs_list()
     if not tabs:
         return "No tabs."
@@ -2909,8 +2940,9 @@ async def tabs_switch(index: int) -> str:
     """Make the tab at the given index the active tab. All subsequent
     observe / click / type / network / storage calls target it."""
     s = _require_session()
-    if s.mode != "web" or s.browser is None:
-        return "tabs_switch: this tool is web-mode only."
+    err = _require_web_session(s, "tabs_switch")
+    if err:
+        return err
     ok = await s.browser.tabs_switch(index)
     if not ok:
         return f"tabs_switch: no tab at index {index}. Call tabs_list to see available tabs."
@@ -2926,8 +2958,9 @@ async def tabs_close(index: int) -> str:
     """Close the tab at the given index. If it was active, focus
     falls back to the first remaining tab."""
     s = _require_session()
-    if s.mode != "web" or s.browser is None:
-        return "tabs_close: this tool is web-mode only."
+    err = _require_web_session(s, "tabs_close")
+    if err:
+        return err
     ok = await s.browser.tabs_close(index)
     if not ok:
         return f"tabs_close: no tab at index {index}."
@@ -2953,8 +2986,9 @@ async def wait_for_text(text: str, timeout_s: float = 10.0) -> str:
         timeout_s: Seconds to wait before giving up (default 10).
     """
     s = _require_session()
-    if s.mode != "web" or s.browser is None:
-        return "wait_for_text: this tool is web-mode only."
+    err = _require_web_session(s, "wait_for_text")
+    if err:
+        return err
     if not text:
         return "wait_for_text: pass a non-empty text."
     found = await s.browser.wait_for_text(text, timeout_s)
@@ -2984,8 +3018,9 @@ async def wait_for_request(
         timeout_s: Seconds to wait (default 10).
     """
     s = _require_session()
-    if s.mode != "web" or s.browser is None:
-        return "wait_for_request: this tool is web-mode only."
+    err = _require_web_session(s, "wait_for_request")
+    if err:
+        return err
     if not url_substring:
         return "wait_for_request: pass a url_substring."
     snap = await s.browser.wait_for_request(
@@ -3015,8 +3050,9 @@ async def navigate(url: str) -> str:
         url: The URL to navigate to
     """
     s = _require_session()
-    if s.mode != "web" or s.browser is None:
-        return "navigate: this tool is web-mode only."
+    err = _require_web_session(s, "navigate")
+    if err:
+        return err
     step = f"Navigate to {url}"
     s.steps.append(step)
 
@@ -3034,8 +3070,9 @@ async def navigate(url: str) -> str:
 async def go_back() -> str:
     """Go back to the previous page."""
     s = _require_session()
-    if s.mode != "web" or s.browser is None:
-        return "go_back: this tool is web-mode only."
+    err = _require_web_session(s, "go_back")
+    if err:
+        return err
     s.steps.append("Go back")
 
     ok = await s.browser.go_back()
@@ -3050,8 +3087,9 @@ async def go_back() -> str:
 async def scroll_down() -> str:
     """Scroll the page down to reveal more content."""
     s = _require_session()
-    if s.mode != "web" or s.browser is None:
-        return "scroll_down: this tool is web-mode only."
+    err = _require_web_session(s, "scroll_down")
+    if err:
+        return err
     s.steps.append("Scroll down")
     await s.browser.scroll_down()
     return "Scrolled down. Call observe() to see what's now in view."
