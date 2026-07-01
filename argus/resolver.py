@@ -53,13 +53,16 @@ _KIND_HINTS = {
     "menu": "select",
 }
 
-# Filler words to drop from descriptions before scoring. Includes
-# row-scoping scaffolding ("the Delete in the Buy-groceries row", "Delete
-# button for Buy groceries") — the tester's connective words, not content.
+# Filler words to drop from descriptions before scoring. Includes row-scoping
+# scaffolding ("the Delete in the Buy-groceries row") and region scaffolding
+# ("Register link in the navigation") — the tester's connective/location words,
+# not content. A literal region label (a "Navigation" menu item) is still
+# matched first by the exact-label fast path, so dropping these is safe.
 _STOPWORDS = {
     "the", "a", "an", "this", "that", "in", "on", "of",
     "row", "rows", "item", "entry", "near", "for", "with",
     "named", "labeled", "labelled", "containing",
+    "navigation", "nav", "navbar", "header", "footer", "sidebar", "toolbar",
 }
 
 _ORDINAL_WORDS = {
