@@ -101,6 +101,23 @@ _SEVERITY_COLORS = {
 }
 
 _SEVERITY_ORDER = [Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM, Severity.LOW, Severity.INFO]
+_SEV_IDX = {s: i for i, s in enumerate(_SEVERITY_ORDER)}
+
+
+def _trust_rank(bug: Bug) -> int:
+    """Order findings by how trustworthy they are, so a reader sees the proven
+    ones first and the raw unverified noise last (the precision moat, made
+    visible in the report): 0 independently VERIFIED, 1 observation-based
+    judgment, 2 attempted-but-not-reproduced/inconclusive, 3 auto-captured
+    event (console/network noise, never independently confirmed)."""
+    r = bug.reproduction_receipt or {}
+    if r.get("auto_captured"):
+        return 3
+    if r.get("reproduced") is True:
+        return 0
+    if not bug.reproduction_receipt:
+        return 1
+    return 2
 
 
 class Reporter:
@@ -130,30 +147,46 @@ class Reporter:
                     f"{count}</span> {sev.value}</div>"
                 )
 
-        # bug cards
-        cards = ""
-        for sev in _SEVERITY_ORDER:
-            for bug in by_sev.get(sev, []):
-                steps = "".join(f"<li>{_esc(s)}</li>" for s in bug.steps_to_reproduce)
-                console = ""
-                if bug.console_logs:
-                    logs = "\n".join(bug.console_logs)
-                    console = f'<div class="cl"><strong>Console:</strong><pre>{_esc(logs)}</pre></div>'
-                network = ""
-                for nl in bug.network_logs:
-                    network += (
-                        f'<div class="nl"><code>{nl.get("method", "")} '
-                        f'{_esc(_redact(nl.get("url", "")))} → {nl.get("status", "")}</code></div>'
-                    )
-                ss = ""
-                if bug.screenshot_path:
-                    data_uri = _embed_image(bug.screenshot_path)
-                    if data_uri:
-                        ss = f'<img src="{data_uri}" class="ss" alt="Bug screenshot">'
-                repro = _repro_badge(bug.reproduction_receipt)
+        # trust summary — lead with what's proven
+        ranks = [_trust_rank(b) for b in r.bugs]
+        n_ver, n_obs = ranks.count(0), ranks.count(1)
+        n_unproven, n_auto = ranks.count(2), ranks.count(3)
+        trust_bits = []
+        if n_ver:
+            trust_bits.append(f'<b style="color:#1a7f37">{n_ver} verified</b>')
+        if n_obs:
+            trust_bits.append(f"{n_obs} observation-based")
+        if n_unproven:
+            trust_bits.append(f"{n_unproven} not reproduced")
+        if n_auto:
+            trust_bits.append(f"{n_auto} auto-captured (unverified)")
+        if trust_bits:
+            summary += f'<div class="si" style="opacity:.85">{" · ".join(trust_bits)}</div>'
 
-                cards += f"""<div class="bc">
-<div class="bh"><span class="sv" style="background:{_SEVERITY_COLORS[sev]}">{sev.value.upper()}</span>
+        # bug cards — trust tier first (verified lead, auto-captured sink), then severity
+        cards = ""
+        ordered = sorted(r.bugs, key=lambda b: (_trust_rank(b), _SEV_IDX.get(b.severity, 99)))
+        for bug in ordered:
+            steps = "".join(f"<li>{_esc(s)}</li>" for s in bug.steps_to_reproduce)
+            console = ""
+            if bug.console_logs:
+                logs = "\n".join(bug.console_logs)
+                console = f'<div class="cl"><strong>Console:</strong><pre>{_esc(logs)}</pre></div>'
+            network = ""
+            for nl in bug.network_logs:
+                network += (
+                    f'<div class="nl"><code>{nl.get("method", "")} '
+                    f'{_esc(_redact(nl.get("url", "")))} → {nl.get("status", "")}</code></div>'
+                )
+            ss = ""
+            if bug.screenshot_path:
+                data_uri = _embed_image(bug.screenshot_path)
+                if data_uri:
+                    ss = f'<img src="{data_uri}" class="ss" alt="Bug screenshot">'
+            repro = _repro_badge(bug.reproduction_receipt)
+
+            cards += f"""<div class="bc">
+<div class="bh"><span class="sv" style="background:{_SEVERITY_COLORS[bug.severity]}">{bug.severity.value.upper()}</span>
 <span class="bt">{_BUGTYPE_LABELS.get(bug.type, bug.type.value)}</span>{repro}</div>
 <h3>{_esc(bug.title)}</h3>
 <p>{_esc(bug.description)}</p>
