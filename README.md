@@ -146,6 +146,17 @@ exercises the same MCP tools an LLM agent would call. We're answering
 *"what's findable through this surface?"* — separate from
 *"how often does any specific LLM remember to call the right tool?"*
 
+### Real-LLM bench (honest recall)
+
+`python -m argus.bench.agent_runner` (set a provider key, e.g.
+`DEEPSEEK_API_KEY`) has an **actual model** drive the tools and scores
+recall/precision/cost across N trials — the true agent number, not the
+ceiling. It's model-dependent and much lower: e.g. `deepseek-chat` finds
+~1–2 of the 22 seeded BuggyTasks bugs per pass (mean ~1.3/22 over 3 trials,
+≈¥0.07 total), and — tellingly — attaches a reproduction receipt to **none**
+of them, because the weaker model never opts into the `verify` clause. The
+`34/34` is what's *findable*; this is what a given model *finds*.
+
 ### BuggyTasks (mechanical bugs)
 
 22 seeded bugs in a small task-management app: console errors, dead
