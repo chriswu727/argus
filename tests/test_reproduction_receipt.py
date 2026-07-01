@@ -248,6 +248,19 @@ class _LoginWallHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(b"<html><body><h1>Please log in to continue</h1></body></html>")
 
 
+async def test_verify_can_be_carried_in_evidence():
+    # Lower-barrier path: the agent puts the checkable target in `evidence`
+    # (no separate verify dict) and the moat still engages.
+    await _session_on_page(_PAGE)
+    try:
+        await _record(title="via-evidence", severity="low",
+                      evidence={"screenshot": "skip", "target_text": "Buy groceries", "expect": "present"})
+        r = m._session.bugs[-1].reproduction_receipt
+        assert r is not None and r["reproduced"] is True
+    finally:
+        await _end()
+
+
 async def test_clean_load_login_wall_is_inconclusive():
     # Session expired -> the clean GET hits a login wall, so an expect=absent
     # target is absent because we're logged out, NOT because the bug is fixed.

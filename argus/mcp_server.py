@@ -97,10 +97,14 @@ THE TESTER'S RITUAL — return to this on every tool call
                verify_persistence. UIs lie. The "Saved!" toast is the
                single most common reason real users lose data.
 7. RECORD      When you've confirmed a real bug, call record_bug with
-               severity + reproducible steps + evidence (URL, element,
-               screenshot index). If the symptom is text-checkable, pass
-               the `verify` clause so Argus independently re-confirms it
-               from a clean load. Don't record speculation or polish nits.
+               severity + reproducible steps + evidence. ALWAYS pass a
+               `verify` clause — {expect: "present"|"absent", target_text:
+               "the text that proves the bug", at_url: "/where"} — for any
+               text-checkable symptom (an item present/absent, a wrong count,
+               a lying toast, missing saved data). Without it the finding has
+               NO reproduction receipt and counts as unproven say-so; that is
+               the whole differentiator. Only skip verify for a purely visual
+               judgment call. Don't record speculation or polish nits.
 8. COVER       Before ending the session, ask "which user goals did I
                never actually use end-to-end?" — go use those.
 
@@ -3441,6 +3445,18 @@ async def record_bug(
         label = "".join(c if c.isalnum() else "_" for c in screenshot_directive.lower())[:40]
         screenshot_path = await _auto_screenshot(s, label, f"record_bug: {title[:60]}")
 
+    # Lower the barrier to engaging the receipt: if no explicit verify clause was
+    # passed but the evidence dict carries a checkable target, build one from it.
+    # (The agent still supplies the target — we never GUESS it, which would risk
+    # a false VERIFIED; we only accept it from a second, more natural place.)
+    if verify is None and isinstance(evidence, dict) and (evidence.get("target_text") or evidence.get("target")):
+        verify = {
+            "expect": (evidence.get("expect") or "present"),
+            "target_text": evidence.get("target_text") or evidence.get("target"),
+            "at_url": evidence.get("at_url") or evidence.get("after_url") or "",
+            "replay": bool(evidence.get("replay")),
+        }
+
     replay_slice = list(s.action_trace[s._actions_since_last_bug:])
     if verify and verify.get("replay"):
         receipt = await _run_replay_receipt(s, verify, replay_slice)
@@ -3528,6 +3544,13 @@ async def record_bug(
                            "so it can't be attributed to these steps. Not a confirmation.")
             else:
                 out.append(f"  reproduction: check errored — {receipt.get('error', 'unknown')}")
+    else:
+        # No receipt: nudge toward one for the (common) text-checkable case so
+        # the precision moat actually engages — a weaker agent won't otherwise.
+        out.append("  reproduction: NONE — this finding is unverified (your say-so). If the "
+                   "symptom is text-checkable (an item present/absent, a wrong count, a lying "
+                   "toast), re-record with verify={\"expect\":\"present|absent\",\"target_text\":"
+                   "\"...\",\"at_url\":\"/path\"} so Argus re-confirms it from a clean load.")
     out.append(f"  total bugs in session: {len(s.bugs)}")
     return "\n".join(out)
 
