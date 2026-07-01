@@ -26,6 +26,22 @@ def test_report_redacts_url_secrets():
     assert "alice" in html  # non-secret query param survives
 
 
+def test_report_leads_with_verified_and_keeps_per_bug_severity():
+    from argus.reporter import Reporter, _trust_rank
+    v = _bug(receipt={"attempted": True, "reproduced": True})
+    v.severity, v.title = Severity.LOW, "PROVEN-FINDING"
+    a = _bug(receipt={"attempted": False, "auto_captured": True})
+    a.severity, a.title = Severity.HIGH, "AUTO-NOISE"
+    html = Reporter()._build_html(ExplorationResult(
+        url="u", bugs=[a, v], pages_visited=[], actions_taken=0,
+        duration_seconds=0.0, focus_areas=[]))
+    # verified finding leads despite LOWER severity; auto-captured noise sinks
+    assert html.index("PROVEN-FINDING") < html.index("AUTO-NOISE")
+    # each card shows its OWN severity (regression: a leaked loop var showed one)
+    assert ">LOW<" in html and ">HIGH<" in html
+    assert _trust_rank(v) == 0 and _trust_rank(a) == 3
+
+
 def test_journal_only_persists_reproduced(tmp_path, monkeypatch):
     monkeypatch.setenv("ARGUS_OUTPUT_DIR", str(tmp_path))
     s = m.Session()
