@@ -173,6 +173,17 @@ def test_next_to_is_row_scoping_like_near():
     assert resolve_element("Next button", nxt).found is nxt[0]
 
 
+def test_last_positional_and_last_name_label():
+    els = [make_element(i, tag="button", text="Delete") for i in range(4)]
+    r = resolve_element("last Delete button", els)
+    assert r.reason == "unique" and r.found is els[3]  # last of 4
+    # "Last name" must resolve as a LABEL (exact-label fast path), not positional
+    form = [make_element(0, tag="input", placeholder="First name"),
+            make_element(1, tag="input", placeholder="Last name")]
+    r2 = resolve_element("Last name field", form)
+    assert r2.reason == "unique" and r2.found is form[1]
+
+
 def test_short_verb_does_not_bleed_into_longer_word():
     # F5: 'Add' must not resolve to 'Address line 1', 'Edit' not to 'Credit...'.
     # With no real control by that name the answer is no_match, never a
