@@ -72,9 +72,9 @@ def extract_ordinal(desc: str) -> Tuple[str, Optional[int]]:
     """Pull a positional selector out of a description, return (rest, n).
 
     Lets a tester pick among identical labels by position the way a human
-    would: "Delete #2", "the 2nd Delete", "third Edit button". Returns the
-    description with the ordinal removed and the 1-based index, or (desc,
-    None) when there's no ordinal.
+    would: "Delete #2", "the 2nd Delete", "third Edit button", "last Delete".
+    Returns the description with the ordinal removed and the index (1-based, or
+    -1 for "last"), or (desc, None) when there's no ordinal.
     """
     d = desc.strip()
     m = re.search(r"#\s*(\d+)\s*$", d)
@@ -84,10 +84,15 @@ def extract_ordinal(desc: str) -> Tuple[str, Optional[int]]:
     if m:
         return (d[:m.start()] + d[m.end():]).strip(), int(m.group(1))
     toks = d.split()
-    if len(toks) > 1:  # a lone "second" is a label, not a position
+    if len(toks) > 1:  # a lone "second"/"last" is a label, not a position
         for i, t in enumerate(toks):
-            if t.lower() in _ORDINAL_WORDS:
-                return " ".join(toks[:i] + toks[i + 1:]).strip(), _ORDINAL_WORDS[t.lower()]
+            low = t.lower()
+            if low in _ORDINAL_WORDS:
+                return " ".join(toks[:i] + toks[i + 1:]).strip(), _ORDINAL_WORDS[low]
+            # "last X" -> from the end. The exact-label fast path runs before
+            # this, so a real label like "Last name" is matched verbatim first.
+            if low == "last":
+                return " ".join(toks[:i] + toks[i + 1:]).strip(), -1
     return d, None
 
 
@@ -324,6 +329,9 @@ def resolve_element(
     if ordinal is not None:
         band = [el for sc, el in scored if sc == top_score]
         band.sort(key=lambda el: el.index)
+        if ordinal == -1 and band:  # "last X" -> last in document order
+            return ResolveResult(found=band[-1],
+                                 candidates=[(top_score, band[-1])], reason="unique")
         if 1 <= ordinal <= len(band):
             return ResolveResult(found=band[ordinal - 1],
                                  candidates=[(top_score, band[ordinal - 1])], reason="unique")
