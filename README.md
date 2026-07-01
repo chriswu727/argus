@@ -159,10 +159,15 @@ the ceiling. Measured on BuggyTasks (3 trials each, hard cost cap):
 | `deepseek-v4-pro`   | ~3.0 / 22   | 2–3 of its findings     | ≈¥0.25 |
 
 Two honest takeaways the `34/34` ceiling hides: (1) real recall is far below the
-ceiling and scales with model strength; (2) the precision moat is opt-in, so a
-weaker model never attaches a `verify` clause and gets **no** reproduction
-receipts, while a stronger one does — the moat engages only as well as its
-driver. The `34/34` is what's *findable*; this is what a given model *finds*.
+ceiling and scales with model strength; (2) the precision moat is opt-in, so its
+engagement scales with the driver too — a strong model attaches a `verify`
+clause to most findings, a weak one rarely does. Safe adoption nudges (an
+imperative RECORD instruction, accepting the target via `evidence`, and a
+no-receipt reminder) moved `deepseek-chat` from **0** verified findings to
+*occasionally* engaging (2 in one of three trials) without ever guessing the
+symptom (which would risk a false VERIFIED); reliable engagement still wants a
+capable driver. The `34/34` is what's *findable*; this is what a given model
+*finds and proves*.
 
 ### BuggyTasks (mechanical bugs)
 
