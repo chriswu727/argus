@@ -163,6 +163,16 @@ def test_quoted_labels_resolve():
     assert r2.reason == "unique" and r2.found is els2[0]
 
 
+def test_next_to_is_row_scoping_like_near():
+    # "next to X" == "near X" scaffolding; a standalone "Next" button still resolves.
+    rows = [_row(0, "Buy groceries", "Edit"), _row(1, "Buy groceries", "Delete"),
+            _row(2, "Pay rent", "Edit"), _row(3, "Pay rent", "Delete")]
+    r = resolve_element('Delete next to "Buy groceries"', rows)
+    assert r.reason == "unique" and r.found is rows[1]
+    nxt = [make_element(0, tag="button", text="Next"), make_element(1, tag="button", text="Back")]
+    assert resolve_element("Next button", nxt).found is nxt[0]
+
+
 def test_short_verb_does_not_bleed_into_longer_word():
     # F5: 'Add' must not resolve to 'Address line 1', 'Edit' not to 'Credit...'.
     # With no real control by that name the answer is no_match, never a

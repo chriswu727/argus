@@ -116,10 +116,13 @@ def _strip_kind(desc: str) -> Tuple[List[str], Optional[str]]:
     Shared by split_description (which then drops stopwords) and the
     exact-label fast path (which must NOT drop them — 'in' is a real label
     word in 'Sign in', not filler)."""
+    # "next to X" is row-scoping scaffolding, same as "near X" — strip the
+    # PHRASE only (a standalone "Next" button must still resolve).
+    desc = re.sub(r"\bnext\s+to\b", " ", desc.lower())
     # Strip surrounding quotes agents habitually add around a label
     # (`link "Tasks"`, `input "you@example.com"`) — the quotes are punctuation,
     # not part of the element's text, and left on they match nothing.
-    raw = [w.strip('"“”‘’\'`') for w in desc.lower().strip().split()]
+    raw = [w.strip('"“”‘’\'`') for w in desc.strip().split()]
     raw = [w for w in raw if w]
     kind: Optional[str] = None
     # A kind word can sit anywhere ("Submit button", "the Delete button for
