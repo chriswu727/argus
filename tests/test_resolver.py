@@ -173,6 +173,16 @@ def test_next_to_is_row_scoping_like_near():
     assert resolve_element("Next button", nxt).found is nxt[0]
 
 
+def test_region_scaffolding_is_ignored():
+    # "Register link in the navigation" -> the region words are scaffolding.
+    els = [make_element(0, tag="a", text="Register"), make_element(1, tag="a", text="Home")]
+    r = resolve_element("Register link in the navigation", els)
+    assert r.reason == "unique" and r.found is els[0]
+    # a literal "Navigation" label still resolves (exact-label fast path)
+    nav = [make_element(0, tag="a", text="Navigation"), make_element(1, tag="a", text="Home")]
+    assert resolve_element("Navigation", nav).found is nav[0]
+
+
 def test_last_positional_and_last_name_label():
     els = [make_element(i, tag="button", text="Delete") for i in range(4)]
     r = resolve_element("last Delete button", els)
