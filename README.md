@@ -151,29 +151,30 @@ exercises the same MCP tools an LLM agent would call. We're answering
 `python -m argus.bench.agent_runner` (set a provider key, e.g.
 `DEEPSEEK_API_KEY`, and `BENCH_MODEL`) has an **actual model** drive the tools
 and scores recall/moat-engagement/cost across N trials — the true agent number,
-not the ceiling. Measured on BuggyTasks (5 trials each, hard cost cap):
+not the ceiling. Four honest findings from running it on BuggyTasks (all with a
+hard cost cap, ALL trials reported; total spend across every run below was under
+¥2):
 
-| model (driver)      | recall/22 per trial | mean | variance | moat engaged | cost   |
-|---------------------|---------------------|------|----------|--------------|--------|
-| `deepseek-chat` V3  | 4,2,2,2,3           | 2.6  | 0.64     | 3/5          | ≈¥0.12 |
-| `deepseek-v4-flash` | 1,3,3,1,4           | 2.4  | 1.44     | 3/5          | ≈¥0.14 |
-| `deepseek-v4-pro`   | 1,0,4,0,1           | 1.2  | 2.16     | 2/5          | ≈¥0.37 |
-
-Honest takeaways (the whole point of measuring variance, not a single run):
-
-1. **Real recall is far below the `34/34` ceiling** — ~1–3 of 22 per pass. The
-   ceiling is what's *findable*; this is what a model *finds*.
-2. **Variance is high enough that these tiers are not cleanly separable at this
-   N.** An earlier 3-trial run looked like a tidy "stronger model finds ~2×
-   more" curve — 5 trials erased it (V4-pro even came out lowest here, two
-   passes finding 0). Don't rank models on a handful of noisy agent runs.
-3. **The precision moat is opt-in, and adoption scales with the driver.** A
-   weak model rarely attaches a `verify` clause. Safe nudges (an imperative
-   RECORD instruction, accepting the target via `evidence`, a no-receipt
-   reminder) moved `deepseek-chat` from **0** verified findings (pre-nudge) to
-   engaging in ~half its trials — without ever guessing the symptom (which
-   would risk a false VERIFIED). Reliable engagement still favors a capable
-   driver.
+1. **Real recall is far below the `34/34` ceiling** — a real driver finds a
+   handful of the 22 per pass, not all of them. The ceiling is what's
+   *findable*; this is what a model *finds*.
+2. **Variance is huge — don't rank models on a few runs.** An early 3-trial
+   pass looked like a tidy "stronger model finds ~2× more" curve; 5 trials
+   erased it (`deepseek-v4-pro` even came out *lowest* one run, two passes
+   finding 0). Per-trial recall swings from 0 to 9. Report the spread, not a
+   single number.
+3. **Dogfooding the bench found bugs in Argus itself.** The transcripts
+   revealed `record_bug` *crashing* on a string `evidence` arg (weaker models
+   pass one) — silently dropping confirmed findings — plus resolver misses on
+   `link "Tasks"` / `checkbox next to X`. Fixing those roughly **doubled**
+   `deepseek-chat`'s mean recall (~2.5 → ~5/22 across two 6-trial runs, still
+   high variance) and eliminated the crashes. The tool testing tool got tested.
+4. **The precision moat is opt-in, and adoption scales with the driver.** A
+   weak model rarely attaches a `verify` clause on its own. Safe nudges (an
+   imperative RECORD instruction, accepting the target via `evidence`, a
+   no-receipt reminder) took `deepseek-chat` from **0** verified findings to
+   engaging in most trials — without ever guessing the symptom (which would
+   risk a false VERIFIED). Reliable engagement still favors a capable driver.
 
 ### BuggyTasks (mechanical bugs)
 
