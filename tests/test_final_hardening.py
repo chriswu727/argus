@@ -42,6 +42,15 @@ def test_report_leads_with_verified_and_keeps_per_bug_severity():
     assert _trust_rank(v) == 0 and _trust_rank(a) == 3
 
 
+def test_nearest_labels_suggests_by_token_overlap():
+    from tests.conftest import make_element
+    els = [make_element(tag="a", text="Tasks"), make_element(tag="a", text="Home"),
+           make_element(tag="a", text="Settings")]
+    near = m._nearest_labels("Back to Tasks link", els)
+    assert near and "Tasks" in near[0]         # the Tasks link ranks first (shares 'tasks')
+    assert m._nearest_labels("zzzzz nonexistent", els) == []  # no overlap -> no noise
+
+
 def test_journal_only_persists_reproduced(tmp_path, monkeypatch):
     monkeypatch.setenv("ARGUS_OUTPUT_DIR", str(tmp_path))
     s = m.Session()

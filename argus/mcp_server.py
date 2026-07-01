@@ -1116,6 +1116,24 @@ def _format_observation(state: PageState) -> str:
     return "\n".join(lines)
 
 
+def _nearest_labels(description: str, elements, k: int = 4) -> List[str]:
+    """The closest on-page elements to a failed description, by token overlap.
+    Turns a bare 'no element matches' into a 'did you mean' shortlist so the
+    agent self-corrects (or realizes the element isn't here) without spending a
+    whole observe round-trip — a common way real agents stall."""
+    desc_toks = set(re.findall(r"[a-z0-9]+", description.lower()))
+    if not desc_toks:
+        return []
+    scored = []
+    for el in elements:
+        label = el.text or el.aria_label or el.placeholder or el.value or el.name or ""
+        overlap = len(desc_toks & set(re.findall(r"[a-z0-9]+", label.lower())))
+        if overlap:
+            scored.append((overlap, describe_element(el)))
+    scored.sort(key=lambda x: -x[0])
+    return [d for _, d in scored[:k]]
+
+
 def _resolve_or_error(
     s: Session,
     description: str,
@@ -1148,9 +1166,11 @@ def _resolve_or_error(
         )
 
     if result.reason == "no_match":
+        near = _nearest_labels(description, s._last_elements)
+        hint = ("\nClosest on the page:\n" + "\n".join(f"  {d}" for d in near)) if near else ""
         return None, (
             f"No element matches {description!r}. Call observe() to see what's "
-            f"actually on the page, or rephrase your description."
+            f"actually on the page, or rephrase your description.{hint}"
         )
 
     # ambiguous
