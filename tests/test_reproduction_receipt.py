@@ -248,6 +248,19 @@ class _LoginWallHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(b"<html><body><h1>Please log in to continue</h1></body></html>")
 
 
+async def test_record_bug_tolerates_string_evidence():
+    # A weaker agent passes `evidence` as a bare string — used to crash
+    # record_bug ('str' has no .get) and silently lose the finding.
+    await _session_on_page(_PAGE)
+    try:
+        out = await _record(title="strEv", severity="low",
+                            evidence="clicked delete but the item stayed")
+        assert "Recorded bug" in out
+        assert m._session.bugs[-1].description == "clicked delete but the item stayed"
+    finally:
+        await _end()
+
+
 async def test_verify_can_be_carried_in_evidence():
     # Lower-barrier path: the agent puts the checkable target in `evidence`
     # (no separate verify dict) and the moat still engages.
