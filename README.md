@@ -149,13 +149,20 @@ exercises the same MCP tools an LLM agent would call. We're answering
 ### Real-LLM bench (honest recall)
 
 `python -m argus.bench.agent_runner` (set a provider key, e.g.
-`DEEPSEEK_API_KEY`) has an **actual model** drive the tools and scores
-recall/precision/cost across N trials — the true agent number, not the
-ceiling. It's model-dependent and much lower: e.g. `deepseek-chat` finds
-~1–2 of the 22 seeded BuggyTasks bugs per pass (mean ~1.3/22 over 3 trials,
-≈¥0.07 total), and — tellingly — attaches a reproduction receipt to **none**
-of them, because the weaker model never opts into the `verify` clause. The
-`34/34` is what's *findable*; this is what a given model *finds*.
+`DEEPSEEK_API_KEY`, and `BENCH_MODEL`) has an **actual model** drive the tools
+and scores recall/precision/cost across N trials — the true agent number, not
+the ceiling. Measured on BuggyTasks (3 trials each, hard cost cap):
+
+| model (driver)      | mean recall | verified (moat engaged) | cost   |
+|---------------------|-------------|-------------------------|--------|
+| `deepseek-chat` V3  | ~1.3 / 22   | 0 of its findings       | ≈¥0.07 |
+| `deepseek-v4-pro`   | ~3.0 / 22   | 2–3 of its findings     | ≈¥0.25 |
+
+Two honest takeaways the `34/34` ceiling hides: (1) real recall is far below the
+ceiling and scales with model strength; (2) the precision moat is opt-in, so a
+weaker model never attaches a `verify` clause and gets **no** reproduction
+receipts, while a stronger one does — the moat engages only as well as its
+driver. The `34/34` is what's *findable*; this is what a given model *finds*.
 
 ### BuggyTasks (mechanical bugs)
 
