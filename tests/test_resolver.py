@@ -173,6 +173,13 @@ def test_next_to_is_row_scoping_like_near():
     assert resolve_element("Next button", nxt).found is nxt[0]
 
 
+def test_label_word_is_scaffolding():
+    els = [make_element(0, tag="input", type="email", name="email", placeholder="you@x"),
+           make_element(1, tag="input", type="password", name="password")]
+    # "input near Email label" — "label" is scaffolding, not part of the target
+    assert resolve_element('input near "Email" label', els).found is els[0]
+
+
 def test_parenthetical_context_is_stripped():
     def mk(i, name, value):
         e = make_element(i, tag="input", type="text", name=name); e.value = value; return e
