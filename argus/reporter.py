@@ -206,7 +206,17 @@ class Reporter:
         cards = ""
         ordered = sorted(r.bugs, key=lambda b: (_trust_rank(b), _SEV_IDX.get(b.severity, 99)))
         for bug in ordered:
-            steps = _format_steps(bug.steps_to_reproduce)
+            # An auto-captured console/network event fires from the page itself,
+            # not from the agent's journey — showing that journey as its "steps
+            # to reproduce" is misleading. State honestly how it was observed.
+            if (bug.reproduction_receipt or {}).get("auto_captured"):
+                steps_block = ('<div class="st"><strong>How it surfaced:</strong> '
+                               '<span class="ac">Captured by Argus\'s console/network listener while '
+                               'on this page — it fires from the page itself, so it is not tied to a '
+                               'specific user journey.</span></div>')
+            else:
+                steps_block = ('<div class="st"><strong>Steps to reproduce:</strong><ol>'
+                               f'{_format_steps(bug.steps_to_reproduce)}</ol></div>')
             console = ""
             if bug.console_logs:
                 logs = "\n".join(bug.console_logs)
@@ -231,7 +241,7 @@ class Reporter:
 <h3>{_esc(bug.title)}</h3>
 <p>{_esc(bug.description)}</p>
 <div class="bu">URL: {_esc(_redact(bug.url))}</div>{repro_detail}
-<div class="st"><strong>Steps to reproduce:</strong><ol>{steps}</ol></div>
+{steps_block}
 {console}{network}{ss}</div>"""
 
         pages = "".join(f"<li>{_esc(p)}</li>" for p in r.pages_visited)
@@ -281,6 +291,7 @@ h3{{font-size:1.1rem;margin:.5rem 0;color:#f1f5f9}}
 .bu{{color:#64748b;font-size:.85rem;margin:.5rem 0}}
 .rd{{color:#94a3b8;font-size:.85rem;margin:.4rem 0;padding:.4rem .6rem;background:#0f172a;border-left:2px solid #1a7f37;border-radius:3px}}
 .rd code{{color:#e2e8f0}}
+.ac{{color:#94a3b8;font-style:italic}}
 .st ol{{margin:.5rem 0 .5rem 1.5rem;color:#cbd5e1;word-break:break-word}}
 .st li{{margin:.2rem 0}}
 .cl pre{{background:#0f172a;padding:.75rem;border-radius:4px;overflow-x:auto;font-size:.85rem;color:#fbbf24;margin-top:.3rem;white-space:pre-wrap;word-break:break-all}}
