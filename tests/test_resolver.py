@@ -190,6 +190,13 @@ def test_double_kind_word_does_not_pollute_core():
     assert resolve_element("the card field input", els).found is els[1]  # two kind words + a stopword
 
 
+def test_underscore_in_description_matches_normalized_name():
+    els = [make_element(0, tag="input", type="number", name="qty_1"),
+           make_element(1, tag="input", type="number", name="qty_2")]
+    # agent targets a field by the literal programmatic name it saw in observe
+    assert resolve_element("qty_1 input", els).found is els[0]
+
+
 def test_snake_case_name_matches_natural_language():
     els = [make_element(0, tag="input", type="text", name="first_name"),
            make_element(1, tag="input", type="text", name="last_name"),
