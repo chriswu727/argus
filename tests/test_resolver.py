@@ -173,6 +173,15 @@ def test_next_to_is_row_scoping_like_near():
     assert resolve_element("Next button", nxt).found is nxt[0]
 
 
+def test_double_kind_word_does_not_pollute_core():
+    els = [make_element(0, tag="input", type="text", name="cvv"),
+           make_element(1, tag="input", type="text", name="card")]
+    # "input field" is two kind words — "field" must not leak into the core and
+    # break the strict type_into path (which cannot fall back).
+    assert resolve_element("card input field", els, kind_filter="input", strict_kind=True).found is els[1]
+    assert resolve_element("card text input", els).found is els[1]
+
+
 def test_snake_case_name_matches_natural_language():
     els = [make_element(0, tag="input", type="text", name="first_name"),
            make_element(1, tag="input", type="text", name="last_name"),

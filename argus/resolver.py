@@ -132,15 +132,20 @@ def _strip_kind(desc: str) -> Tuple[List[str], Optional[str]]:
     # not part of the element's text, and left on they match nothing.
     raw = [w.strip('"“”‘’\'`') for w in desc.strip().split()]
     raw = [w for w in raw if w]
+    # A kind word can sit anywhere ("Submit button", "the Delete button for X"),
+    # not just at the end. Consume EVERY kind word (first one is the signal) so a
+    # second — "card input field", "dropdown menu" — doesn't leak into the core
+    # and break matching. Strict callers can't fall back, so a residual kind word
+    # there means a hard no_match.
     kind: Optional[str] = None
-    # A kind word can sit anywhere ("Submit button", "the Delete button for
-    # X"), not just at the end. Consume the first one as the kind signal.
-    for i, w in enumerate(raw):
+    kept: List[str] = []
+    for w in raw:
         if w in _KIND_HINTS:
-            kind = _KIND_HINTS[w]
-            raw = raw[:i] + raw[i + 1:]
-            break
-    return raw, kind
+            if kind is None:
+                kind = _KIND_HINTS[w]
+            continue
+        kept.append(w)
+    return kept, kind
 
 
 def split_description(desc: str) -> Tuple[str, Optional[str]]:
