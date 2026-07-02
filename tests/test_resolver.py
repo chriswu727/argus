@@ -173,6 +173,15 @@ def test_next_to_is_row_scoping_like_near():
     assert resolve_element("Next button", nxt).found is nxt[0]
 
 
+def test_snake_case_name_matches_natural_language():
+    els = [make_element(0, tag="input", type="text", name="first_name"),
+           make_element(1, tag="input", type="text", name="last_name"),
+           make_element(2, tag="input", type="number", name="qty_1", value="2")]
+    assert resolve_element("first name field", els).found is els[0]
+    assert resolve_element("last name input", els).found is els[1]
+    assert resolve_element("qty field", els).found is els[2]  # underscore no longer joins tokens
+
+
 def test_input_matched_by_current_value():
     # a pre-filled field (e.g. display name showing "Alex") is targetable by value
     els = [make_element(0, tag="input", type="text", value="Alex"),

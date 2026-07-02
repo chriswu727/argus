@@ -182,8 +182,12 @@ def _score(el: InteractiveElement, core: str) -> int:
     text = (el.text or "").lower().strip()
     aria = (el.aria_label or "").lower().strip()
     placeholder = (el.placeholder or "").lower().strip()
-    name = (el.name or "").lower().strip()
-    id_ = (el.id or "").lower().strip()
+    # snake_case / kebab-case names are one token to a boundary scan ("qty_1",
+    # "first_name"), so split the separators — lets "first name" match
+    # name="first_name" and "qty" match name="qty_1". Internal identifiers, so
+    # still low weight below.
+    name = re.sub(r"[_\-]+", " ", (el.name or "").lower()).strip()
+    id_ = re.sub(r"[_\-]+", " ", (el.id or "").lower()).strip()
     parent = (el.parent_context or "").lower().strip()
     href = (el.href or "").lower().strip()
     value = (el.value or "").lower().strip()
