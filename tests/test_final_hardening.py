@@ -56,9 +56,12 @@ def test_bench_score_verified_offcatalog_is_not_fp():
     v.title, v.description = "totally offbeat glitch", "weird thing"
     u = _bug(receipt=None)
     u.title, u.description = "another offbeat noise", "meh"
-    s = score([v, u])
-    assert s["unmatched"] == 2       # both off the fuzzy catalog
-    assert s["fp_candidates"] == 1   # only the unverified one is a false-positive candidate
+    # an auto-captured off-catalog console error is a real observed event, NOT an FP
+    a = _bug(receipt={"attempted": False, "auto_captured": True})
+    a.title, a.description = "captured glitch zzz", "some observed noise"
+    s = score([v, u, a])
+    assert s["unmatched"] == 3       # all three off the fuzzy catalog
+    assert s["fp_candidates"] == 1   # only `u` (unverified, not auto-captured) is an FP candidate
     assert s["verified"] == 1        # the verified off-catalog find is a real bug, not an FP
 
 
