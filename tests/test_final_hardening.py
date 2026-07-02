@@ -50,6 +50,12 @@ def test_report_steps_trim_and_collapse():
     assert "omitted" not in _format_steps(["click A", "verify B"])  # short lists untouched
 
 
+def test_toast_line_surfaces_claim_and_stays_quiet_when_empty():
+    line = m._toast_line(["Task created!", "Welcome"])
+    assert "Task created!" in line and "CLAIM" in line and "persisted" in line
+    assert m._toast_line([]) == "" and m._toast_line(None) == ""
+
+
 async def test_get_state_retries_on_execution_context_destroyed():
     from argus.browser import BrowserDriver
     d = BrowserDriver(headless=True)
