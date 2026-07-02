@@ -50,6 +50,35 @@ def test_report_steps_trim_and_collapse():
     assert "omitted" not in _format_steps(["click A", "verify B"])  # short lists untouched
 
 
+async def test_get_state_retries_on_execution_context_destroyed():
+    from argus.browser import BrowserDriver
+    d = BrowserDriver(headless=True)
+    calls = {"n": 0}
+
+    class _FakePage:
+        url = "http://x/after-nav"
+        async def title(self):
+            return "After"
+        async def wait_for_load_state(self, *a, **k):
+            pass
+
+    d._page = _FakePage()
+
+    async def _elts(page):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise Exception("Page.evaluate: Execution context was destroyed, most likely because of a navigation")
+        return []
+
+    async def _content(page):
+        return {}
+
+    d._extract_elements = _elts
+    d._extract_page_content = _content
+    st = await d.get_state()
+    assert calls["n"] == 2 and st.url == "http://x/after-nav"  # retried once past the nav race
+
+
 def test_count_delta_note_same_url_only():
     from types import SimpleNamespace as NS
     st = NS(url="/tasks", counts={"Total": 8, "Pending": 6})
