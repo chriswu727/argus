@@ -102,6 +102,27 @@ _SEVERITY_COLORS = {
 
 _SEVERITY_ORDER = [Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM, Severity.LOW, Severity.INFO]
 _SEV_IDX = {s: i for i, s in enumerate(_SEVERITY_ORDER)}
+_MAX_STEPS = 12
+
+
+def _format_steps(steps: List[str]) -> str:
+    """Render steps-to-reproduce as tight <li>s: collapse consecutive duplicates
+    ("click Load More" x2) and trim a long setup preamble to the actionable tail,
+    noting what was omitted. A real bug report is the minimal path to the symptom,
+    not the agent's entire wandering journey."""
+    collapsed: List[list] = []
+    for s in steps:
+        if collapsed and collapsed[-1][0] == s:
+            collapsed[-1][1] += 1
+        else:
+            collapsed.append([s, 1])
+    rendered = [s + (f" (x{n})" if n > 1 else "") for s, n in collapsed]
+    items = ""
+    if len(rendered) > _MAX_STEPS:
+        omitted = len(rendered) - _MAX_STEPS
+        rendered = rendered[-_MAX_STEPS:]
+        items += f"<li><em>… {omitted} earlier setup/navigation step(s) omitted</em></li>"
+    return items + "".join(f"<li>{_esc(s)}</li>" for s in rendered)
 
 
 def _trust_rank(bug: Bug) -> int:
@@ -167,7 +188,7 @@ class Reporter:
         cards = ""
         ordered = sorted(r.bugs, key=lambda b: (_trust_rank(b), _SEV_IDX.get(b.severity, 99)))
         for bug in ordered:
-            steps = "".join(f"<li>{_esc(s)}</li>" for s in bug.steps_to_reproduce)
+            steps = _format_steps(bug.steps_to_reproduce)
             console = ""
             if bug.console_logs:
                 logs = "\n".join(bug.console_logs)

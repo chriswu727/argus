@@ -42,6 +42,14 @@ def test_report_leads_with_verified_and_keeps_per_bug_severity():
     assert _trust_rank(v) == 0 and _trust_rank(a) == 3
 
 
+def test_report_steps_trim_and_collapse():
+    from argus.reporter import _format_steps
+    html = _format_steps([f"setup step {i}" for i in range(20)] + ["click Load More", "click Load More"])
+    assert "omitted" in html          # long setup preamble trimmed to the tail
+    assert "(x2)" in html             # consecutive duplicates collapsed
+    assert "omitted" not in _format_steps(["click A", "verify B"])  # short lists untouched
+
+
 def test_nearest_labels_suggests_by_token_overlap():
     from tests.conftest import make_element
     els = [make_element(tag="a", text="Tasks"), make_element(tag="a", text="Home"),
