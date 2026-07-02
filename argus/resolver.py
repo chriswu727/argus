@@ -312,6 +312,19 @@ def resolve_element(
     if not core and effective_kind and len(pool) == 1:
         return ResolveResult(found=pool[0], candidates=[(100, pool[0])], reason="unique")
 
+    # Kind-only with MULTIPLE matches ("checkbox", "first checkbox", "last
+    # radio"): scoring can't rank them (no label), but an ordinal makes it
+    # deterministic. Without an ordinal it's genuinely ambiguous — list them so
+    # the agent can say "first checkbox". (Before this, an empty core scored 0
+    # for every element and the whole thing fell through to no_match.)
+    if not core and effective_kind and len(pool) > 1:
+        band = sorted(pool, key=lambda el: el.index)
+        if ordinal == -1:
+            return ResolveResult(found=band[-1], candidates=[(100, band[-1])], reason="unique")
+        if ordinal is not None and 1 <= ordinal <= len(band):
+            return ResolveResult(found=band[ordinal - 1], candidates=[(100, band[ordinal - 1])], reason="unique")
+        return ResolveResult(found=None, candidates=[(90, el) for el in band[:5]], reason="ambiguous")
+
     scored: List[Tuple[int, InteractiveElement]] = []
     for el in pool:
         s = _score(el, core)
