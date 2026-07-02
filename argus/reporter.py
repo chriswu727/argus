@@ -80,6 +80,24 @@ def _repro_badge(receipt: Optional[dict]) -> str:
     return (f'<span class="rp" style="background:{color}">{_esc(label)}</span>')
 
 
+def _repro_detail(receipt: Optional[dict]) -> str:
+    """A body line stating WHAT was independently re-checked, so a reader sees
+    the precision moat at work — not just a verdict badge. Only for attempted
+    receipts that reached a true/false verdict on a named target."""
+    if not receipt or not receipt.get("attempted"):
+        return ""
+    target = receipt.get("target_text")
+    reproduced = receipt.get("reproduced")
+    if not target or reproduced is None:
+        return ""
+    expect = receipt.get("expect") or "present"
+    where = receipt.get("at_url") or ""
+    where_s = f" at {where}" if where else ""
+    verb = "Independently confirmed" if reproduced is True else "Could not independently confirm"
+    return (f'<div class="rd">{_esc(verb)}: expected <code>{_esc(str(target))}</code> '
+            f'{_esc(str(expect))}{_esc(where_s)} on a fresh load.</div>')
+
+
 def _embed_image(path: str) -> Optional[str]:
     """Read an image file and return a base64 data URI."""
     p = Path(path)
@@ -205,13 +223,14 @@ class Reporter:
                 if data_uri:
                     ss = f'<img src="{data_uri}" class="ss" alt="Bug screenshot">'
             repro = _repro_badge(bug.reproduction_receipt)
+            repro_detail = _repro_detail(bug.reproduction_receipt)
 
             cards += f"""<div class="bc">
 <div class="bh"><span class="sv" style="background:{_SEVERITY_COLORS[bug.severity]}">{bug.severity.value.upper()}</span>
 <span class="bt">{_BUGTYPE_LABELS.get(bug.type, bug.type.value)}</span>{repro}</div>
 <h3>{_esc(bug.title)}</h3>
 <p>{_esc(bug.description)}</p>
-<div class="bu">URL: {_esc(_redact(bug.url))}</div>
+<div class="bu">URL: {_esc(_redact(bug.url))}</div>{repro_detail}
 <div class="st"><strong>Steps to reproduce:</strong><ol>{steps}</ol></div>
 {console}{network}{ss}</div>"""
 
@@ -260,6 +279,8 @@ h3{{font-size:1.1rem;margin:.5rem 0;color:#f1f5f9}}
 .bt{{color:#64748b;font-size:.85rem}}
 .rp{{color:#fff;padding:2px 8px;border-radius:4px;font-size:.72rem;font-weight:600;margin-left:auto}}
 .bu{{color:#64748b;font-size:.85rem;margin:.5rem 0}}
+.rd{{color:#94a3b8;font-size:.85rem;margin:.4rem 0;padding:.4rem .6rem;background:#0f172a;border-left:2px solid #1a7f37;border-radius:3px}}
+.rd code{{color:#e2e8f0}}
 .st ol{{margin:.5rem 0 .5rem 1.5rem;color:#cbd5e1;word-break:break-word}}
 .st li{{margin:.2rem 0}}
 .cl pre{{background:#0f172a;padding:.75rem;border-radius:4px;overflow-x:auto;font-size:.85rem;color:#fbbf24;margin-top:.3rem;white-space:pre-wrap;word-break:break-all}}
