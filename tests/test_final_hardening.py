@@ -79,6 +79,21 @@ def test_bench_score_verified_offcatalog_is_not_fp():
     assert s["verified"] == 1        # the verified off-catalog find is a real bug, not an FP
 
 
+def test_network_detector_handles_failed_request_no_status():
+    from argus.detector import Detector
+    d = Detector()
+    # a resource that failed with net::ERR_* has no HTTP status — must not crash
+    # (was `err["status"] >= 500`) and must still produce a finding.
+    bugs = d.process_network_errors(
+        [{"method": "GET", "url": "https://x/app.js", "status": None,
+          "failure": "net::ERR_HTTP2_PROTOCOL_ERROR"}], "https://x/", [])
+    assert len(bugs) == 1 and "failed to load" in bugs[0].title.lower()
+    assert "ERR_HTTP2" in bugs[0].description
+    # a normal 500 alongside still works
+    b2 = d.process_network_errors([{"method": "POST", "url": "https://x/api", "status": 500}], "https://x/", [])
+    assert b2 and "500" in b2[0].title
+
+
 def test_new_events_line_peeks_since_counts():
     from types import SimpleNamespace as NS
     s = NS(browser=NS(console_errors=[{"text": "boom"}],

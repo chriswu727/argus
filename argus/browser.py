@@ -502,6 +502,7 @@ class BrowserDriver:
         page.on("pageerror", self._on_page_error)
         page.on("request", self._on_request)
         page.on("response", self._on_response)
+        page.on("requestfailed", self._on_request_failed)
         page.on("dialog", self._on_dialog)
         try:
             page._argus_attached = True
@@ -614,6 +615,32 @@ class BrowserDriver:
                 "page_url": self._page.url,
                 "timestamp": datetime.now().isoformat(),
             })
+
+    def _on_request_failed(self, request):
+        """A request that errored with NO HTTP response (net::ERR_*, blocked,
+        connection refused, DNS). Response-status detection never sees these, so
+        a genuinely broken resource stays invisible — capture it with the failure
+        reason. Skip net::ERR_ABORTED: that's usually a cancelled navigation or
+        prefetch, not a broken resource."""
+        try:
+            failure = ""
+            try:
+                failure = request.failure or ""
+            except Exception:
+                failure = ""
+            if "ERR_ABORTED" in failure:
+                return
+            self.network_errors.append({
+                "url": request.url,
+                "status": None,
+                "method": request.method,
+                "page_url": self._page.url if self._page else "",
+                "failure": failure or "request failed (no response)",
+                "resource_type": getattr(request, "resource_type", None),
+                "timestamp": datetime.now().isoformat(),
+            })
+        except Exception:
+            pass
 
     # -- network mocking --
 
