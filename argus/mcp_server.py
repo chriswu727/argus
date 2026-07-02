@@ -1149,6 +1149,30 @@ def _toast_line(toasts) -> str:
             "verify the data actually persisted on a fresh load before trusting it.)")
 
 
+def _new_events_line(s, before_console: int, before_network: int) -> str:
+    """One-line surface of console/network errors that fired since the given
+    counts — a PEEK, not a drain (get_errors still records them as findings).
+    A backend 500 or a JS error triggered by an action never shows on the page,
+    so bring it to the agent's attention the moment its action caused it, instead
+    of relying on a get_errors call it may never make."""
+    b = getattr(s, "browser", None)
+    if b is None:
+        return ""
+    ne = b.network_errors[before_network:]
+    ce = b.console_errors[before_console:]
+    if not ne and not ce:
+        return ""
+    bits = []
+    if ne:
+        r = ne[0]
+        bits.append(f"{len(ne)} network error(s) — e.g. HTTP {r.get('status')} "
+                    f"{r.get('method', '')} {_redact(r.get('url') or '')[:60]}")
+    if ce:
+        bits.append(f"{len(ce)} console error(s) — e.g. {(ce[0].get('text') or '')[:70]}")
+    return ("\nThis action fired (invisible on the page): " + "; ".join(bits) +
+            ". Call get_errors to capture it as a finding.")
+
+
 def _count_delta_note(prev_counts, prev_url, state) -> str:
     """Surface a change in on-page counts since the last observe of the SAME url.
     Off-by-one / miscount bugs (add 1 item, the total jumps 2; delete 1, count
@@ -2099,6 +2123,9 @@ async def click_what(description: str) -> str:
     step = f'click_what({description!r}) -> "{label[:60]}"'
     s.steps.append(step)
 
+    # Peek error counts so we can surface any console/network error THIS click
+    # triggers (see _new_events_line) without draining them from get_errors.
+    _bc, _bn = len(s.browser.console_errors), len(s.browser.network_errors)
     # Route through browser.click so a duplicate-label target hits the RESOLVED
     # element (nth-aware), not the first DOM match.
     ok = await s.browser.click(s._last_elements.index(el), s._last_elements)
@@ -2116,7 +2143,8 @@ async def click_what(description: str) -> str:
     return (
         f'Clicked "{label[:60]}" (via description {description!r}).\n'
         f"Now on: {new_state.url} — {len(new_state.elements)} interactive elements visible."
-        f"{_toast_line(new_state.toast_messages)}\n"
+        f"{_toast_line(new_state.toast_messages)}"
+        f"{_new_events_line(s, _bc, _bn)}\n"
         f"Call observe() to see what changed."
     )
 

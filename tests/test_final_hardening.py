@@ -79,6 +79,15 @@ def test_bench_score_verified_offcatalog_is_not_fp():
     assert s["verified"] == 1        # the verified off-catalog find is a real bug, not an FP
 
 
+def test_new_events_line_peeks_since_counts():
+    from types import SimpleNamespace as NS
+    s = NS(browser=NS(console_errors=[{"text": "boom"}],
+                      network_errors=[{"status": 500, "method": "POST", "url": "/api/x"}]))
+    line = m._new_events_line(s, 0, 0)
+    assert "500" in line and "get_errors" in line
+    assert m._new_events_line(s, 1, 1) == ""  # nothing new since the given counts (peek, not drain)
+
+
 def test_toast_line_surfaces_claim_and_stays_quiet_when_empty():
     line = m._toast_line(["Task created!", "Welcome"])
     assert "Task created!" in line and "CLAIM" in line and "persisted" in line
