@@ -50,6 +50,15 @@ def test_report_steps_trim_and_collapse():
     assert "omitted" not in _format_steps(["click A", "verify B"])  # short lists untouched
 
 
+def test_count_delta_note_same_url_only():
+    from types import SimpleNamespace as NS
+    st = NS(url="/tasks", counts={"Total": 8, "Pending": 6})
+    note = m._count_delta_note({"Total": 7, "Pending": 6}, "/tasks", st)
+    assert "Total" in note and "7 -> 8" in note and "Pending" not in note  # only changed count
+    assert m._count_delta_note({"Total": 7}, "/other-page", st) == ""       # navigated -> no note
+    assert m._count_delta_note(None, "/tasks", st) == ""                    # no prior -> no note
+
+
 def test_repro_detail_surfaces_what_was_checked():
     from argus.reporter import _repro_detail
     ok = _repro_detail({"attempted": True, "reproduced": True, "target_text": "Buy groceries",

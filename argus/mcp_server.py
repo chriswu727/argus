@@ -1136,6 +1136,22 @@ def _near_duplicate(title: str, description: str, bugs) -> Optional["Bug"]:
     return None
 
 
+def _count_delta_note(prev_counts, prev_url, state) -> str:
+    """Surface a change in on-page counts since the last observe of the SAME url.
+    Off-by-one / miscount bugs (add 1 item, the total jumps 2; delete 1, count
+    unchanged) hide here, and the agent rarely uses test_action's diff — so bring
+    the delta to plain observe(). Same-url only, so navigation isn't noise."""
+    if prev_counts is None or prev_url != state.url:
+        return ""
+    deltas = [f"{label!r}: {prev_counts[label]} -> {val}"
+              for label, val in state.counts.items()
+              if label in prev_counts and prev_counts[label] != val]
+    if not deltas:
+        return ""
+    return ("\n\nCount change since your last look here (does it match what you just "
+            "did? off-by-one and miscounts hide here):\n  " + "\n  ".join(deltas))
+
+
 def _nearest_labels(description: str, elements, k: int = 4) -> List[str]:
     """The closest on-page elements to a failed description, by token overlap.
     Turns a bare 'no element matches' into a 'did you mean' shortlist so the
@@ -1229,10 +1245,14 @@ async def observe() -> str:
         return ("observe: no open page — all tabs were closed. Call "
                 "navigate(url) or start_session(url) to recover.")
     state = await s.browser.get_state()
+    delta_note = _count_delta_note(
+        getattr(s, "_last_observed_counts", None), getattr(s, "_last_observed_url", None), state)
+    s._last_observed_counts = dict(state.counts)
+    s._last_observed_url = state.url
     s._last_elements = state.elements
     if state.url not in s.pages_visited:
         s.pages_visited.append(state.url)
-    return _format_observation(state)
+    return _format_observation(state) + delta_note
 
 
 def _format_screen_observation(obs) -> str:
