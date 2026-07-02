@@ -142,11 +142,17 @@ async def run_session(model, max_steps, cost_cap, cost_so_far):
 
 def score(bugs):
     hay = [((b.title or "") + " " + (b.description or "")).lower() for b in bugs]
+    def _matched(h):
+        return any(any(k in h for k in kws) for kws in CATALOG.values())
     caught = {bid for bid, kws in CATALOG.items() if any(any(k in h for k in kws) for h in hay)}
-    unmatched = sum(1 for h in hay if not any(any(k in h for k in kws) for kws in CATALOG.values()))
     verified = sum(1 for b in bugs if (b.reproduction_receipt or {}).get("reproduced") is True)
+    unmatched = [b for b, h in zip(bugs, hay) if not _matched(h)]
+    # A VERIFIED finding passed an independent clean-load re-check: it's a real
+    # bug (possibly just off our fuzzy catalog), NOT a false positive. Only an
+    # UNVERIFIED unmatched finding is a genuine FP candidate.
+    fp_candidates = sum(1 for b in unmatched if (b.reproduction_receipt or {}).get("reproduced") is not True)
     return {"recorded": len(bugs), "recall": len(caught), "caught_ids": sorted(caught),
-            "unmatched": unmatched, "verified": verified}
+            "unmatched": len(unmatched), "fp_candidates": fp_candidates, "verified": verified}
 
 
 async def main():
@@ -174,7 +180,8 @@ async def main():
         s = score(list(getattr(mcp._session, "bugs", [])))
         results.append(s)
         print(f"  -> recall {s['recall']}/22, recorded {s['recorded']} "
-              f"(verified {s['verified']}, unmatched {s['unmatched']})", flush=True)
+              f"(verified {s['verified']}, off-catalog {s['unmatched']}, "
+              f"FP-candidates {s['fp_candidates']})", flush=True)
         try:
             await (mcp.end_session.fn if hasattr(mcp.end_session, "fn") else mcp.end_session)()
         except Exception:
@@ -187,12 +194,15 @@ async def main():
         print(f"\n===== REAL-LLM BENCH — {model} =====", flush=True)
         for i, r in enumerate(results, 1):
             print(f"  trial {i}: recall {r['recall']}/22  recorded {r['recorded']}  "
-                  f"verified {r['verified']}  unmatched {r['unmatched']}", flush=True)
-        print(f"  mean recall {mean:.1f}/22  variance {var:.2f}  "
+                  f"verified {r['verified']}  off-catalog {r['unmatched']}  "
+                  f"FP-candidates {r['fp_candidates']}", flush=True)
+        fp_total = sum(r["fp_candidates"] for r in results)
+        print(f"  mean recall {mean:.1f}/22  variance {var:.2f}  FP-candidates {fp_total}  "
               f"total cost ${cost_total:.4f} (~RMB {cost_total * 7.2:.2f})", flush=True)
-        print("  recall = fuzzy keyword estimate vs the 22 seeded signatures; verified = findings "
-              "that carried a passing reproduction receipt; unmatched = recorded bugs matching no "
-              "seeded signature (potential FP or an off-catalog find).", flush=True)
+        print("  recall = fuzzy keyword estimate vs the 22 seeded signatures; verified = findings that "
+              "carried a passing reproduction receipt; off-catalog = recorded bugs matching no seeded "
+              "signature; FP-candidates = off-catalog AND unverified (a verified off-catalog finding is "
+              "a real bug, not a false positive).", flush=True)
     return 0
 
 
