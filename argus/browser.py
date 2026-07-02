@@ -943,8 +943,23 @@ class BrowserDriver:
                 "No open page — all tabs were closed. Call navigate(url) or "
                 "start_session(url) to recover."
             )
-        elements = await self._extract_elements(page)
-        content = await self._extract_page_content(page)
+        # A click can trigger a navigation that's still in flight; extracting the
+        # DOM mid-navigation raises "Execution context was destroyed". Wait for the
+        # new document and retry once, so a nav-causing click reads the NEW page
+        # instead of surfacing a raw Playwright error to the agent.
+        for attempt in range(2):
+            try:
+                elements = await self._extract_elements(page)
+                content = await self._extract_page_content(page)
+                break
+            except Exception as e:
+                if attempt == 0 and "execution context was destroyed" in str(e).lower():
+                    try:
+                        await page.wait_for_load_state("domcontentloaded", timeout=8_000)
+                    except Exception:
+                        pass
+                    continue
+                raise
         return PageState(
             url=page.url,
             title=await page.title(),
