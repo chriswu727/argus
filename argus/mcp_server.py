@@ -1116,6 +1116,26 @@ def _format_observation(state: PageState) -> str:
     return "\n".join(lines)
 
 
+def _near_duplicate(title: str, description: str, bugs) -> Optional["Bug"]:
+    """Return an already-recorded bug this one near-verbatim repeats, else None.
+    Conservative on purpose: an exact (normalized) title match, or ≥0.8 token
+    Jaccard over title+description. High threshold so distinct findings that
+    merely share vocabulary are never merged away (that would cost recall)."""
+    def toks(t: str, d: str) -> set:
+        return set(re.findall(r"[a-z0-9]+", f"{t} {d}".lower()))
+    new_title = " ".join((title or "").lower().split())
+    new = toks(title or "", description or "")
+    if not new:
+        return None
+    for b in bugs:
+        if " ".join((b.title or "").lower().split()) == new_title:
+            return b
+        old = toks(b.title or "", b.description or "")
+        if old and len(new & old) / len(new | old) >= 0.8:
+            return b
+    return None
+
+
 def _nearest_labels(description: str, elements, k: int = 4) -> List[str]:
     """The closest on-page elements to a failed description, by token overlap.
     Turns a bare 'no element matches' into a 'did you mean' shortlist so the
@@ -3458,6 +3478,16 @@ async def record_bug(
             f"Use one of: {', '.join(_BUG_TYPE_BY_NAME)}."
         )
     bug_type = _BUG_TYPE_BY_NAME[type_key]
+
+    # Keep the report tight — a repeat of an already-recorded finding (agents
+    # re-log the same bug with slightly different wording) is dropped. Only
+    # near-VERBATIM repeats are caught (high token overlap / same title), so two
+    # genuinely distinct findings are never merged.
+    dup = _near_duplicate(title, description, s.bugs)
+    if dup is not None:
+        return (f"Not recorded — near-duplicate of an already-logged finding: "
+                f"{dup.title!r}. A tight report beats a repetitive one; sharpen the "
+                f"angle or move on to a feature you haven't tested yet.")
 
     screenshot_directive = ev.get("screenshot", "auto")
     screenshot_path: Optional[str] = None
