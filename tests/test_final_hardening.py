@@ -50,6 +50,18 @@ def test_report_steps_trim_and_collapse():
     assert "omitted" not in _format_steps(["click A", "verify B"])  # short lists untouched
 
 
+def test_near_duplicate_catches_repeats_not_distinct():
+    b = _bug()
+    b.title, b.description = "Task creation toast lies — task not persisted", "toast says saved, gone on refresh"
+    # exact (normalized) title repeat -> caught even with different body
+    assert m._near_duplicate("Task creation toast lies — task not persisted", "reworded body", [b]) is b
+    # different title but ~identical body -> Jaccard catches it
+    b2 = _bug(); b2.title, b2.description = "X", "the task list count is off by one after adding an item"
+    assert m._near_duplicate("Y", "the task list count is off by one after adding an item", [b2]) is b2
+    # genuinely distinct finding sharing a word or two -> NOT merged
+    assert m._near_duplicate("Navbar shows Login after auth", "header still shows login button", [b]) is None
+
+
 def test_nearest_labels_suggests_by_token_overlap():
     from tests.conftest import make_element
     els = [make_element(tag="a", text="Tasks"), make_element(tag="a", text="Home"),
