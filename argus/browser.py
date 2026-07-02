@@ -115,7 +115,22 @@ _EXTRACT_ELEMENTS_JS = """
             value: el.value || null,
             disabled: el.disabled || false,
             role: el.getAttribute('role') || null,
-            aria_label: el.getAttribute('aria-label') || null,
+            // Fall back to the field's VISIBLE label (a person targets a form
+            // field by the label they see next to it). Prefer the accessible
+            // name (label[for], wrapping <label>, aria-labelledby); then the
+            // common unassociated preceding <label> sibling. The missing `for`
+            // is still flagged separately as an a11y issue.
+            aria_label: el.getAttribute('aria-label') || (function(){
+                var t = el.tagName.toLowerCase();
+                if (t !== 'input' && t !== 'select' && t !== 'textarea') return null;
+                var pick = function(n){ var s = n && n.textContent ? n.textContent.trim() : ''; return s ? s.slice(0,100) : null; };
+                if (el.id) { try { var lf = document.querySelector('label[for="' + (window.CSS && CSS.escape ? CSS.escape(el.id) : el.id) + '"]'); if (pick(lf)) return pick(lf); } catch (e) {} }
+                var w = el.closest('label'); if (pick(w)) return pick(w);
+                var lb = el.getAttribute('aria-labelledby'); if (lb) { var t2 = document.getElementById(lb); if (pick(t2)) return pick(t2); }
+                var p = el.previousElementSibling;
+                while (p) { if (p.tagName === 'LABEL' && pick(p)) return pick(p); if (p.tagName === 'INPUT' || p.tagName === 'SELECT' || p.tagName === 'TEXTAREA') break; p = p.previousElementSibling; }
+                return null;
+            })() || null,
             name: el.name || null,
             id: el.id || null,
             parent_context: (el.closest('li, tr, .card, .list-item, [class*="item"], [class*="row"]') || {}).textContent?.trim()?.slice(0, 200) || null,
