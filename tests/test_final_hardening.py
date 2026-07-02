@@ -50,6 +50,17 @@ def test_report_steps_trim_and_collapse():
     assert "omitted" not in _format_steps(["click A", "verify B"])  # short lists untouched
 
 
+def test_repro_detail_surfaces_what_was_checked():
+    from argus.reporter import _repro_detail
+    ok = _repro_detail({"attempted": True, "reproduced": True, "target_text": "Buy groceries",
+                        "expect": "present", "at_url": "/tasks"})
+    assert "Independently confirmed" in ok and "Buy groceries" in ok and "/tasks" in ok
+    # observation-based / auto-captured / inconclusive carry no detail line
+    assert _repro_detail(None) == ""
+    assert _repro_detail({"attempted": False, "auto_captured": True}) == ""
+    assert _repro_detail({"attempted": True, "reproduced": None, "target_text": "x"}) == ""
+
+
 def test_near_duplicate_catches_repeats_not_distinct():
     b = _bug()
     b.title, b.description = "Task creation toast lies — task not persisted", "toast says saved, gone on refresh"
