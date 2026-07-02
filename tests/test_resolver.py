@@ -179,7 +179,7 @@ def test_double_kind_word_does_not_pollute_core():
     # "input field" is two kind words — "field" must not leak into the core and
     # break the strict type_into path (which cannot fall back).
     assert resolve_element("card input field", els, kind_filter="input", strict_kind=True).found is els[1]
-    assert resolve_element("card text input", els).found is els[1]
+    assert resolve_element("the card field input", els).found is els[1]  # two kind words + a stopword
 
 
 def test_snake_case_name_matches_natural_language():
