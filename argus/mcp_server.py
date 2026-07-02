@@ -1136,6 +1136,19 @@ def _near_duplicate(title: str, description: str, bugs) -> Optional["Bug"]:
     return None
 
 
+def _toast_line(toasts) -> str:
+    """Surface toasts the moment a click produces them. Toasts auto-dismiss in
+    seconds, so an agent that calls observe() a beat later misses them — yet the
+    lying "Saved!"/"Created!" toast is the single most common deception bug. Show
+    it now, framed as a claim to verify, not proof."""
+    if not toasts:
+        return ""
+    shown = " | ".join(f'"{t[:80]}"' for t in toasts[:3])
+    return (f"\nToast shown now: {shown}\n"
+            "(A toast is a CLAIM, not proof — if it says saved/created/deleted/updated, "
+            "verify the data actually persisted on a fresh load before trusting it.)")
+
+
 def _count_delta_note(prev_counts, prev_url, state) -> str:
     """Surface a change in on-page counts since the last observe of the SAME url.
     Off-by-one / miscount bugs (add 1 item, the total jumps 2; delete 1, count
@@ -2102,7 +2115,8 @@ async def click_what(description: str) -> str:
         s.pages_visited.append(new_state.url)
     return (
         f'Clicked "{label[:60]}" (via description {description!r}).\n'
-        f"Now on: {new_state.url} — {len(new_state.elements)} interactive elements visible.\n"
+        f"Now on: {new_state.url} — {len(new_state.elements)} interactive elements visible."
+        f"{_toast_line(new_state.toast_messages)}\n"
         f"Call observe() to see what changed."
     )
 
