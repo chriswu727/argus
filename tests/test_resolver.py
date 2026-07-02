@@ -173,6 +173,13 @@ def test_next_to_is_row_scoping_like_near():
     assert resolve_element("Next button", nxt).found is nxt[0]
 
 
+def test_bar_is_region_scaffolding():
+    els = [make_element(0, tag="a", text="Cart (0)"), make_element(1, tag="a", text="Home"),
+           make_element(2, tag="input", type="search", placeholder="Search products")]
+    assert resolve_element("Cart (0) link in navigation bar", els).found is els[0]
+    assert resolve_element("search bar", els).found is els[2]  # "bar" stripped -> the search input
+
+
 def test_label_word_is_scaffolding():
     els = [make_element(0, tag="input", type="email", name="email", placeholder="you@x"),
            make_element(1, tag="input", type="password", name="password")]
