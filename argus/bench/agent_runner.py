@@ -170,10 +170,14 @@ def score(bugs):
     caught = {bid for bid, kws in CATALOG.items() if any(any(k in h for k in kws) for h in hay)}
     verified = sum(1 for b in bugs if (b.reproduction_receipt or {}).get("reproduced") is True)
     unmatched = [b for b, h in zip(bugs, hay) if not _matched(h)]
-    # A VERIFIED finding passed an independent clean-load re-check: it's a real
-    # bug (possibly just off our fuzzy catalog), NOT a false positive. Only an
-    # UNVERIFIED unmatched finding is a genuine FP candidate.
-    fp_candidates = sum(1 for b in unmatched if (b.reproduction_receipt or {}).get("reproduced") is not True)
+    # An FP candidate is a finding we can't back up: off-catalog AND unverified.
+    # Exclude two cases that ARE backed up: a VERIFIED finding (passed a clean-
+    # load re-check) and an AUTO-CAPTURED event (a console/network error Argus
+    # itself observed) — both are real, not the agent's unverified say-so.
+    def _fp(b):
+        r = b.reproduction_receipt or {}
+        return r.get("reproduced") is not True and not r.get("auto_captured")
+    fp_candidates = sum(1 for b in unmatched if _fp(b))
     return {"recorded": len(bugs), "recall": len(caught), "caught_ids": sorted(caught),
             "unmatched": len(unmatched), "fp_candidates": fp_candidates, "verified": verified}
 
@@ -238,8 +242,9 @@ async def main():
               f"total cost ${cost_total:.4f} (~RMB {cost_total * 7.2:.2f})", flush=True)
         print(f"  recall = fuzzy keyword estimate vs the {_N} seeded signatures; verified = findings "
               "that carried a passing reproduction receipt; off-catalog = recorded bugs matching no "
-              "seeded signature; FP-candidates = off-catalog AND unverified (a verified off-catalog "
-              "finding is a real bug, not a false positive).", flush=True)
+              "seeded signature; FP-candidates = off-catalog AND unverified AND not auto-captured "
+              "(a verified finding or a captured console/network event is real, not a false positive).",
+              flush=True)
     return 0
 
 
