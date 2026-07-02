@@ -173,6 +173,14 @@ def test_next_to_is_row_scoping_like_near():
     assert resolve_element("Next button", nxt).found is nxt[0]
 
 
+def test_parenthetical_context_is_stripped():
+    def mk(i, name, value):
+        e = make_element(i, tag="input", type="text", name=name); e.value = value; return e
+    els = [mk(0, "title", "Buy groceries"), mk(1, "priority", "high")]
+    assert resolve_element("Title field (Buy groceries)", els).found is els[0]
+    assert resolve_element("Priority field (high)", els).found is els[1]
+
+
 def test_double_kind_word_does_not_pollute_core():
     els = [make_element(0, tag="input", type="text", name="cvv"),
            make_element(1, tag="input", type="text", name="card")]
