@@ -186,6 +186,7 @@ def _score(el: InteractiveElement, core: str) -> int:
     id_ = (el.id or "").lower().strip()
     parent = (el.parent_context or "").lower().strip()
     href = (el.href or "").lower().strip()
+    value = (el.value or "").lower().strip()
 
     # Exact equality first — these win decisively.
     if text == core:
@@ -194,6 +195,8 @@ def _score(el: InteractiveElement, core: str) -> int:
         return 100
     if placeholder == core:
         return 95
+    if value == core:  # a pre-filled field's current value is what the user sees in it
+        return 92
     if name == core:
         return 90
     if id_ == core:
@@ -206,6 +209,8 @@ def _score(el: InteractiveElement, core: str) -> int:
         score = max(score, 65 + min(15, len(core)))
     if _has_token(core, placeholder):
         score = max(score, 60 + min(15, len(core)))
+    if _has_token(core, value):  # match a pre-filled input by its current value ("input with Alex")
+        score = max(score, 58 + min(15, len(core)))
     # id/name are internal identifiers, not what a user sees. They earn a
     # token presence so a label-less form field is still reachable, but at
     # a weight that can never outrank a real visible/aria/placeholder hit.
@@ -233,7 +238,7 @@ def _score(el: InteractiveElement, core: str) -> int:
     #    (Round 2 anti-leak: an id/parent substring must not pose as real).
     core_words = [w for w in core.split() if len(w) >= 2]
     if core_words:
-        visible = " ".join([text, aria, placeholder])
+        visible = " ".join([text, aria, placeholder, value])
         extended = " ".join([visible, name, id_, parent, href])
         if all(_has_token(w, visible) for w in core_words):
             score = max(score, 50)
