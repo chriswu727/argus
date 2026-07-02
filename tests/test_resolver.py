@@ -173,6 +173,14 @@ def test_next_to_is_row_scoping_like_near():
     assert resolve_element("Next button", nxt).found is nxt[0]
 
 
+def test_input_matched_by_current_value():
+    # a pre-filled field (e.g. display name showing "Alex") is targetable by value
+    els = [make_element(0, tag="input", type="text", value="Alex"),
+           make_element(1, tag="button", text="Save")]
+    assert resolve_element("input with Alex", els).found is els[0]  # partial/core via value
+    assert resolve_element("Alex", els).found is els[0]             # exact value (fast path)
+
+
 def test_wrong_kind_hint_falls_back_when_pool_empty():
     # agent calls a link a "button" while real buttons fill the pool -> still found
     els = [make_element(0, tag="a", text="+ New Task"), make_element(1, tag="button", text="Save"),
