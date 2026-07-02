@@ -5,14 +5,16 @@ tool ceiling. The scripted bench (`python -m argus.bench`) proves a bug is
 much a given model *actually* finds when it drives them itself.
 
 Usage:
-    # BuggyTasks fixture must be up:  cd test-site && python app.py   (:5555)
+    # BuggyTasks fixture up: cd test-site && python app.py            (:5555)
+    # or DarkShop:           cd human-eye-fixture && python app.py     (:5556)
     export DEEPSEEK_API_KEY=...            # or any LiteLLM-supported provider key
-    python -m argus.bench.agent_runner     # env: BENCH_MODEL, BENCH_TRIALS,
-                                           #      BENCH_MAX_STEPS, BENCH_COST_CAP_USD
+    python -m argus.bench.agent_runner
+    # env: BENCH_MODEL, BENCH_TRIALS, BENCH_MAX_STEPS, BENCH_COST_CAP_USD,
+    #      BENCH_BASE_URL (any target), BENCH_CATALOG (buggytasks|darkshop)
 
 Honest caveats printed with the result: recall is a fuzzy keyword estimate
-against the 22 seeded signatures; a hard USD cost cap bounds the run and ALL
-trials are reported (no cherry-picking).
+against the selected catalog's seeded signatures; a hard USD cost cap bounds
+the run and ALL trials are reported (no cherry-picking).
 """
 from __future__ import annotations
 
@@ -234,10 +236,10 @@ async def main():
         fp_total = sum(r["fp_candidates"] for r in results)
         print(f"  mean recall {mean:.1f}/{_N}  variance {var:.2f}  FP-candidates {fp_total}  "
               f"total cost ${cost_total:.4f} (~RMB {cost_total * 7.2:.2f})", flush=True)
-        print("  recall = fuzzy keyword estimate vs the 22 seeded signatures; verified = findings that "
-              "carried a passing reproduction receipt; off-catalog = recorded bugs matching no seeded "
-              "signature; FP-candidates = off-catalog AND unverified (a verified off-catalog finding is "
-              "a real bug, not a false positive).", flush=True)
+        print(f"  recall = fuzzy keyword estimate vs the {_N} seeded signatures; verified = findings "
+              "that carried a passing reproduction receipt; off-catalog = recorded bugs matching no "
+              "seeded signature; FP-candidates = off-catalog AND unverified (a verified off-catalog "
+              "finding is a real bug, not a false positive).", flush=True)
     return 0
 
 
