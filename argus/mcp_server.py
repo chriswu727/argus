@@ -1165,7 +1165,8 @@ def _new_events_line(s, before_console: int, before_network: int) -> str:
     bits = []
     if ne:
         r = ne[0]
-        bits.append(f"{len(ne)} network error(s) — e.g. HTTP {r.get('status')} "
+        what = f"HTTP {r['status']}" if r.get("status") is not None else f"FAILED ({r.get('failure', 'no response')})"
+        bits.append(f"{len(ne)} network error(s) — e.g. {what} "
                     f"{r.get('method', '')} {_redact(r.get('url') or '')[:60]}")
     if ce:
         bits.append(f"{len(ce)} console error(s) — e.g. {(ce[0].get('text') or '')[:70]}")
@@ -3412,7 +3413,11 @@ async def get_errors() -> str:
     for err in console_errs:
         lines.append(f"[CONSOLE {err['type'].upper()}] {err['text']}")
     for err in network_errs:
-        lines.append(f"[HTTP {err['status']}] {err['method']} {err['url']}")
+        if err.get("status") is None:
+            lines.append(f"[REQUEST FAILED: {err.get('failure', 'no response')}] "
+                         f"{err['method']} {_redact(err['url'])}")
+        else:
+            lines.append(f"[HTTP {err['status']}] {err['method']} {_redact(err['url'])}")
     if new_bugs:
         lines.append(f"\nCaptured {len(new_bugs)} new event-bug(s).")
     lines.append(f"Total bugs in session: {len(s.bugs)}")

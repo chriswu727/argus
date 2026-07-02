@@ -115,16 +115,35 @@ class Detector:
         """Convert HTTP 4xx / 5xx responses into deduplicated Bug records."""
         bugs: List[Bug] = []
         for err in errors:
-            key = f"network:{err['method']}:{err['url']}:{err['status']}"
+            status = err.get("status")
+            if status is None:
+                # Request failed with no HTTP response (net::ERR_*). Status-based
+                # filtering can't see these — surface with the failure reason.
+                failure = err.get("failure") or "request failed (no response)"
+                key = f"netfail:{err['method']}:{err['url']}:{failure}"
+                if key in self._seen:
+                    continue
+                self._seen.add(key)
+                bugs.append(Bug(
+                    type=BugType.NETWORK_ERROR,
+                    severity=Severity.MEDIUM,
+                    title=f"Resource failed to load — {err['method']} {err['url'][:60]}",
+                    description=f"{err['method']} {err['url']} failed: {failure} (no HTTP response reached)",
+                    url=url,
+                    steps_to_reproduce=list(steps),
+                    network_logs=[err],
+                ))
+                continue
+            key = f"network:{err['method']}:{err['url']}:{status}"
             if key in self._seen:
                 continue
             self._seen.add(key)
-            severity = Severity.HIGH if err["status"] >= 500 else Severity.MEDIUM
+            severity = Severity.HIGH if status >= 500 else Severity.MEDIUM
             bugs.append(Bug(
                 type=BugType.NETWORK_ERROR,
                 severity=severity,
-                title=f"HTTP {err['status']} — {err['method']} {err['url'][:60]}",
-                description=f"{err['method']} {err['url']} returned {err['status']}",
+                title=f"HTTP {status} — {err['method']} {err['url'][:60]}",
+                description=f"{err['method']} {err['url']} returned {status}",
                 url=url,
                 steps_to_reproduce=list(steps),
                 network_logs=[err],
