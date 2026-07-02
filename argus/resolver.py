@@ -59,7 +59,7 @@ _KIND_HINTS = {
 # not content. A literal region label (a "Navigation" menu item) is still
 # matched first by the exact-label fast path, so dropping these is safe.
 _STOPWORDS = {
-    "the", "a", "an", "this", "that", "in", "on", "of",
+    "the", "a", "an", "this", "that", "in", "on", "of", "to",
     "row", "rows", "item", "entry", "near", "for", "with",
     "named", "labeled", "labelled", "containing",
     "navigation", "nav", "navbar", "header", "footer", "sidebar", "toolbar",
@@ -185,6 +185,7 @@ def _score(el: InteractiveElement, core: str) -> int:
     name = (el.name or "").lower().strip()
     id_ = (el.id or "").lower().strip()
     parent = (el.parent_context or "").lower().strip()
+    href = (el.href or "").lower().strip()
 
     # Exact equality first — these win decisively.
     if text == core:
@@ -212,6 +213,12 @@ def _score(el: InteractiveElement, core: str) -> int:
         score = max(score, 22)
     if _has_token(core, id_):
         score = max(score, 20)
+    # Links carry meaning in their href — testers target them by path
+    # ("link to /product/1") or by a word that only lives in the URL
+    # ("Wireless Headphones product link" — text is the name, "product" is in
+    # the href). Low weight: a URL hint must never outrank a visible-text match.
+    if _has_token(core, href):
+        score = max(score, 24)
 
     # Word-set match: all core words present, tiered by WHERE they land.
     #  - all on the element's own face (text/aria/placeholder) -> strong.
@@ -227,7 +234,7 @@ def _score(el: InteractiveElement, core: str) -> int:
     core_words = [w for w in core.split() if len(w) >= 2]
     if core_words:
         visible = " ".join([text, aria, placeholder])
-        extended = " ".join([visible, name, id_, parent])
+        extended = " ".join([visible, name, id_, parent, href])
         if all(_has_token(w, visible) for w in core_words):
             score = max(score, 50)
         elif all(_has_token(w, extended) for w in core_words):

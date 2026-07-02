@@ -173,6 +173,17 @@ def test_next_to_is_row_scoping_like_near():
     assert resolve_element("Next button", nxt).found is nxt[0]
 
 
+def test_link_resolves_by_href_and_to_is_scaffolding():
+    def mk(i, text, href):
+        e = make_element(i, tag="a", text=text); e.href = href; return e
+    els = [mk(0, "Wireless Headphones", "/product/1"), mk(1, "USB Cable", "/product/2")]
+    assert resolve_element("Wireless Headphones product link", els).found is els[0]  # 'product' lives in href
+    assert resolve_element("link to /product/1", els).found is els[0]                # target a link by its path
+    # "to" as scaffolding must not break a literal "Add to Cart" label (fast path)
+    cart = [make_element(0, tag="button", text="Add to Cart"), make_element(1, tag="button", text="Remove")]
+    assert resolve_element("Add to Cart", cart).found is cart[0]
+
+
 def test_kind_only_with_ordinal_picks_nth():
     els = [make_element(i, tag="input", type="checkbox") for i in range(5)]
     assert resolve_element("first checkbox", els).found is els[0]
