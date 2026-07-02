@@ -127,10 +127,10 @@ def _strip_kind(desc: str) -> Tuple[List[str], Optional[str]]:
     # "next to X" is row-scoping scaffolding, same as "near X" — strip the
     # PHRASE only (a standalone "Next" button must still resolve).
     desc = re.sub(r"\bnext\s+to\b", " ", desc.lower())
-    # Strip surrounding quotes agents habitually add around a label
-    # (`link "Tasks"`, `input "you@example.com"`) — the quotes are punctuation,
+    # Strip surrounding quotes AND parens/brackets agents habitually wrap a label
+    # or context in (`link "Tasks"`, `Title field (Buy groceries)`) — punctuation,
     # not part of the element's text, and left on they match nothing.
-    raw = [w.strip('"“”‘’\'`') for w in desc.strip().split()]
+    raw = [w.strip('"“”‘’\'`()[]{}') for w in desc.strip().split()]
     raw = [w for w in raw if w]
     # A kind word can sit anywhere ("Submit button", "the Delete button for X"),
     # not just at the end. Consume EVERY kind word (first one is the signal) so a
