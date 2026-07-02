@@ -26,6 +26,20 @@ def test_report_redacts_url_secrets():
     assert "alice" in html  # non-secret query param survives
 
 
+def test_report_auto_captured_hides_misleading_journey_steps():
+    auto = _bug(receipt={"attempted": False, "auto_captured": True})
+    auto.title = "Console exception: appConfig is not defined"
+    auto.steps_to_reproduce = ["click_what('Login button')", "type_into('email')", "navigate('/')"]
+    manual = _bug(receipt={"attempted": True, "reproduced": True})
+    manual.title, manual.steps_to_reproduce = "Real journey bug", ["click Delete", "verify still-there"]
+    html = Reporter()._build_html(ExplorationResult(
+        url="u", bugs=[auto, manual], pages_visited=[], actions_taken=0,
+        duration_seconds=0.0, focus_areas=[]))
+    assert "How it surfaced" in html                 # auto-captured: honest surfacing note
+    assert "Login button" not in html                # its misleading journey step is NOT shown
+    assert "Steps to reproduce" in html and "verify still-there" in html  # manual keeps real steps
+
+
 def test_report_leads_with_verified_and_keeps_per_bug_severity():
     from argus.reporter import Reporter, _trust_rank
     v = _bug(receipt={"attempted": True, "reproduced": True})
