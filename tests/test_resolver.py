@@ -173,6 +173,17 @@ def test_next_to_is_row_scoping_like_near():
     assert resolve_element("Next button", nxt).found is nxt[0]
 
 
+def test_kind_only_with_ordinal_picks_nth():
+    els = [make_element(i, tag="input", type="checkbox") for i in range(5)]
+    assert resolve_element("first checkbox", els).found is els[0]
+    assert resolve_element("2nd checkbox", els).found is els[1]
+    assert resolve_element("last checkbox", els).found is els[4]
+    assert resolve_element("checkbox", els).reason == "ambiguous"  # 5 present, no ordinal -> honest
+    # a lone checkbox still resolves from the bare kind
+    one = [make_element(0, tag="input", type="checkbox"), make_element(1, tag="button", text="X")]
+    assert resolve_element("checkbox", one).found is one[0]
+
+
 def test_region_scaffolding_is_ignored():
     # "Register link in the navigation" -> the region words are scaffolding.
     els = [make_element(0, tag="a", text="Register"), make_element(1, tag="a", text="Home")]
