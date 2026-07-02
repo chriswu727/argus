@@ -163,18 +163,30 @@ async def main():
     trials = int(os.environ.get("BENCH_TRIALS", "3"))
     max_steps = int(os.environ.get("BENCH_MAX_STEPS", "40"))
     cost_cap = float(os.environ.get("BENCH_COST_CAP_USD", "3.0"))
+    # Prefer the seeded fixture's control endpoint (enables per-trial reset and
+    # meaningful recall scoring), but fall back to the plain root so the bench
+    # can drive ANY app — DarkShop, or a real target — for footgun-mining.
+    seeded = True
     try:
         urllib.request.urlopen(BASE + "/api/test/state", timeout=3).read()
-    except Exception as e:
-        print(f"BuggyTasks fixture not reachable at {BASE} ({e}). Start test-site/app.py first.", flush=True)
-        return 2
+    except Exception:
+        seeded = False
+        try:
+            urllib.request.urlopen(BASE, timeout=3).read()
+        except Exception as e:
+            print(f"Target not reachable at {BASE} ({e}). Start the fixture/app first.", flush=True)
+            return 2
+    if not seeded:
+        print(f"[non-seeded target {BASE}: recall is against the BuggyTasks catalog and "
+              "NOT meaningful here — read this run for footguns, not recall.]", flush=True)
 
     results, cost_total = [], 0.0
     for i in range(trials):
         if cost_total > cost_cap:
             print(f"[cost cap ${cost_cap} reached before trial {i+1}]", flush=True)
             break
-        _reset()
+        if seeded:
+            _reset()
         print(f"\n=== trial {i+1}/{trials} ({model}) — spent ${cost_total:.4f} ===", flush=True)
         cost_total += await run_session(model, max_steps, cost_cap, cost_total)
         s = score(list(getattr(mcp._session, "bugs", [])))
