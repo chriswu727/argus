@@ -339,6 +339,14 @@ def resolve_element(
             scored.append((s, el))
 
     if not scored:
+        # A soft kind hint matched NOTHING in its pool — likely a wrong hint
+        # (agent called a link a "button" while real buttons filled the pool).
+        # Retry across all elements without the kind word so a real match isn't
+        # lost to a mislabel. Strict callers (type_into) never fall back — they
+        # must not target the wrong kind. The retry drops the kind word (uses
+        # `phrase`), so it can't re-narrow and recurse forever.
+        if not strict_kind and effective_kind and pool is not elements and phrase:
+            return resolve_element(phrase, elements, strict_kind=False)
         return ResolveResult(found=None, candidates=[], reason="no_match")
 
     scored.sort(key=lambda pair: -pair[0])

@@ -173,6 +173,17 @@ def test_next_to_is_row_scoping_like_near():
     assert resolve_element("Next button", nxt).found is nxt[0]
 
 
+def test_wrong_kind_hint_falls_back_when_pool_empty():
+    # agent calls a link a "button" while real buttons fill the pool -> still found
+    els = [make_element(0, tag="a", text="+ New Task"), make_element(1, tag="button", text="Save"),
+           make_element(2, tag="button", text="Cancel")]
+    assert resolve_element("+ New Task button", els).found is els[0]
+    # but a hint that DOES match is still respected (no spurious fallback)
+    e2 = [make_element(0, tag="a", text="email"),
+          make_element(1, tag="input", type="email", name="email", placeholder="you@x")]
+    assert resolve_element("email field", e2).found is e2[1]
+
+
 def test_link_resolves_by_href_and_to_is_scaffolding():
     def mk(i, text, href):
         e = make_element(i, tag="a", text=text); e.href = href; return e
