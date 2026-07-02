@@ -60,17 +60,38 @@ TOOLS = [
 ]
 
 # Fuzzy keyword signatures for the 22 seeded BuggyTasks bugs (recall estimate).
-CATALOG = {
+_BUGGYTASKS_CATALOG = {
     1: ["appconfig", "referenceerror"], 2: ["/help", "dead link", "404"], 3: ["newsletter", "500"],
     4: ["any cred", "auth bypass", "accepts any", "wrong password"], 5: ["mismatch", "password"],
     6: ["form", "cleared", "data lost"], 7: ["xss", "script", "reflect"], 8: ["double", "duplicate"],
     9: ["count", "off-by-one", "off by one"], 10: ["delete", "still present", "fake delete"],
     11: ["edit", "not updated", "silent"], 12: ["toggle", "race"], 13: ["load more", "pagination"],
     14: ["loading", "forever", "spinner"], 15: ["case", "search"], 16: ["date", "1.0 days", "decimal"],
-    17: ["saved", "false success"], 18: ["truncat", "long title"], 19: ["priority", "arbitrary", "unbounded"],
+    17: ["saved", "false success", "not persist", "toast lie"], 18: ["truncat", "long title"],
+    19: ["priority", "arbitrary", "unbounded"],
     20: ["navbar", "still shows login", "after auth"], 21: ["whitespace", "empty task"],
     22: ["0 tasks", "alarming", "remaining"],
 }
+
+# The 12 human-eye DarkShop bugs (visual / dark-pattern / deceptive feedback).
+_DARKSHOP_CATALOG = {
+    1: ["only 3 left", "scarcity", "hardcoded", "stock badge", "3 left"],
+    2: ["50%", "sale badge", "fake sale", "discount is a lie", "same price", "original price"],
+    3: ["free shipping", "shipping fee", "$5", "flat shipping"],
+    4: ["add to cart", "faded", "grey", "gray", "looks disabled", "low contrast"],
+    5: ["rating", "star", "4.8", "fake review"],
+    6: ["cvv", "card number", "field order", "before card"],
+    7: ["subtotal", "pre-tax", "tax", "order summary"],
+    8: ["place order", "grey link", "small", "hard to find", "corner"],
+    9: ["legal", "asterisk", "consent", "required checkbox"],
+    10: ["display name", "profile", "not saved", "silent", "account"],
+    11: ["cart count", "badge", "navbar", "stale", "cart"],
+    12: ["save10", "discount code", "promo", "clears", "coupon"],
+}
+
+_CATALOGS = {"buggytasks": _BUGGYTASKS_CATALOG, "darkshop": _DARKSHOP_CATALOG}
+CATALOG = _CATALOGS.get(os.environ.get("BENCH_CATALOG", "buggytasks").lower(), _BUGGYTASKS_CATALOG)
+_N = len(CATALOG)
 
 _SYSTEM = mcp.mcp.instructions
 _USER = (f"The app under test is at {BASE}. Call start_session with that URL, then USE the app like a "
@@ -177,8 +198,10 @@ async def main():
             print(f"Target not reachable at {BASE} ({e}). Start the fixture/app first.", flush=True)
             return 2
     if not seeded:
-        print(f"[non-seeded target {BASE}: recall is against the BuggyTasks catalog and "
-              "NOT meaningful here — read this run for footguns, not recall.]", flush=True)
+        cat_name = os.environ.get("BENCH_CATALOG", "buggytasks").lower()
+        print(f"[{BASE}: no reset endpoint — state carries across trials. Recall scored "
+              f"against the '{cat_name}' catalog ({_N} bugs); set BENCH_CATALOG to match "
+              "the target, or read the run for footguns.]", flush=True)
 
     results, cost_total = [], 0.0
     for i in range(trials):
@@ -191,7 +214,7 @@ async def main():
         cost_total += await run_session(model, max_steps, cost_cap, cost_total)
         s = score(list(getattr(mcp._session, "bugs", [])))
         results.append(s)
-        print(f"  -> recall {s['recall']}/22, recorded {s['recorded']} "
+        print(f"  -> recall {s['recall']}/{_N}, recorded {s['recorded']} "
               f"(verified {s['verified']}, off-catalog {s['unmatched']}, "
               f"FP-candidates {s['fp_candidates']})", flush=True)
         try:
@@ -205,11 +228,11 @@ async def main():
         var = sum((x - mean) ** 2 for x in recalls) / len(recalls)
         print(f"\n===== REAL-LLM BENCH — {model} =====", flush=True)
         for i, r in enumerate(results, 1):
-            print(f"  trial {i}: recall {r['recall']}/22  recorded {r['recorded']}  "
+            print(f"  trial {i}: recall {r['recall']}/{_N}  recorded {r['recorded']}  "
                   f"verified {r['verified']}  off-catalog {r['unmatched']}  "
                   f"FP-candidates {r['fp_candidates']}", flush=True)
         fp_total = sum(r["fp_candidates"] for r in results)
-        print(f"  mean recall {mean:.1f}/22  variance {var:.2f}  FP-candidates {fp_total}  "
+        print(f"  mean recall {mean:.1f}/{_N}  variance {var:.2f}  FP-candidates {fp_total}  "
               f"total cost ${cost_total:.4f} (~RMB {cost_total * 7.2:.2f})", flush=True)
         print("  recall = fuzzy keyword estimate vs the 22 seeded signatures; verified = findings that "
               "carried a passing reproduction receipt; off-catalog = recorded bugs matching no seeded "
