@@ -50,6 +50,18 @@ def test_report_steps_trim_and_collapse():
     assert "omitted" not in _format_steps(["click A", "verify B"])  # short lists untouched
 
 
+def test_bench_score_verified_offcatalog_is_not_fp():
+    from argus.bench.agent_runner import score
+    v = _bug(receipt={"attempted": True, "reproduced": True})
+    v.title, v.description = "totally offbeat glitch", "weird thing"
+    u = _bug(receipt=None)
+    u.title, u.description = "another offbeat noise", "meh"
+    s = score([v, u])
+    assert s["unmatched"] == 2       # both off the fuzzy catalog
+    assert s["fp_candidates"] == 1   # only the unverified one is a false-positive candidate
+    assert s["verified"] == 1        # the verified off-catalog find is a real bug, not an FP
+
+
 def test_toast_line_surfaces_claim_and_stays_quiet_when_empty():
     line = m._toast_line(["Task created!", "Welcome"])
     assert "Task created!" in line and "CLAIM" in line and "persisted" in line
