@@ -248,6 +248,23 @@ class _LoginWallHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(b"<html><body><h1>Please log in to continue</h1></body></html>")
 
 
+async def test_click_settles_async_dom_mutation():
+    # A click that triggers a DELAYED (setTimeout, no network) DOM update: observe
+    # right after must see the update, i.e. click() settled the DOM first.
+    page = ('<html><body><button id="go" onclick="setTimeout(function(){'
+            "var p=document.createElement('p');p.textContent='DELAYED_MARKER';"
+            'document.body.appendChild(p);},150)">Go</button></body></html>')
+    await _session_on_page(page)
+    try:
+        cw = getattr(m.click_what, "fn", m.click_what)
+        ob = getattr(m.observe, "fn", m.observe)
+        await cw(description="Go button")
+        obs = await ob()
+        assert "DELAYED_MARKER" in obs  # settle waited past the 400ms setTimeout
+    finally:
+        await _end()
+
+
 async def test_record_bug_tolerates_string_evidence():
     # A weaker agent passes `evidence` as a bare string — used to crash
     # record_bug ('str' has no .get) and silently lose the finding.

@@ -1170,10 +1170,34 @@ class BrowserDriver:
             except Exception:
                 pass
 
+    async def _settle_dom(self, cap_ms: int = 1500, quiet_ms: int = 300) -> None:
+        """Wait until the DOM stops mutating for `quiet_ms` (capped at `cap_ms`).
+        networkidle doesn't cover pure-JS DOM updates that fire after a click —
+        a language toggle, a filter, tab content, lazy render — so observe() run
+        right after can catch STALE state and the agent falsely reads "nothing
+        changed". Bounded so a live ticker/clock page can't hang it."""
+        try:
+            await self._page.evaluate(
+                """(cfg) => new Promise(resolve => {
+                    let timer = setTimeout(done, cfg.quiet);
+                    const obs = new MutationObserver(() => {
+                        clearTimeout(timer); timer = setTimeout(done, cfg.quiet);
+                    });
+                    function done(){ try{obs.disconnect();}catch(e){} clearTimeout(cap); resolve(); }
+                    const cap = setTimeout(done, cfg.cap);
+                    obs.observe(document.documentElement,
+                        {childList:true, subtree:true, characterData:true, attributes:true});
+                })""",
+                {"cap": cap_ms, "quiet": quiet_ms},
+            )
+        except Exception:
+            pass  # navigation destroyed the context, eval blocked, etc. — best-effort
+
     async def click(self, element_index: int, elements: List[InteractiveElement]) -> bool:
         try:
             await self._locator(element_index, elements).click(timeout=5_000)
             await self._page.wait_for_load_state("networkidle", timeout=10_000)
+            await self._settle_dom()
             return True
         except Exception:
             return False
