@@ -127,6 +127,11 @@ def _strip_kind(desc: str) -> Tuple[List[str], Optional[str]]:
     # "next to X" is row-scoping scaffolding, same as "near X" — strip the
     # PHRASE only (a standalone "Next" button must still resolve).
     desc = re.sub(r"\bnext\s+to\b", " ", desc.lower())
+    # Underscores never appear in visible labels; an agent that types a
+    # programmatic name it saw ("qty_1 input") should match the element whose
+    # name we normalise the same way. (Hyphens are left alone — they occur in
+    # real labels like "sign-in" / "e-mail".)
+    desc = desc.replace("_", " ")
     # Strip surrounding quotes AND parens/brackets agents habitually wrap a label
     # or context in (`link "Tasks"`, `Title field (Buy groceries)`) — punctuation,
     # not part of the element's text, and left on they match nothing.
