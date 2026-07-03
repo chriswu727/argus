@@ -99,12 +99,13 @@ _EXTRACT_ELEMENTS_JS = """
     const out = [];
     const seen = new Set();
 
-    function record(el, inShadow) {
+    function record(el, inShadow, frameSel) {
         if (seen.has(el)) return;
         seen.add(el);
         const rect = el.getBoundingClientRect();
-        const style = window.getComputedStyle(el);
+        const style = (el.ownerDocument.defaultView || window).getComputedStyle(el);
         if (rect.width === 0 || rect.height === 0 || style.display === 'none' || style.visibility === 'hidden') return;
+        const doc = el.ownerDocument;  // frame-local: label lookups must use the element's own document
         out.push({
             index: out.length,
             tag: el.tagName.toLowerCase(),
@@ -124,9 +125,9 @@ _EXTRACT_ELEMENTS_JS = """
                 var t = el.tagName.toLowerCase();
                 if (t !== 'input' && t !== 'select' && t !== 'textarea') return null;
                 var pick = function(n){ var s = n && n.textContent ? n.textContent.trim() : ''; return s ? s.slice(0,100) : null; };
-                if (el.id) { try { var lf = document.querySelector('label[for="' + (window.CSS && CSS.escape ? CSS.escape(el.id) : el.id) + '"]'); if (pick(lf)) return pick(lf); } catch (e) {} }
+                if (el.id) { try { var lf = doc.querySelector('label[for="' + (window.CSS && CSS.escape ? CSS.escape(el.id) : el.id) + '"]'); if (pick(lf)) return pick(lf); } catch (e) {} }
                 var w = el.closest('label'); if (pick(w)) return pick(w);
-                var lb = el.getAttribute('aria-labelledby'); if (lb) { var t2 = document.getElementById(lb); if (pick(t2)) return pick(t2); }
+                var lb = el.getAttribute('aria-labelledby'); if (lb) { var t2 = doc.getElementById(lb); if (pick(t2)) return pick(t2); }
                 var p = el.previousElementSibling;
                 while (p) { if (p.tagName === 'LABEL' && pick(p)) return pick(p); if (p.tagName === 'INPUT' || p.tagName === 'SELECT' || p.tagName === 'TEXTAREA') break; p = p.previousElementSibling; }
                 return null;
@@ -135,19 +136,53 @@ _EXTRACT_ELEMENTS_JS = """
             id: el.id || null,
             parent_context: (el.closest('li, tr, .card, .list-item, [class*="item"], [class*="row"]') || {}).textContent?.trim()?.slice(0, 200) || null,
             shadow: inShadow,
+            frame: frameSel || null,
         });
     }
 
-    function walk(root, inShadow) {
+    // A selector for an iframe element, usable by Playwright frame_locator.
+    // JSON.stringify handles the quoting/escaping (no manual regex/backslashes).
+    function ifSel(ifr, i) {
+        if (ifr.id) return 'iframe[id=' + JSON.stringify(ifr.id) + ']';
+        if (ifr.name) return 'iframe[name=' + JSON.stringify(ifr.name) + ']';
+        var src = ifr.getAttribute('src'); if (src) return 'iframe[src=' + JSON.stringify(src) + ']';
+        return 'iframe >> nth=' + i;
+    }
+
+    function walk(root, inShadow, frameSel) {
         if (out.length >= MAX) return;
-        root.querySelectorAll(sel).forEach(el => { if (out.length < MAX) record(el, inShadow); });
+        root.querySelectorAll(sel).forEach(el => { if (out.length < MAX) record(el, inShadow, frameSel); });
         // Descend into open shadow roots hosted anywhere under this root.
         root.querySelectorAll('*').forEach(node => {
-            if (out.length < MAX && node.shadowRoot) walk(node.shadowRoot, true);
+            if (out.length < MAX && node.shadowRoot) walk(node.shadowRoot, true, frameSel);
+        });
+        // Descend into iframes. Same-origin: walk the frame document, tagging its
+        // elements with the iframe selector CHAIN (so actions can frame_locator
+        // into it). Cross-origin: contentDocument throws — surface a marker so
+        // the agent knows an untestable embedded region exists instead of being
+        // silently blind to it.
+        root.querySelectorAll('iframe').forEach(function(ifr, i) {
+            if (out.length >= MAX) return;
+            var chain = frameSel ? (frameSel + ' >>> ' + ifSel(ifr, i)) : ifSel(ifr, i);
+            var fdoc = null;
+            try { fdoc = ifr.contentDocument; } catch (e) { fdoc = null; }
+            if (fdoc && fdoc.documentElement) {
+                walk(fdoc, inShadow, chain);
+            } else {
+                var r = ifr.getBoundingClientRect();
+                if (r.width > 0 && r.height > 0) {
+                    out.push({ index: out.length, tag: 'iframe', type: null,
+                        text: '[embedded region (' + (ifr.getAttribute('title') || ifr.getAttribute('name') || ifr.getAttribute('src') || 'iframe') + ') — cross-origin, contents not readable by Argus]',
+                        placeholder: null, href: ifr.getAttribute('src') || null, value: null,
+                        disabled: false, role: null, aria_label: ifr.getAttribute('title') || null,
+                        name: ifr.getAttribute('name') || null, id: ifr.id || null,
+                        parent_context: null, shadow: inShadow, frame: null });
+                }
+            }
         });
     }
 
-    walk(document, false);
+    walk(document, false, null);
     return out;
 }
 """
@@ -1082,12 +1117,23 @@ class BrowserDriver:
         Elements are extracted in document order, so this aligns with the DOM
         match order. For a unique selector nth==0, identical to the old path.
         """
-        selector = self._build_selector(elements[element_index])
+        el = elements[element_index]
+        selector = self._build_selector(el)
+        # nth must be scoped to the SAME frame — an identical selector in a
+        # different frame is a different element, not an earlier duplicate.
         nth = sum(
             1 for other in elements[:element_index]
-            if self._build_selector(other) == selector
+            if other.frame == el.frame and self._build_selector(other) == selector
         )
-        return (page or self._page).locator(selector).nth(nth)
+        base = page or self._page
+        if el.frame:
+            # Element lives inside one (or more, ' >>> '-chained) iframes — reach
+            # it through frame_locator so click/type/inspect land in the frame.
+            fl = base
+            for part in el.frame.split(" >>> "):
+                fl = fl.frame_locator(part)
+            return fl.locator(selector).nth(nth)
+        return base.locator(selector).nth(nth)
 
     async def replay(self, start_url: str, actions: List[Dict]) -> Dict:
         """Re-drive a recorded action trace from a cold start and report what the

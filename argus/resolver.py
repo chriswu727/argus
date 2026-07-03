@@ -419,6 +419,8 @@ def describe(el: InteractiveElement) -> str:
         ctx = el.parent_context.strip()[:50]
         if ctx and ctx not in (label or ""):
             parts.append(f"(near: {ctx!r})")
+    if getattr(el, "frame", None):
+        parts.append("[in iframe]")
     return " ".join(parts)
 
 
