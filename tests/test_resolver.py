@@ -260,6 +260,20 @@ def test_single_char_discriminator_rows():
     assert resolve_element("Delete Task 2", rows).found is rows[3]
 
 
+def test_type_noun_and_id_token_no_silent_wrong_action():
+    def cb(i):
+        e = make_element(i, tag="input", type="checkbox"); e.id = f"task-{i}"
+        e.parent_context = "Buy groceries high 1.0 days ago Edit Delete"; return e
+    def btn(i, label):
+        e = make_element(i, tag="button", text=label)
+        e.parent_context = "Buy groceries high 1.0 days ago Edit Delete"; return e
+    els = [cb(1), btn(2, "Edit"), btn(3, "Delete")]
+    # "task" (a type-noun) previously matched the id="task-1" checkbox and won as
+    # a CONFIDENT wrong pick over the intended Delete button. Must hit Delete now.
+    assert resolve_element("Delete the Buy groceries task", els).found is els[2]
+    assert resolve_element("Delete Buy groceries", els).found is els[2]
+
+
 def test_row_prefix_overlap_tiebreak():
     def row(i, title, label):
         e = make_element(i, tag="button", text=label); e.parent_context = f"{title} Edit Delete"; return e

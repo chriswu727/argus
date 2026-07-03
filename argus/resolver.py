@@ -60,7 +60,7 @@ _KIND_HINTS = {
 # matched first by the exact-label fast path, so dropping these is safe.
 _STOPWORDS = {
     "the", "a", "an", "this", "that", "in", "on", "of", "to",
-    "row", "rows", "item", "entry", "near", "for", "with",
+    "row", "rows", "item", "items", "entry", "task", "tasks", "near", "for", "with",
     "named", "labeled", "labelled", "label", "labels", "containing", "value", "whose",
     "navigation", "nav", "navbar", "header", "footer", "sidebar", "toolbar", "bar",
 }
@@ -256,7 +256,12 @@ def _score(el: InteractiveElement, core: str) -> int:
     core_words = [w for w in core.split() if len(w) >= 2 or w.isalnum()]
     if core_words:
         visible = " ".join([text, aria, placeholder, value])
-        extended = " ".join([visible, name, id_, parent, href])
+        # id is DELIBERATELY excluded from the multi-word haystack: ids are
+        # auto-generated internal tokens ("task-1", "r3c") and a stray query
+        # noun matching one ("...task" hitting id="task-1") produced a confident
+        # WRONG pick — a checkbox winning over the intended Delete button. Exact
+        # id targeting still works via the dedicated single-token check above.
+        extended = " ".join([visible, name, parent, href])
         if all(_has_token(w, visible) for w in core_words):
             score = max(score, 50)
         elif all(_has_token(w, extended) for w in core_words):
