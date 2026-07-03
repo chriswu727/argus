@@ -192,7 +192,26 @@ _EXTRACT_PAGE_CONTENT_JS = """
 () => {
     const result = { pageText: '', toasts: [], counts: {}, cssIndicators: [], itemLists: {},
                      links: [], images: [], metaTags: {}, headings: [], a11yIssues: [], mixedContent: [],
-                     openModals: [], focused: null, viewport: null };
+                     openModals: [], focused: null, viewport: null, canvases: [] };
+
+    // Canvas regions — pixel-drawn UI (charts/dashboards, maps, whiteboards,
+    // PDF.js, WebGL games) is invisible to DOM extraction. Surface each visible
+    // canvas with its on-screen rect so the agent knows to SCREENSHOT it and
+    // reach it with coordinate actions (click_at / type_at / hover_at).
+    try {
+        document.querySelectorAll('canvas').forEach(c => {
+            const r = c.getBoundingClientRect();
+            const st = window.getComputedStyle(c);
+            if (r.width >= 40 && r.height >= 40 && st.display !== 'none' && st.visibility !== 'hidden') {
+                result.canvases.push({
+                    x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2),
+                    left: Math.round(r.left), top: Math.round(r.top),
+                    w: Math.round(r.width), h: Math.round(r.height),
+                    id: c.id || null, label: c.getAttribute('aria-label') || c.title || null
+                });
+            }
+        });
+    } catch(e) {}
 
     // 1. Full visible text — simple and robust
     try {
@@ -1069,6 +1088,7 @@ class BrowserDriver:
             accessibility_issues=content.get("a11yIssues", []),
             mixed_content=content.get("mixedContent", []),
             open_modals=content.get("openModals", []),
+            canvases=content.get("canvases", []),
             focused=content.get("focused"),
             viewport=content.get("viewport"),
         )
@@ -1370,6 +1390,33 @@ class BrowserDriver:
                 await self._locator(element_index, elements).press(key, timeout=5_000)
             else:
                 await self._page.keyboard.press(key)
+            await self._settle_dom()
+            return True
+        except Exception:
+            return False
+
+    async def click_at(self, x: int, y: int) -> bool:
+        """Real mouse click at viewport pixel (x, y) — the escape hatch for
+        canvas/WebGL UIs with no DOM element to target by description."""
+        try:
+            await self._page.mouse.click(x, y)
+            await self._settle_dom()
+            return True
+        except Exception:
+            return False
+
+    async def hover_at(self, x: int, y: int) -> bool:
+        try:
+            await self._page.mouse.move(x, y)
+            await self._settle_dom()
+            return True
+        except Exception:
+            return False
+
+    async def type_at(self, x: int, y: int, text: str) -> bool:
+        try:
+            await self._page.mouse.click(x, y)  # focus the point, then type
+            await self._page.keyboard.type(text)
             await self._settle_dom()
             return True
         except Exception:

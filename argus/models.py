@@ -81,6 +81,7 @@ class PageState:
     accessibility_issues: List[Dict] = field(default_factory=list)
     mixed_content: List[Dict] = field(default_factory=list)
     open_modals: List[Dict] = field(default_factory=list)
+    canvases: List[Dict] = field(default_factory=list)  # pixel-drawn regions (canvas/WebGL)
     focused: Optional[Dict] = None
     viewport: Optional[Dict] = None
     timestamp: datetime = field(default_factory=datetime.now)
