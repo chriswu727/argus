@@ -1297,6 +1297,24 @@ class BrowserDriver:
         except Exception:
             return False
 
+    async def press_key(
+        self, key: str, element_index: Optional[int] = None,
+        elements: Optional[List[InteractiveElement]] = None,
+    ) -> bool:
+        """Press a keyboard key (Escape, Enter, Tab, ArrowDown, 'Control+a', ...).
+        Focuses `element` first when given (locator.press), else a page-level
+        keyboard press. Settles the DOM so a resulting change (modal dismiss,
+        submit) is visible on the next observe."""
+        try:
+            if element_index is not None and elements is not None:
+                await self._locator(element_index, elements).press(key, timeout=5_000)
+            else:
+                await self._page.keyboard.press(key)
+            await self._settle_dom()
+            return True
+        except Exception:
+            return False
+
     async def drag(
         self, source_index: int, target_index: int,
         elements: List[InteractiveElement],

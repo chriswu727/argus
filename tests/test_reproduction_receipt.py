@@ -308,6 +308,23 @@ async def test_same_origin_iframe_observed_and_interactive():
         srv.shutdown()
 
 
+async def test_press_key_escape_dismisses_modal():
+    # The canonical keyboard case click/type can't do: Escape closes a modal.
+    page = ('<html><body><div id="m">MODAL_OPEN</div>'
+            "<script>document.addEventListener('keydown',function(e){"
+            "if(e.key==='Escape'){document.getElementById('m').style.display='none';}});</script>"
+            '</body></html>')
+    await _session_on_page(page)
+    try:
+        pk = getattr(m.press_key, "fn", m.press_key)
+        ob = getattr(m.observe, "fn", m.observe)
+        assert "MODAL_OPEN" in await ob()
+        await pk(key="Escape")
+        assert "MODAL_OPEN" not in await ob()  # Escape hid the modal
+    finally:
+        await _end()
+
+
 async def test_click_settles_async_dom_mutation():
     # A click that triggers a DELAYED (setTimeout, no network) DOM update: observe
     # right after must see the update, i.e. click() settled the DOM first.
