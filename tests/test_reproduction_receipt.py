@@ -266,6 +266,48 @@ async def test_item_lists_excludes_hidden_rows():
         await _end()
 
 
+class _IframeHandler(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def _send(self, body):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html")
+        self.end_headers()
+        self.wfile.write(body.encode())
+
+    def do_GET(self):
+        if self.path.startswith("/frame"):
+            self._send('<html><body><label for="card">Card number</label>'
+                       '<input id="card"><button id="pay">Pay Now</button></body></html>')
+        else:
+            self._send('<html><body><button id="outer">Outer</button>'
+                       '<iframe id="pay" src="/frame" width="320" height="200"></iframe></body></html>')
+
+
+async def test_same_origin_iframe_observed_and_interactive():
+    class _S(socketserver.ThreadingTCPServer):
+        allow_reuse_address = True
+    srv = _S(("127.0.0.1", 0), _IframeHandler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_address[1]}"
+    await _start_session_url(base + "/")
+    try:
+        obs = await (getattr(m.observe, "fn", m.observe))()
+        # elements INSIDE the same-origin iframe must be surfaced by observe
+        assert "Card number" in obs and "Pay Now" in obs
+        # and actually reachable — type_into / click_what land in the frame
+        await (getattr(m.type_into, "fn", m.type_into))(description="Card number field", text="4242")
+        r = await (getattr(m.click_what, "fn", m.click_what))(description="Pay Now button")
+        assert "Clicked" in r
+        # confirm the value truly landed in the IFRAME input (not silently dropped)
+        val = await m._session.browser._page.frame_locator('iframe[id="pay"]').locator("#card").input_value()
+        assert val == "4242"
+    finally:
+        await _end()
+        srv.shutdown()
+
+
 async def test_click_settles_async_dom_mutation():
     # A click that triggers a DELAYED (setTimeout, no network) DOM update: observe
     # right after must see the update, i.e. click() settled the DOM first.

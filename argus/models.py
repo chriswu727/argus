@@ -61,6 +61,7 @@ class InteractiveElement:
     id: Optional[str] = None
     parent_context: Optional[str] = None
     shadow: bool = False  # element lives inside an open shadow root
+    frame: Optional[str] = None  # selector of the iframe this element lives in (None = main frame)
 
 
 @dataclass
