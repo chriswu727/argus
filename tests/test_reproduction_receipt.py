@@ -308,6 +308,43 @@ async def test_same_origin_iframe_observed_and_interactive():
         srv.shutdown()
 
 
+async def test_cross_origin_iframe_observed_and_interactive():
+    class _S(socketserver.ThreadingTCPServer):
+        allow_reuse_address = True
+    inner = _S(("127.0.0.1", 0), _IframeHandler)  # serves /frame -> card input + Pay
+    threading.Thread(target=inner.serve_forever, daemon=True).start()
+    inner_port = inner.server_address[1]
+
+    class _OuterHandler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.end_headers()
+            self.wfile.write((
+                '<html><body><button id="outer">Outer</button>'
+                f'<iframe id="pay" src="http://127.0.0.1:{inner_port}/frame" width="320" height="200">'
+                '</iframe></body></html>').encode())
+
+    outer = _S(("127.0.0.1", 0), _OuterHandler)
+    threading.Thread(target=outer.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{outer.server_address[1]}"  # different port => cross-origin
+    await _start_session_url(base + "/")
+    try:
+        obs = await (getattr(m.observe, "fn", m.observe))()
+        # cross-origin frame CONTENTS are now surfaced (were a "blind spot" marker)
+        assert "Card number" in obs and "Pay Now" in obs
+        await (getattr(m.type_into, "fn", m.type_into))(description="Card number field", text="4111")
+        val = await m._session.browser._page.frame_locator('iframe[id="pay"]').locator("#card").input_value()
+        assert val == "4111"
+    finally:
+        await _end()
+        inner.shutdown()
+        outer.shutdown()
+
+
 async def test_press_key_escape_dismisses_modal():
     # The canonical keyboard case click/type can't do: Escape closes a modal.
     page = ('<html><body><div id="m">MODAL_OPEN</div>'

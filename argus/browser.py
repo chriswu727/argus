@@ -172,7 +172,7 @@ _EXTRACT_ELEMENTS_JS = """
                 var r = ifr.getBoundingClientRect();
                 if (r.width > 0 && r.height > 0) {
                     out.push({ index: out.length, tag: 'iframe', type: null,
-                        text: '[embedded region (' + (ifr.getAttribute('title') || ifr.getAttribute('name') || ifr.getAttribute('src') || 'iframe') + ') — cross-origin, contents not readable by Argus]',
+                        text: '[embedded region (' + (ifr.getAttribute('title') || ifr.getAttribute('name') || ifr.getAttribute('src') || 'iframe') + ') — contents not readable here]',
                         placeholder: null, href: ifr.getAttribute('src') || null, value: null,
                         disabled: false, role: null, aria_label: ifr.getAttribute('title') || null,
                         name: ifr.getAttribute('name') || null, id: ifr.id || null,
@@ -1093,8 +1093,68 @@ class BrowserDriver:
 
 
     async def _extract_elements(self, page=None) -> List[InteractiveElement]:
-        raw = await (page or self._page).evaluate(_EXTRACT_ELEMENTS_JS)
-        return [InteractiveElement(**el) for el in raw]
+        pg = page or self._page
+        raw = await pg.evaluate(_EXTRACT_ELEMENTS_JS)
+        elements = [InteractiveElement(**el) for el in raw]
+        # The in-page JS traversal reads SAME-ORIGIN iframes (contentDocument) but
+        # a CROSS-ORIGIN frame it can only mark. Playwright itself can read those
+        # per-frame — and hosted card fields (Stripe/Adyen), OAuth consent, and
+        # embedded checkout ARE cross-origin, the highest-stakes surfaces a senior
+        # QA prioritizes. Extract them per-frame and tag with the iframe selector
+        # so click/type land in the frame (interaction already handles framed els).
+        try:
+            extra, covered = await self._extract_cross_origin_frames(pg)
+            if extra:
+                elements = [e for e in elements
+                            if not (e.tag == "iframe" and (e.href or "") in covered)]
+                elements += extra
+                for i, el in enumerate(elements):
+                    el.index = i
+        except Exception:
+            pass
+        return elements
+
+    async def _extract_cross_origin_frames(self, pg):
+        """Run the element extractor inside each CROSS-ORIGIN child frame (which
+        the in-page JS could not reach) and tag those elements with the iframe
+        selector. Returns (elements, covered_srcs) — covered_srcs lets the caller
+        drop the now-redundant cross-origin markers."""
+        from urllib.parse import urlsplit
+
+        def origin(u):
+            try:
+                s = urlsplit(u or "")
+                return (s.scheme, s.hostname, s.port)
+            except Exception:
+                return None
+
+        main = pg.main_frame
+        main_o = origin(main.url)
+        extra, covered = [], set()
+        for fr in pg.frames:
+            if fr is main or origin(fr.url) == main_o:
+                continue  # main or same-origin: the in-page JS already covered it
+            try:
+                handle = await fr.frame_element()
+                info = await handle.evaluate(
+                    "el => ({sel: el.id ? ('iframe[id='+JSON.stringify(el.id)+']')"
+                    " : (el.name ? ('iframe[name='+JSON.stringify(el.name)+']')"
+                    " : (el.getAttribute('src') ? ('iframe[src='+JSON.stringify(el.getAttribute('src'))+']') : null)),"
+                    " src: el.getAttribute('src')})")
+            except Exception:
+                info = None
+            if not info or not info.get("sel"):
+                continue
+            try:
+                raw = await fr.evaluate(_EXTRACT_ELEMENTS_JS)
+            except Exception:
+                continue
+            for el in raw:
+                el["frame"] = info["sel"]
+                extra.append(InteractiveElement(**el))
+            if info.get("src"):
+                covered.add(info["src"])
+        return extra, covered
 
     async def _extract_page_content(self, page=None) -> Dict:
         try:
