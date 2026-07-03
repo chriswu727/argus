@@ -250,7 +250,10 @@ def _score(el: InteractiveElement, core: str) -> int:
     #    carries so the right control in the right row wins.
     #  - only in internal attrs / row, nothing on the face -> barely there
     #    (Round 2 anti-leak: an id/parent substring must not pose as real).
-    core_words = [w for w in core.split() if len(w) >= 2]
+    # Keep single-char ALNUM tokens ("Task 1" vs "Task 2", "User A" vs "User B"):
+    # stopwords are already stripped, so a lone "1"/"a" here is a real row
+    # discriminator, not filler. Only drop single-char punctuation.
+    core_words = [w for w in core.split() if len(w) >= 2 or w.isalnum()]
     if core_words:
         visible = " ".join([text, aria, placeholder, value])
         extended = " ".join([visible, name, id_, parent, href])
@@ -484,7 +487,10 @@ def _score_screen(el, core: str) -> int:
     # the ancestor path is a row-scoped match; path-only is barely there.
     visible = " ".join([title, value, desc, role_desc])
     extended = " ".join([visible, path_text])
-    core_words = [w for w in core.split() if len(w) >= 2]
+    # Keep single-char ALNUM tokens ("Task 1" vs "Task 2", "User A" vs "User B"):
+    # stopwords are already stripped, so a lone "1"/"a" here is a real row
+    # discriminator, not filler. Only drop single-char punctuation.
+    core_words = [w for w in core.split() if len(w) >= 2 or w.isalnum()]
     if core_words:
         if all(_has_token(w, visible) for w in core_words):
             score = max(score, 50)

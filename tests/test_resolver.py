@@ -250,6 +250,16 @@ def test_link_resolves_by_href_and_to_is_scaffolding():
     assert resolve_element("Add to Cart", cart).found is cart[0]
 
 
+def test_single_char_discriminator_rows():
+    def row(i, title, label):
+        e = make_element(i, tag="button", text=label); e.parent_context = f"{title} Edit Delete"; return e
+    rows = [row(0, "Task 1", "Edit"), row(1, "Task 1", "Delete"),
+            row(2, "Task 2", "Edit"), row(3, "Task 2", "Delete")]
+    # the sole differentiator is a 1-char token — must still disambiguate
+    assert resolve_element("Delete Task 1", rows).found is rows[1]
+    assert resolve_element("Delete Task 2", rows).found is rows[3]
+
+
 def test_row_prefix_overlap_tiebreak():
     def row(i, title, label):
         e = make_element(i, tag="button", text=label); e.parent_context = f"{title} Edit Delete"; return e
