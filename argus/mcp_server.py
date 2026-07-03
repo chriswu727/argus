@@ -2256,6 +2256,48 @@ async def right_click(description: str) -> str:
 
 
 @mcp.tool()
+async def press_key(key: str, description: str = "") -> str:
+    """Press a keyboard key — the web-mode equivalent testers reach for constantly.
+
+    `key` is a Playwright key name: "Escape" (dismiss a modal/overlay), "Enter"
+    (submit a focused field), "Tab" / "Shift+Tab" (keyboard navigation / focus
+    order), "ArrowDown"/"ArrowUp"/"ArrowLeft"/"ArrowRight" (menus, sliders,
+    listboxes), "Backspace", "Delete", "PageDown", "Home", or a chord like
+    "Control+a". Optionally pass `description` to focus that element first
+    (e.g. press ArrowRight on "the volume slider"); omit it to press at the
+    page level (e.g. Escape to close whatever modal is open).
+
+    Real users hit keys — a modal you can only close with Esc, a form that
+    submits on Enter, arrow-key menu nav, focus-order bugs — none of which
+    click/type can exercise. After it, observe() to see what changed.
+    """
+    s = _require_session()
+    err = _require_web_session(s, "press_key")
+    if err:
+        return err
+    target = ""
+    if description:
+        el, err = _resolve_or_error(s, description)
+        if err:
+            return err
+        idx = s._last_elements.index(el)
+        target = f' on "{(el.text or el.aria_label or el.placeholder or el.name or el.tag)[:50]}"'
+        _bc, _bn = len(s.browser.console_errors), len(s.browser.network_errors)
+        ok = await s.browser.press_key(key, idx, s._last_elements)
+    else:
+        _bc, _bn = len(s.browser.console_errors), len(s.browser.network_errors)
+        ok = await s.browser.press_key(key)
+    if not ok:
+        return f"press_key: failed to press {key!r} (unknown key name? use Playwright names like Escape/Enter/Tab/ArrowDown)."
+    s.steps.append(f"press_key({key!r}{(', '+repr(description)) if description else ''})")
+    _record_action(s, "press_key", f"{key}{(' on '+description) if description else ''}")
+    new_state = await s.browser.get_state()
+    s._last_elements = new_state.elements
+    return (f"Pressed {key!r}{target}.{_new_events_line(s, _bc, _bn)}\n"
+            f"Call observe() to see what changed.")
+
+
+@mcp.tool()
 async def drag_what(from_description: str, to_description: str) -> str:
     """Drag the element matching `from_description` onto `to_description`.
 
