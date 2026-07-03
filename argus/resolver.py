@@ -390,6 +390,20 @@ def resolve_element(
     if len(scored) == 1 or top_score >= runner_up + 15:
         return ResolveResult(found=scored[0][1], candidates=scored[:3], reason="unique")
 
+    # Prefix-overlap tie-break: "Delete Buy groceries" matches both the "Buy
+    # groceries" row and the "Buy groceries supplies" row equally (the shorter
+    # title's tokens are a subset of the longer's). When the top band ties,
+    # prefer the row whose context is STRICTLY TIGHTER — its parent_context
+    # tokens are a proper subset of every other tied row's — i.e. the exact row
+    # named, not a superset. Only fires when we'd otherwise be ambiguous, so it
+    # can only sharpen the pick, never mislead.
+    band = [el for sc, el in scored if sc == top_score]
+    if len(band) >= 2:
+        ctx = [(el, set(re.findall(r"[a-z0-9]+", (el.parent_context or "").lower()))) for el in band]
+        minimal = [el for el, ts in ctx if ts and all(el is o or ts < ots for o, ots in ctx)]
+        if len(minimal) == 1:
+            return ResolveResult(found=minimal[0], candidates=scored[:3], reason="unique")
+
     return ResolveResult(found=None, candidates=scored[:5], reason="ambiguous")
 
 

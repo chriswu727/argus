@@ -250,6 +250,18 @@ def test_link_resolves_by_href_and_to_is_scaffolding():
     assert resolve_element("Add to Cart", cart).found is cart[0]
 
 
+def test_row_prefix_overlap_tiebreak():
+    def row(i, title, label):
+        e = make_element(i, tag="button", text=label); e.parent_context = f"{title} Edit Delete"; return e
+    rows = [row(0, "Buy groceries", "Edit"), row(1, "Buy groceries", "Delete"),
+            row(2, "Buy groceries supplies", "Edit"), row(3, "Buy groceries supplies", "Delete")]
+    assert resolve_element("Delete Buy groceries", rows).found is rows[1]           # the exact (tighter) row
+    assert resolve_element("Delete Buy groceries supplies", rows).found is rows[3]  # superset still targetable
+    # two genuinely identical rows must stay ambiguous (no false tie-break)
+    same = [row(0, "Task A", "Delete"), row(1, "Task A", "Delete")]
+    assert resolve_element("Delete Task A", same).reason == "ambiguous"
+
+
 def test_kind_only_with_ordinal_picks_nth():
     els = [make_element(i, tag="input", type="checkbox") for i in range(5)]
     assert resolve_element("first checkbox", els).found is els[0]
