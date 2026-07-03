@@ -1046,6 +1046,16 @@ def _format_observation(state: PageState) -> str:
         for el in state.elements:
             lines.append(f"  - {describe_element(el)}")
 
+    if getattr(state, "canvases", None):
+        lines.append("")
+        lines.append("Canvas regions (pixel-drawn — NOT in the DOM above; you are partly blind here):")
+        for c in state.canvases:
+            tag = f" {c['label']!r}" if c.get("label") else (f" #{c['id']}" if c.get("id") else "")
+            lines.append(f"  canvas{tag} {c.get('w')}x{c.get('h')} at ({c.get('left')},{c.get('top')}), center ({c.get('x')},{c.get('y')})")
+        lines.append("  -> A canvas draws its UI as pixels (charts, maps, whiteboards, PDF, games). "
+                     "observe() can't read it. Call screenshot() to SEE it, then act with coordinates: "
+                     "click_at(x,y) / type_at(x,y,text) / hover_at(x,y).")
+
     if state.toast_messages:
         lines.append("")
         lines.append("Visible feedback / notifications:")
@@ -2295,6 +2305,70 @@ async def press_key(key: str, description: str = "") -> str:
     s._last_elements = new_state.elements
     return (f"Pressed {key!r}{target}.{_new_events_line(s, _bc, _bn)}\n"
             f"Call observe() to see what changed.")
+
+
+@mcp.tool()
+async def click_at(x: int, y: int) -> str:
+    """Click at viewport pixel (x, y) — the escape hatch for CANVAS/WebGL UIs.
+
+    Charts, dashboards, maps (Mapbox/Leaflet), whiteboards (Excalidraw/tldraw/
+    Figma), PDF.js viewers and WebGL games draw their UI as pixels with NO DOM
+    elements — click_what/type_into can't target them. observe() flags any canvas
+    region and its coordinates; call screenshot() to SEE the pixels, read off the
+    coordinate of what you want, then click_at(x, y).
+
+    For normal DOM pages ALWAYS prefer click_what (description-based) — pixel
+    coordinates are brittle and only justified when the target is inside a canvas.
+    """
+    s = _require_session()
+    err = _require_web_session(s, "click_at")
+    if err:
+        return err
+    _bc, _bn = len(s.browser.console_errors), len(s.browser.network_errors)
+    ok = await s.browser.click_at(x, y)
+    if not ok:
+        return f"click_at: failed to click ({x},{y})."
+    s.steps.append(f"click_at({x},{y})")
+    _record_action(s, "click_at", f"({x},{y})")
+    new_state = await s.browser.get_state()
+    s._last_elements = new_state.elements
+    return (f"Clicked at ({x},{y}).{_new_events_line(s, _bc, _bn)}\n"
+            f"Call screenshot() to SEE the canvas result (observe() can't read pixels).")
+
+
+@mcp.tool()
+async def type_at(x: int, y: int, text: str) -> str:
+    """Click (x, y) then type `text` — for a canvas-drawn text field with no DOM
+    element to resolve. Coordinate escape hatch; prefer type_into on real DOM
+    inputs. See click_at for the canvas workflow."""
+    s = _require_session()
+    err = _require_web_session(s, "type_at")
+    if err:
+        return err
+    ok = await s.browser.type_at(x, y, text)
+    if not ok:
+        return f"type_at: failed at ({x},{y})."
+    s.steps.append(f"type_at({x},{y},...)")
+    _record_action(s, "type_at", f"({x},{y})")
+    new_state = await s.browser.get_state()
+    s._last_elements = new_state.elements
+    return f"Typed at ({x},{y}). Call screenshot()/observe() to verify."
+
+
+@mcp.tool()
+async def hover_at(x: int, y: int) -> str:
+    """Move the mouse to (x, y) — for a canvas hover tooltip / hover-reveal UI
+    with no DOM element. Coordinate escape hatch; see click_at."""
+    s = _require_session()
+    err = _require_web_session(s, "hover_at")
+    if err:
+        return err
+    ok = await s.browser.hover_at(x, y)
+    if not ok:
+        return f"hover_at: failed at ({x},{y})."
+    s.steps.append(f"hover_at({x},{y})")
+    _record_action(s, "hover_at", f"({x},{y})")
+    return f"Moved mouse to ({x},{y}). Call screenshot() to see any tooltip/hover state."
 
 
 @mcp.tool()

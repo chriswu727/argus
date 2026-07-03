@@ -345,6 +345,27 @@ async def test_cross_origin_iframe_observed_and_interactive():
         outer.shutdown()
 
 
+async def test_canvas_surfaced_and_click_at_lands():
+    page = ('<html><body>'
+            '<canvas id="c" width="200" height="150" style="width:200px;height:150px"></canvas>'
+            '<div id="out">none</div>'
+            "<script>document.getElementById('c').addEventListener('click',function(e){"
+            "document.getElementById('out').textContent='CLICKED_CANVAS';});</script>"
+            '</body></html>')
+    await _session_on_page(page)
+    try:
+        st = await m._session.browser.get_state()
+        assert st.canvases and st.canvases[0]["w"] >= 40  # canvas region surfaced with its rect
+        cx, cy = st.canvases[0]["x"], st.canvases[0]["y"]
+        await (getattr(m.click_at, "fn", m.click_at))(x=cx, y=cy)
+        st2 = await m._session.browser.get_state()
+        assert "CLICKED_CANVAS" in st2.page_text  # the coordinate click landed on the canvas
+        obs = await (getattr(m.observe, "fn", m.observe))()
+        assert "Canvas regions" in obs and "click_at" in obs  # observe flags it + the escape hatch
+    finally:
+        await _end()
+
+
 async def test_press_key_escape_dismisses_modal():
     # The canonical keyboard case click/type can't do: Escape closes a modal.
     page = ('<html><body><div id="m">MODAL_OPEN</div>'
