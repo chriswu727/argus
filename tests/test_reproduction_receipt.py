@@ -248,6 +248,24 @@ class _LoginWallHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(b"<html><body><h1>Please log in to continue</h1></body></html>")
 
 
+async def test_item_lists_excludes_hidden_rows():
+    # observe must report only what a human sees: a display:none row must not
+    # appear in item_lists (it already doesn't in page_text / interactive els).
+    page = ('<html><body><ul>'
+            '<li>VisibleAlpha</li>'
+            '<li style="display:none">HiddenBeta</li>'
+            '<li>VisibleGamma</li>'
+            '</ul></body></html>')
+    await _session_on_page(page)
+    try:
+        st = await m._session.browser.get_state()
+        joined = " ".join(v for lst in st.item_lists.values() for v in lst)
+        assert "VisibleAlpha" in joined and "VisibleGamma" in joined
+        assert "HiddenBeta" not in joined  # hidden row excluded
+    finally:
+        await _end()
+
+
 async def test_click_settles_async_dom_mutation():
     # A click that triggers a DELAYED (setTimeout, no network) DOM update: observe
     # right after must see the update, i.e. click() settled the DOM first.

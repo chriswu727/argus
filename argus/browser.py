@@ -251,13 +251,26 @@ _EXTRACT_PAGE_CONTENT_JS = """
         });
     } catch(e) {}
 
-    // 5. Item lists
+    // 5. Item lists — report only rows a human can SEE. The page-text,
+    // interactive-element, and counts extractors all skip hidden nodes; this
+    // one used to not, so after a client-side hide (optimistic UI / fake-delete)
+    // it leaked display:none / visibility:hidden rows — content no one sees, and
+    // self-contradictory with the same payload's page-text. It also feeds the
+    // reproduction receipt (_text_in_state), so a stale-invisible row could taint
+    // verification. Filter both the container and its items.
     try {
+        const _shown = (el) => {
+            const s = window.getComputedStyle(el);
+            if (s.display === 'none' || s.visibility === 'hidden') return false;
+            const r = el.getBoundingClientRect();
+            return r.width > 0 && r.height > 0;
+        };
         document.querySelectorAll('.card, .list, ul, ol').forEach(container => {
-            const items = container.querySelectorAll('.task-item, .list-item, li, tr');
+            if (!_shown(container)) return;
+            const items = Array.from(container.querySelectorAll('.task-item, .list-item, li, tr')).filter(_shown);
             if (items.length >= 2) {
                 const key = (container.className || container.tagName).slice(0, 50);
-                result.itemLists[key] = Array.from(items).map(it => it.textContent.trim().slice(0, 200));
+                result.itemLists[key] = items.map(it => it.textContent.trim().slice(0, 200));
             }
         });
     } catch(e) {}
