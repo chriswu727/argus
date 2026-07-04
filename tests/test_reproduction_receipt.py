@@ -388,6 +388,22 @@ async def test_click_at_below_fold_canvas_scrolls_and_lands():
         await _end()
 
 
+async def test_record_bug_string_steps_not_char_split():
+    await _session_on_page('<html><body><button>X</button></body></html>')
+    try:
+        rb = getattr(m.record_bug, "fn", m.record_bug)
+        # a newline-joined string (a very common model shape) -> one step per line
+        await rb(title="Newline steps bug", severity="low",
+                 evidence={"steps": "Open the page\nClick X\nSee the error"})
+        assert m._session.bugs[-1].steps_to_reproduce == ["Open the page", "Click X", "See the error"]
+        # a single string with no newlines -> one step, NOT one <li> per character
+        await rb(title="One-line steps bug", severity="low",
+                 evidence={"steps": "Just one step here"})
+        assert m._session.bugs[-1].steps_to_reproduce == ["Just one step here"]
+    finally:
+        await _end()
+
+
 async def test_receipt_scroll_search_finds_virtualized_row():
     # Window-virtualized list: only rows near window.scrollY are in the DOM.
     page = ('<html><body><div id="c" style="height:5000px;position:relative"></div>'
