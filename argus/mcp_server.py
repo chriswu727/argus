@@ -3516,6 +3516,43 @@ async def screenshot_diff(
 
 
 @mcp.tool()
+async def get_downloads() -> str:
+    """List files DOWNLOADED this session (Export CSV, Download invoice / PDF /
+    report) with each file's name, byte size, and a text preview of its contents.
+
+    Downloads are otherwise a BLIND SPOT — observe/click_what/get_errors show
+    nothing when a button triggers a download, so a broken export (empty CSV,
+    header-only with zero data rows, 0-byte PDF, wrong file) silently passes as if
+    it worked. After clicking an export/download control, call this to VERIFY the
+    file actually downloaded AND its contents are right, then record_bug with the
+    filename+size+preview as your reproduction evidence. A download control that
+    fires NO download at all is itself a bug.
+    """
+    s = _require_session()
+    err = _require_web_session(s, "get_downloads")
+    if err:
+        return err
+    dls = await s.browser.downloads_snapshot()
+    if not dls:
+        return ("No downloads captured this session. If you just clicked an "
+                "export/download control and nothing arrived here, the download "
+                "never fired — that is a bug worth recording.")
+    lines = [f"{len(dls)} download(s) captured:"]
+    for d in dls:
+        sz = d.get("size")
+        szs = f"{sz} bytes" if sz is not None else "unreadable"
+        lines.append(f"  - {d.get('filename') or '(no filename)'} — {szs}  [{d.get('url') or ''}]")
+        if sz is not None and sz < 50:
+            lines.append(f"    [SUSPICIOUS: only {sz} bytes — likely an empty/broken export]")
+        pv = d.get("preview")
+        if pv:
+            lines.append(f"    preview: {pv[:300]!r}")
+        if d.get("error"):
+            lines.append(f"    (could not read file: {d['error']})")
+    return "\n".join(lines)
+
+
+@mcp.tool()
 async def get_errors() -> str:
     """Drain captured browser events (console errors, HTTP 4xx/5xx) since
     the last call.

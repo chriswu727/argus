@@ -528,6 +528,10 @@ class BrowserDriver:
         self._page: Optional[Page] = None
         self.console_errors: List[Dict] = []
         self.network_errors: List[Dict] = []
+        # Downloads triggered this session (Export CSV / Download invoice / PDF).
+        # Playwright Download objects — resolved to name+bytes lazily on query so
+        # the agent can VERIFY an export actually fired and isn't empty/corrupt.
+        self._downloads: List[object] = []
         # Full request/response log — every HTTP call this session has
         # made, regardless of status. Used by network_requests / network_request
         # tools so the agent can verify "did the right /api/foo get called
@@ -548,7 +552,8 @@ class BrowserDriver:
     async def start(self):
         self._playwright = await async_playwright().start()
         self._browser = await self._playwright.chromium.launch(headless=self.headless)
-        self._context = await self._browser.new_context(viewport=self.viewport)
+        self._context = await self._browser.new_context(
+            viewport=self.viewport, accept_downloads=True)
         self._context.on("page", self._on_new_page)
         self._page = await self._context.new_page()
         self._attach_page_listeners(self._page)
@@ -579,6 +584,7 @@ class BrowserDriver:
         page.on("response", self._on_response)
         page.on("requestfailed", self._on_request_failed)
         page.on("dialog", self._on_dialog)
+        page.on("download", self._on_download)
         try:
             page._argus_attached = True
         except Exception:
@@ -716,6 +722,46 @@ class BrowserDriver:
             })
         except Exception:
             pass
+
+    def _on_download(self, download):
+        """A download fired (Export CSV / Download invoice / PDF report). Store
+        the Playwright Download object; its file is resolved to name+bytes lazily
+        in downloads_snapshot so the agent can verify the export isn't
+        empty/corrupt — a common blind spot no other Argus surface catches."""
+        try:
+            self._downloads.append(download)
+        except Exception:
+            pass
+
+    async def downloads_snapshot(self, preview_bytes: int = 2000) -> List[Dict]:
+        """Resolve captured downloads to {filename, size, url, preview}. Reads the
+        saved file so the agent can confirm content (header-only CSV, 0-byte PDF)."""
+        out: List[Dict] = []
+        for dl in self._downloads:
+            entry: Dict = {}
+            try:
+                entry["filename"] = dl.suggested_filename
+            except Exception:
+                entry["filename"] = None
+            try:
+                entry["url"] = dl.url
+            except Exception:
+                entry["url"] = None
+            try:
+                path = await dl.path()  # local temp path Playwright saved it to
+                with open(path, "rb") as fh:
+                    data = fh.read()
+                entry["size"] = len(data)
+                try:
+                    entry["preview"] = data[:preview_bytes].decode("utf-8", "replace")
+                except Exception:
+                    entry["preview"] = None
+            except Exception as e:
+                entry["size"] = None
+                entry["preview"] = None
+                entry["error"] = str(e)[:120]
+            out.append(entry)
+        return out
 
     # -- network mocking --
 
