@@ -310,6 +310,20 @@ def resolve_element(
     if not elements:
         return ResolveResult(found=None, candidates=[], reason="no_elements")
 
+    # BEFORE any kind-stripping: if the description verbatim equals exactly one
+    # element's label, that IS the answer. A bare kind-word label ("Menu",
+    # "Switch", "Radio", "Dropdown") would otherwise be stripped to nothing and
+    # then mis-resolve to an unrelated SAME-KIND element (a <select> for "Menu")
+    # as a confident wrong pick. A literal label always wins. Skipped when the
+    # caller pinned an explicit kind (select_into/type_into) so we don't hand
+    # them a kind-incompatible element.
+    if kind_filter is None:
+        _norm = " ".join(description.lower().split())
+        verbatim = [el for el in elements if _label_equals(el, _norm)]
+        if len(verbatim) == 1:
+            return ResolveResult(found=verbatim[0],
+                                 candidates=[(110, verbatim[0])], reason="unique")
+
     # Kind hint comes from the full description; the ordinal token (if any)
     # carries no kind word, so detect kind before stripping anything.
     raw_tokens, hinted_kind = _strip_kind(description)
