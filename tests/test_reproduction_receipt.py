@@ -442,6 +442,24 @@ async def test_observe_shows_aria_expanded_pressed_current():
         await _end()
 
 
+async def test_type_into_contenteditable_rich_text_editor():
+    # Quill/ProseMirror/Draft pattern: a contenteditable editor labelled only by a
+    # data-placeholder — must be targetable AND typeable (was an unlabelled div
+    # that type_into refused because kind != input).
+    from argus.resolver import describe, kind_of
+    page = ('<html><body><div id="ed" class="ql-editor" contenteditable="true" '
+            'style="min-height:80px" data-placeholder="Compose an epic story"></div></body></html>')
+    await _session_on_page(page)
+    try:
+        ed = [e for e in (await m._session.browser.get_state()).elements if e.type == "contenteditable"][0]
+        assert "Compose an epic" in describe(ed)   # data-placeholder becomes the label
+        assert kind_of(ed) == "input"              # so type_into will target it
+        await (getattr(m.type_into, "fn", m.type_into))(description="Compose an epic", text="Hello editor")
+        assert "Hello editor" in (await m._session.browser._page.locator("#ed").text_content())
+    finally:
+        await _end()
+
+
 async def test_observe_labels_custom_combobox_by_control_text():
     # react-select/Downshift pattern: an unlabelled role=combobox input inside a
     # control container whose visible text is the placeholder/selected value.
