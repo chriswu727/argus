@@ -128,6 +128,18 @@ _EXTRACT_ELEMENTS_JS = """
             checked: (el.type === 'checkbox' || el.type === 'radio') ? el.checked
                      : (el.getAttribute('aria-checked') === 'true' ? true
                         : (el.getAttribute('aria-checked') === 'false' ? false : null)),
+            // Compact ARIA STATE — is a dropdown/accordion open (expanded), a
+            // toggle button pressed, a nav item current? All invisible otherwise:
+            // a collapsed and an expanded disclosure button look identical.
+            aria_state: (function(){
+                var s = [];
+                var e = el.getAttribute('aria-expanded');
+                if (e === 'true') s.push('expanded'); else if (e === 'false') s.push('collapsed');
+                if (el.getAttribute('aria-pressed') === 'true') s.push('pressed');
+                var c = el.getAttribute('aria-current');
+                if (c && c !== 'false') s.push('current');
+                return s.length ? s.join(' ') : null;
+            })(),
             disabled: el.disabled || false,
             role: el.getAttribute('role') || null,
             // Fall back to the field's VISIBLE label (a person targets a form
