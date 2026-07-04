@@ -442,6 +442,20 @@ async def test_observe_shows_aria_expanded_pressed_current():
         await _end()
 
 
+async def test_observe_labels_custom_combobox_by_control_text():
+    # react-select/Downshift pattern: an unlabelled role=combobox input inside a
+    # control container whose visible text is the placeholder/selected value.
+    page = ('<html><body>'
+            '<div class="my-select__control"><div class="my-select__value">Ocean</div>'
+            '<input role="combobox" aria-expanded="false"></div></body></html>')
+    await _session_on_page(page)
+    try:
+        combos = [e for e in (await m._session.browser.get_state()).elements if e.role == "combobox"]
+        assert combos and "Ocean" in (combos[0].aria_label or "")  # control text -> targetable label
+    finally:
+        await _end()
+
+
 async def test_observe_select_shows_label_and_selected_option():
     from argus.resolver import describe
     page = ('<html><body>'

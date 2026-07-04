@@ -182,6 +182,15 @@ _EXTRACT_ELEMENTS_JS = """
                 var lb = el.getAttribute('aria-labelledby'); if (lb) { var t2 = doc.getElementById(lb); if (pick(t2)) return pick(t2); }
                 var p = el.previousElementSibling;
                 while (p) { if (p.tagName === 'LABEL' && pick(p)) return pick(p); if (p.tagName === 'INPUT' || p.tagName === 'SELECT' || p.tagName === 'TEXTAREA') break; p = p.previousElementSibling; }
+                // Custom combobox (react-select, Downshift, etc.): the visible
+                // placeholder / selected value lives in a control container div,
+                // not a <label>, so an unlabelled combobox input is otherwise
+                // untargetable. Use the control's visible text ("Select...", or
+                // the current value like "Ocean").
+                if (el.getAttribute('role') === 'combobox' || el.getAttribute('aria-haspopup') === 'listbox') {
+                    var ctrl = el.closest('[class*="control"], [class*="combobox"], [class*="Select"]');
+                    if (ctrl && ctrl !== el) { var ct = ctrl.textContent ? ctrl.textContent.trim() : ''; if (ct) return ct.slice(0, 100); }
+                }
                 return null;
             })() || null,
             name: el.name || null,
