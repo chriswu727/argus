@@ -388,6 +388,25 @@ async def test_click_at_below_fold_canvas_scrolls_and_lands():
         await _end()
 
 
+async def test_resize_sweeps_responsive_breakpoint():
+    page = ('<html><head><style>'
+            '.mobile{display:none}@media(max-width:768px){.desktop{display:none}.mobile{display:block}}'
+            '</style></head><body>'
+            '<button class="desktop">DesktopNav</button>'
+            '<button class="mobile">Hamburger</button></body></html>')
+    await _session_on_page(page)
+    try:
+        rz = getattr(m.resize, "fn", m.resize)
+        await rz(width=1280, height=800)
+        l1 = " ".join((e.text or "") for e in (await m._session.browser.get_state()).elements)
+        assert "DesktopNav" in l1 and "Hamburger" not in l1     # desktop layout
+        await rz(width=375, height=800)
+        l2 = " ".join((e.text or "") for e in (await m._session.browser.get_state()).elements)
+        assert "Hamburger" in l2 and "DesktopNav" not in l2      # mobile layout after resize
+    finally:
+        await _end()
+
+
 async def test_observe_excludes_opacity0_ancestor_subtree():
     # opacity is not inherited, so a button inside an opacity:0 fade-menu has its
     # OWN opacity 1 — it used to leak into observe. checkVisibility catches it.

@@ -1459,6 +1459,18 @@ class BrowserDriver:
         except Exception:
             return False
 
+    async def resize(self, width: int, height: int) -> bool:
+        """Resize the viewport in-session (keeps page state) so the agent can
+        sweep responsive breakpoints — Playwright's set_viewport_size, then settle
+        so a media-query relayout (hamburger appears, content reflows) is visible."""
+        try:
+            await self._page.set_viewport_size({"width": int(width), "height": int(height)})
+            self.viewport = {"width": int(width), "height": int(height)}
+            await self._settle_dom()
+            return True
+        except Exception:
+            return False
+
     async def drag(
         self, source_index: int, target_index: int,
         elements: List[InteractiveElement],

@@ -2308,6 +2308,33 @@ async def press_key(key: str, description: str = "") -> str:
 
 
 @mcp.tool()
+async def resize(width: int, height: int) -> str:
+    """Resize the viewport mid-session to test RESPONSIVE layouts.
+
+    Real users are on phones, tablets and desktops, and mobile-only bugs (a
+    hamburger that never appears, content that doesn't reflow, an overlay that
+    covers the page, tap targets that overlap) are exactly the class scripted E2E
+    misses. Unlike opening a fresh session at a mobile width, this keeps your
+    current state (logged in, cart filled, form typed) so you can compare the SAME
+    page across breakpoints and test the transition itself. Common widths: 375
+    (mobile), 414 (large phone), 768 (tablet), 1280/1440 (desktop). After it,
+    observe() to see the reflowed layout.
+    """
+    s = _require_session()
+    err = _require_web_session(s, "resize")
+    if err:
+        return err
+    ok = await s.browser.resize(width, height)
+    if not ok:
+        return f"resize: failed to set viewport {width}x{height}."
+    s.steps.append(f"resize({width}x{height})")
+    _record_action(s, "resize", f"{width}x{height}")
+    new_state = await s.browser.get_state()
+    s._last_elements = new_state.elements
+    return f"Viewport now {width}x{height}. Call observe() to see the responsive layout."
+
+
+@mcp.tool()
 async def click_at(x: int, y: int) -> str:
     """Click at viewport pixel (x, y) — the escape hatch for CANVAS/WebGL UIs.
 
