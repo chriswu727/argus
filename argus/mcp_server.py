@@ -431,6 +431,14 @@ def _visible_text_in_state(text: str, state: PageState) -> bool:
     return False
 
 
+def _short(text: str, n: int = 60) -> str:
+    """Truncate to a WORD boundary with an ellipsis (never mid-word like [:60],
+    which produced timeline labels ending in 'persiste' / 'Pendi')."""
+    import textwrap
+    t = " ".join((text or "").split())
+    return textwrap.shorten(t, width=n, placeholder="…") if t else ""
+
+
 async def _present_with_scroll(s: "Session", target: str, initial_state,
                                visible_only: bool = False, max_scrolls: int = 20) -> bool:
     """Presence check robust to VIRTUALIZED / infinite / below-the-fold lists.
@@ -3614,9 +3622,11 @@ async def get_errors() -> str:
     ))
 
     if new_bugs:
-        ss_path = await _auto_screenshot(
-            s, f"error_{len(s.bugs) + 1}", f"Error detected on {current_url}"
-        )
+        # Name the actual error so two error cards on the same URL are
+        # distinguishable in the timeline (was a generic "Error detected on URL").
+        label = (_short(new_bugs[0].title, 70) if len(new_bugs) == 1
+                 else f"{len(new_bugs)} errors on {current_url}")
+        ss_path = await _auto_screenshot(s, f"error_{len(s.bugs) + 1}", label)
         for bug in new_bugs:
             bug.screenshot_path = ss_path
 
@@ -3746,8 +3756,17 @@ async def record_bug(
         if isinstance(raw, str):
             # A model very often passes steps as ONE string (a sentence or a
             # newline-joined list). list()-ing that explodes it into individual
-            # CHARACTERS — one <li> per letter in the report. Split on lines.
-            steps = [ln.strip(" -*\t") for ln in raw.splitlines() if ln.strip()] or [raw]
+            # CHARACTERS — one <li> per letter in the report. Split on lines, and
+            # if it's a single line with INLINE numbering ("1. a 2. b 3. c"), split
+            # on the number markers so each becomes its own step.
+            parts = [ln.strip(" -*\t") for ln in raw.splitlines() if ln.strip()]
+            if len(parts) <= 1:
+                one = parts[0] if parts else raw
+                inline = re.split(r'(?:^|\s+)\d+[.)]\s+', one)
+                parts = [p for p in (x.strip() for x in inline) if p]
+            # strip any leading "N." / "N)" left on a step so the <ol> supplies
+            # the sole numbering (no "1. 1. ..." double-numbering).
+            steps = [re.sub(r'^\s*\d+[.)]\s*', '', p) for p in parts] or [raw]
         elif isinstance(raw, (list, tuple)):
             steps = [str(x) for x in raw]
         else:
@@ -3787,14 +3806,14 @@ async def record_bug(
         pass
     elif screenshot_directive in ("auto", "", None):
         label = "bug_" + "".join(c if c.isalnum() else "_" for c in title.lower())[:40]
-        screenshot_path = await _auto_screenshot(s, label, f"record_bug: {title[:60]}")
+        screenshot_path = await _auto_screenshot(s, label, f"record_bug: {_short(title, 60)}")
     elif "/" in screenshot_directive or screenshot_directive.endswith(".png"):
         # Treat as an existing path
         screenshot_path = screenshot_directive
     else:
         # Treat as a label for a fresh screenshot
         label = "".join(c if c.isalnum() else "_" for c in screenshot_directive.lower())[:40]
-        screenshot_path = await _auto_screenshot(s, label, f"record_bug: {title[:60]}")
+        screenshot_path = await _auto_screenshot(s, label, f"record_bug: {_short(title, 60)}")
 
     # Lower the barrier to engaging the receipt: if no explicit verify clause was
     # passed but the evidence dict carries a checkable target, build one from it.

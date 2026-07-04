@@ -61,7 +61,9 @@ def _repro_badge(receipt: Optional[dict]) -> str:
         if is_replay:
             label = f"VERIFIED · reproduced by replaying {receipt.get('steps', '?')} steps from a cold start"
         else:
-            label = f"VERIFIED · reproduced {receipt.get('runs', '')} from clean load"
+            runs = str(receipt.get("runs", "")).replace("/", " of ")
+            label = (f"VERIFIED · reproduced on {runs} clean reloads"
+                     if runs.strip() else "VERIFIED · reproduced on a clean reload")
         color = "#1a7f37"
     elif reproduced is False:
         if is_replay:
@@ -90,12 +92,19 @@ def _repro_detail(receipt: Optional[dict]) -> str:
     reproduced = receipt.get("reproduced")
     if not target or reproduced is None:
         return ""
-    expect = receipt.get("expect") or "present"
-    where = receipt.get("at_url") or ""
-    where_s = f" at {where}" if where else ""
-    verb = "Independently confirmed" if reproduced is True else "Could not independently confirm"
-    return (f'<div class="rd">{_esc(verb)}: expected <code>{_esc(str(target))}</code> '
-            f'{_esc(str(expect))}{_esc(where_s)} on a fresh load.</div>')
+    expect = (receipt.get("expect") or "present").strip().lower()
+    # Collapse any literal newlines/whitespace the model baked into the target.
+    tgt = " ".join(str(target).split())
+    state = "present on the page" if expect == "present" else "absent from the page"
+    if reproduced is True:
+        # A plain human sentence, not "expected X absent". The card already shows
+        # the URL right above, so don't repeat it here.
+        body = f'Independently confirmed on a fresh load: <code>{_esc(tgt)}</code> is {state}.'
+    else:
+        want = "present" if expect == "present" else "absent"
+        body = (f'Could not independently confirm on a fresh load: '
+                f'<code>{_esc(tgt)}</code> was expected {want}, but the re-check disagreed.')
+    return f'<div class="rd">{body}</div>'
 
 
 def _embed_image(path: str) -> Optional[str]:
@@ -128,6 +137,9 @@ def _format_steps(steps: List[str]) -> str:
     ("click Load More" x2) and trim a long setup preamble to the actionable tail,
     noting what was omitted. A real bug report is the minimal path to the symptom,
     not the agent's entire wandering journey."""
+    import re
+    # Strip a leading "1." / "2)" the model left on a step — the <ol> numbers it.
+    steps = [re.sub(r'^\s*\d+[.)]\s*', '', s).strip() for s in steps if s and s.strip()]
     collapsed: List[list] = []
     for s in steps:
         if collapsed and collapsed[-1][0] == s:
@@ -234,7 +246,11 @@ class Reporter:
             console = ""
             if bug.console_logs:
                 logs = "\n".join(bug.console_logs)
-                console = f'<div class="cl"><strong>Console:</strong><pre>{_esc(logs)}</pre></div>'
+                # A Console Error card already names the error in its headline; the
+                # type badge says "Console Error" too. Don't print the same string
+                # a third time in a <pre> when the title already contains it.
+                if " ".join(logs.lower().split()) not in " ".join(bug.title.lower().split()):
+                    console = f'<div class="cl"><strong>Console:</strong><pre>{_esc(logs)}</pre></div>'
             network = ""
             for nl in bug.network_logs:
                 network += (

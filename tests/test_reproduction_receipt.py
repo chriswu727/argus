@@ -400,6 +400,10 @@ async def test_record_bug_string_steps_not_char_split():
         await rb(title="One-line steps bug", severity="low",
                  evidence={"steps": "Just one step here"})
         assert m._session.bugs[-1].steps_to_reproduce == ["Just one step here"]
+        # inline-numbered run-on "1. a 2. b 3. c" -> three clean steps (no numbers)
+        await rb(title="Inline numbered bug", severity="low",
+                 evidence={"steps": "1. Open /new 2. Fill title 3. Click Save"})
+        assert m._session.bugs[-1].steps_to_reproduce == ["Open /new", "Fill title", "Click Save"]
     finally:
         await _end()
 
