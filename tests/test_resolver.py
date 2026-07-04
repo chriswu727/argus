@@ -271,6 +271,15 @@ def test_aria_widget_kind_and_targeting():
     assert resolve_element("Volume slider", [sl, sw]).found is sl
 
 
+def test_column_is_a_stopword():
+    from argus.models import InteractiveElement as E
+    els = [E(index=0, tag="button", aria_label="Salary: Activate to sort"),
+           E(index=1, tag="button", aria_label="Name: Activate to sort")]
+    # "column"/"header" are table-structure scaffolding (like "row"), not content
+    assert resolve_element("Salary column header", els).found is els[0]
+    assert resolve_element("the Salary column", els).found is els[0]
+
+
 def test_kind_word_label_resolves_verbatim_not_wrong_kind():
     from argus.models import InteractiveElement as E
     page = [E(index=0, tag="button", aria_label="Menu"),
