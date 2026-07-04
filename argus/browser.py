@@ -202,7 +202,7 @@ _EXTRACT_ELEMENTS_JS = """
                     if (ctrl && ctrl !== el) { var ct = ctrl.textContent ? ctrl.textContent.trim() : ''; if (ct) return ct.slice(0, 100); }
                 }
                 return null;
-            })() || null,
+            })() || el.getAttribute('title') || null,
             name: el.name || null,
             id: el.id || null,
             parent_context: (el.closest('li, tr, .card, .list-item, [class*="item"], [class*="row"]') || {}).textContent?.trim()?.slice(0, 200) || null,

@@ -271,6 +271,15 @@ def test_aria_widget_kind_and_targeting():
     assert resolve_element("Volume slider", [sl, sw]).found is sl
 
 
+def test_describe_prefers_aria_for_icon_buttons():
+    from argus.models import InteractiveElement as E
+    # a glyph-text icon button shows its descriptive aria-label, not the symbol
+    assert describe(E(index=0, tag="a", text="+", aria_label="Zoom in")).startswith('link "Zoom in"')
+    assert 'Page 2' in describe(E(index=0, tag="button", text="2", aria_label="Page 2"))
+    # a normal text button keeps its visible text (the label a human reads)
+    assert describe(E(index=0, tag="button", text="Save", aria_label="Save changes")).startswith('button "Save"')
+
+
 def test_column_is_a_stopword():
     from argus.models import InteractiveElement as E
     els = [E(index=0, tag="button", aria_label="Salary: Activate to sort"),
