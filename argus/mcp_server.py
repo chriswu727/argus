@@ -1203,6 +1203,26 @@ def _toast_line(toasts) -> str:
             "verify the data actually persisted on a fresh load before trusting it.)")
 
 
+_STATE_CHANGE_VERBS = ("delete", "remove", "save", "add ", "create", "submit",
+                       "update", "toggle", "apply", "confirm", "publish", "post ",
+                       "send", "checkout", "pay", "complete", "archive", "mark ", "sign up")
+
+
+def _verify_nudge(label: str, had_toast: bool) -> str:
+    """After a state-changing click, nudge the agent to verify_persistence. The
+    persistence-lie bugs (fake delete, off-by-one count, lying 'Saved' toast) are
+    the SIGNATURE class the reproduction receipt exists for, but agents chronically
+    trust the UI's success feedback instead of re-loading to confirm — so recall of
+    exactly the bugs Argus is best at drops. Skip if a toast already carried the
+    same warning (avoid double-nagging)."""
+    lo = f" {(label or '').lower().strip()} "
+    if not had_toast and any(v in lo for v in _STATE_CHANGE_VERBS):
+        return ("\n  Persistence check: that was a state-changing action — the UI response "
+                "is a CLAIM, not proof. Call verify_persistence(expect=..., target_text=...) "
+                "on a fresh load; fake deletes, lying 'Saved' toasts, and off-by-one counts hide here.")
+    return ""
+
+
 def _new_events_line(s, before_console: int, before_network: int) -> str:
     """One-line surface of console/network errors that fired since the given
     counts — a PEEK, not a drain (get_errors still records them as findings).
@@ -2199,6 +2219,7 @@ async def click_what(description: str) -> str:
         f'Clicked "{label[:60]}" (via description {description!r}).\n'
         f"Now on: {new_state.url} — {len(new_state.elements)} interactive elements visible."
         f"{_toast_line(new_state.toast_messages)}"
+        f"{_verify_nudge(label, bool(new_state.toast_messages))}"
         f"{_new_events_line(s, _bc, _bn)}\n"
         f"Call observe() to see what changed."
     )
