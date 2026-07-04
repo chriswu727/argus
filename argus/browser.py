@@ -1611,6 +1611,26 @@ class BrowserDriver:
         except Exception:
             return False
 
+    async def drag_at(self, from_x: int, from_y: int, to_x: int, to_y: int) -> bool:
+        """Coordinate drag: mousedown at (from), INCREMENTAL moves to (to),
+        mouseup. Incremental moves are required so mouse-based drag libs
+        (Sortable.js / Trello / react-beautiful-dnd) register mousemove and
+        reorder — a single jump doesn't trigger them. The escape hatch for
+        draggables with no DOM marker, plus canvas draw/resize and slider thumbs."""
+        try:
+            await self._page.mouse.move(from_x, from_y)
+            await self._page.mouse.down()
+            steps = 12
+            for i in range(1, steps + 1):
+                await self._page.mouse.move(
+                    from_x + (to_x - from_x) * i / steps,
+                    from_y + (to_y - from_y) * i / steps)
+            await self._page.mouse.up()
+            await self._settle_dom()
+            return True
+        except Exception:
+            return False
+
     async def resize(self, width: int, height: int) -> bool:
         """Resize the viewport in-session (keeps page state) so the agent can
         sweep responsive breakpoints — Playwright's set_viewport_size, then settle

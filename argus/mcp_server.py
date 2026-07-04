@@ -2459,6 +2459,32 @@ async def type_at(x: int, y: int, text: str) -> str:
 
 
 @mcp.tool()
+async def drag_at(from_x: int, from_y: int, to_x: int, to_y: int) -> str:
+    """Drag by COORDINATES — press at (from_x,from_y), move to (to_x,to_y), release.
+
+    The escape hatch for draggables Argus can't target by description: mouse-based
+    sortable/reorder lists (Sortable.js, Trello, react-beautiful-dnd) whose items
+    carry NO DOM marker, canvas drawing/resize, slider thumbs, map panning. Get
+    coordinates from observe (a canvas region's center) or a screenshot. For a
+    normal drag between two DESCRIBED elements, prefer drag_what — coordinates are
+    brittle and only for what can't be targeted otherwise.
+    """
+    s = _require_session()
+    err = _require_web_session(s, "drag_at")
+    if err:
+        return err
+    ok = await s.browser.drag_at(from_x, from_y, to_x, to_y)
+    if not ok:
+        return f"drag_at: failed to drag ({from_x},{from_y}) -> ({to_x},{to_y})."
+    s.steps.append(f"drag_at(({from_x},{from_y})->({to_x},{to_y}))")
+    _record_action(s, "drag_at", f"({from_x},{from_y})->({to_x},{to_y})")
+    new_state = await s.browser.get_state()
+    s._last_elements = new_state.elements
+    return (f"Dragged ({from_x},{from_y}) -> ({to_x},{to_y}). "
+            f"Call observe()/screenshot() to see the result.")
+
+
+@mcp.tool()
 async def hover_at(x: int, y: int) -> str:
     """Move the mouse to (x, y) — for a canvas hover tooltip / hover-reveal UI
     with no DOM element. Coordinate escape hatch; see click_at."""

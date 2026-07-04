@@ -442,6 +442,25 @@ async def test_observe_shows_aria_expanded_pressed_current():
         await _end()
 
 
+async def test_drag_at_coordinate_drag_fires_mouse_sequence():
+    # coordinate drag for mouse-based draggables (Sortable.js/Trello) with no DOM
+    # marker: mousedown -> incremental mousemove -> mouseup must all fire.
+    page = ('<html><body>'
+            '<div id="area" style="width:300px;height:200px;border:1px solid #000"></div>'
+            '<div id="out">idle</div>'
+            "<script>var down=false;var a=document.getElementById('area');"
+            "a.addEventListener('mousedown',function(){down=true;});"
+            "document.addEventListener('mousemove',function(){if(down)document.getElementById('out').textContent='DRAGGING';});"
+            "document.addEventListener('mouseup',function(){if(down){document.getElementById('out').textContent='DRAGGED';down=false;}});"
+            '</script></body></html>')
+    await _session_on_page(page)
+    try:
+        await (getattr(m.drag_at, "fn", m.drag_at))(from_x=60, from_y=60, to_x=200, to_y=150)
+        assert await m._session.browser._page.locator("#out").text_content() == "DRAGGED"
+    finally:
+        await _end()
+
+
 async def test_observe_captures_clickable_calendar_day_cells():
     from argus.resolver import resolve_element
     # roving-tabindex calendar (react-datepicker): day cells are role=gridcell +
