@@ -441,6 +441,8 @@ def describe(el: InteractiveElement) -> str:
             parts.append(f"(near: {ctx!r})")
     if getattr(el, "frame", None):
         parts.append("[in iframe]")
+    if el.disabled:
+        parts.append("[disabled]")
     return " ".join(parts)
 
 
