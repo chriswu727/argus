@@ -260,6 +260,19 @@ def test_single_char_discriminator_rows():
     assert resolve_element("Delete Task 2", rows).found is rows[3]
 
 
+def test_kind_word_label_resolves_verbatim_not_wrong_kind():
+    from argus.models import InteractiveElement as E
+    page = [E(index=0, tag="button", aria_label="Menu"),
+            E(index=1, tag="a", text="Home", href="/"),
+            E(index=2, tag="select", name="country", text="United States")]
+    # "Menu" is a kind word but here it's a literal label -> the button, NOT the
+    # unrelated <select> (which it used to hijack as a confident wrong pick)
+    assert resolve_element("Menu", page).found is page[0]
+    assert resolve_element("menu", page).found is page[0]
+    # an explicit kind filter (select_into) still pins the real select
+    assert resolve_element("Menu", page, kind_filter="select").found is page[2]
+
+
 def test_hash_n_identifier_vs_positional():
     def issue(i, num, title):
         e = make_element(i, tag="button", text="Delete"); e.parent_context = f"#{num} {title}"; return e
