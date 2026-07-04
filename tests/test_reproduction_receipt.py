@@ -434,6 +434,40 @@ async def test_drop_file_onto_dropzone_with_real_bytes():
         _os.unlink(fpath)
 
 
+async def test_click_does_not_fail_on_click_triggered_hang():
+    import time as _time
+
+    class _H(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            if self.path == "/hang":
+                _time.sleep(30)  # the click's fetch never resolves
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.end_headers()
+            self.wfile.write(b'<html><body><button id="b" onclick="go()">Load data</button>'
+                             b'<div id="r">idle</div>'
+                             b"<script>function go(){document.getElementById('r').textContent='CLICK_DONE';"
+                             b"fetch('/hang');}</script></body></html>")
+
+    class _S(socketserver.ThreadingTCPServer):
+        allow_reuse_address = True
+        daemon_threads = True
+    srv = _S(("127.0.0.1", 0), _H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    await _start_session_url(f"http://127.0.0.1:{srv.server_address[1]}/")
+    try:
+        res = await (getattr(m.click_what, "fn", m.click_what))(description="Load data button")
+        assert "failed" not in res.lower()  # click succeeded despite the hanging fetch it started
+        assert "CLICK_DONE" in (await m._session.browser.get_state()).page_text
+    finally:
+        await _end()
+        srv.shutdown()
+
+
 async def test_goto_survives_never_resolving_fetch():
     import time as _time
 
