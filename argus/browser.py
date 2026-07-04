@@ -94,7 +94,7 @@ def _capture_body(raw: bytes, headers: dict) -> Optional[str]:
 # Playwright's :has-text engine doesn't pierce shadow — see _build_selector).
 _EXTRACT_ELEMENTS_JS = """
 () => {
-    const sel = 'a, button, input, select, textarea, [contenteditable="true"], [contenteditable=""], [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="checkbox"], [role="radio"], [role="switch"], [role="combobox"], [role="textbox"], [role="slider"], [role="spinbutton"], [role="option"], [role="menuitemcheckbox"], [role="menuitemradio"], [onclick], [tabindex]:not([tabindex="-1"]), [draggable="true"]';
+    const sel = 'a, button, input, select, textarea, [contenteditable="true"], [contenteditable=""], [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="checkbox"], [role="radio"], [role="switch"], [role="combobox"], [role="textbox"], [role="slider"], [role="spinbutton"], [role="option"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="gridcell"], [onclick], [tabindex]:not([tabindex="-1"]), [draggable="true"]';
     const MAX = 400;
     const out = [];
     const seen = new Set();
@@ -120,6 +120,11 @@ _EXTRACT_ELEMENTS_JS = """
             ? el.checkVisibility({opacityProperty: !_skipOpacity, visibilityProperty: true, contentVisibilityAuto: true})
             : (style.display !== 'none' && style.visibility !== 'hidden' && (_skipOpacity || style.opacity !== '0'));
         if (!_vis || rect.width === 0 || rect.height === 0 || rect.right <= 0) return;
+        // role=gridcell is broad (data grids AND calendar days). Keep only the
+        // CLICKABLE ones (cursor:pointer) so a date-picker's day cells — which use
+        // the roving-tabindex pattern (only the selected day is tabindex=0) — are
+        // targetable, without flooding observe with a data grid's display cells.
+        if (el.getAttribute('role') === 'gridcell' && style.cursor !== 'pointer') return;
         const doc = el.ownerDocument;  // frame-local: label lookups must use the element's own document
         out.push({
             index: out.length,

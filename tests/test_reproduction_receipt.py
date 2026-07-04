@@ -442,6 +442,25 @@ async def test_observe_shows_aria_expanded_pressed_current():
         await _end()
 
 
+async def test_observe_captures_clickable_calendar_day_cells():
+    from argus.resolver import resolve_element
+    # roving-tabindex calendar (react-datepicker): day cells are role=gridcell +
+    # cursor:pointer, most tabindex=-1 (only the focused day is 0). All clickable
+    # days must be targetable; a data grid's non-clickable cells must NOT flood in.
+    page = ('<html><body>'
+            '<div role="gridcell" aria-label="July 15" tabindex="-1" style="cursor:pointer;width:30px;height:30px">15</div>'
+            '<div role="gridcell" aria-label="July 16" tabindex="0" style="cursor:pointer;width:30px;height:30px">16</div>'
+            '<div role="gridcell" style="width:50px;height:20px">plain data cell</div></body></html>')
+    await _session_on_page(page)
+    try:
+        st = await m._session.browser.get_state()
+        gc = [e for e in st.elements if e.role == "gridcell"]
+        assert len(gc) == 2  # 2 clickable days (incl the tabindex=-1 one), NOT the data cell
+        assert resolve_element("July 15", st.elements).found is not None  # non-selected day targetable
+    finally:
+        await _end()
+
+
 async def test_type_into_contenteditable_rich_text_editor():
     # Quill/ProseMirror/Draft pattern: a contenteditable editor labelled only by a
     # data-placeholder — must be targetable AND typeable (was an unlabelled div
