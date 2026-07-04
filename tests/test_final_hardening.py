@@ -235,6 +235,25 @@ def test_short_truncates_on_word_boundary():
     assert " ".join(m._short("alpha beta gamma delta", 12).replace("…", "").split()) in "alpha beta gamma delta"
 
 
+def test_coverage_line_lists_unvisited_internal_pages():
+    from argus.mcp_server import _coverage_line
+    from types import SimpleNamespace as NS
+    s = NS(pages_visited=["http://x/tasks", "http://x/"])
+    state = NS(url="http://x/tasks", links=[
+        {"href": "http://x/help", "isInternal": True},
+        {"href": "http://x/register", "isInternal": True},
+        {"href": "http://x/tasks", "isInternal": True},        # current page -> skip
+        {"href": "http://x/", "isInternal": True},               # already visited -> skip
+        {"href": "https://ext.com/y", "isInternal": False},      # external -> skip
+    ])
+    line = _coverage_line(s, state)
+    assert "/help" in line and "/register" in line
+    assert "ext.com" not in line
+    # once everything is visited, no nudge (avoid noise)
+    s2 = NS(pages_visited=["http://x/help", "http://x/register", "http://x/tasks", "http://x/"])
+    assert _coverage_line(s2, state) == ""
+
+
 def test_verify_nudge_fires_on_state_change_clicks():
     from argus.mcp_server import _verify_nudge
     # state-changing clicks -> nudge to verify_persistence (the moat's bug class)
