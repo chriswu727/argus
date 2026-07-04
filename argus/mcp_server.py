@@ -3742,7 +3742,16 @@ async def record_bug(
     # consecutive bug reports accumulate earlier bugs' actions and the
     # reproducible-steps section reads as session noise.
     if ev.get("steps") is not None:
-        steps = list(ev["steps"])
+        raw = ev["steps"]
+        if isinstance(raw, str):
+            # A model very often passes steps as ONE string (a sentence or a
+            # newline-joined list). list()-ing that explodes it into individual
+            # CHARACTERS — one <li> per letter in the report. Split on lines.
+            steps = [ln.strip(" -*\t") for ln in raw.splitlines() if ln.strip()] or [raw]
+        elif isinstance(raw, (list, tuple)):
+            steps = [str(x) for x in raw]
+        else:
+            steps = list(s.steps[s._steps_since_last_bug:])
     else:
         steps = list(s.steps[s._steps_since_last_bug:])
     if ev.get("url"):

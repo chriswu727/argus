@@ -143,6 +143,20 @@ def _format_steps(steps: List[str]) -> str:
     return items + "".join(f"<li>{_esc(s)}</li>" for s in rendered)
 
 
+def _dedup_description(title: str, description: str) -> str:
+    """Drop a description that merely repeats the title. LLMs very often put the
+    same sentence in both `title` and `description` (or make the description a
+    subset of the title), which renders as the card saying the same thing twice.
+    Keep the description only when it genuinely adds information."""
+    if not description:
+        return ""
+    nt = " ".join((title or "").lower().split()).strip(" .!?—-:")
+    nd = " ".join(description.lower().split()).strip(" .!?—-:")
+    if not nd or nd == nt or nd in nt:
+        return ""  # identical to, or a subset of, the title — adds nothing
+    return description
+
+
 def _trust_rank(bug: Bug) -> int:
     """Order findings by how trustworthy they are, so a reader sees the proven
     ones first and the raw unverified noise last (the precision moat, made
@@ -239,7 +253,7 @@ class Reporter:
 <div class="bh"><span class="sv" style="background:{_SEVERITY_COLORS[bug.severity]}">{bug.severity.value.upper()}</span>
 <span class="bt">{_BUGTYPE_LABELS.get(bug.type, bug.type.value)}</span>{repro}</div>
 <h3>{_esc(bug.title)}</h3>
-<p>{_esc(bug.description)}</p>
+{f'<p>{_esc(_dd)}</p>' if (_dd := _dedup_description(bug.title, bug.description)) else ''}
 <div class="bu">URL: {_esc(_redact(bug.url))}</div>{repro_detail}
 {steps_block}
 {console}{network}{ss}</div>"""

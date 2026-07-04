@@ -194,6 +194,27 @@ def test_journal_only_persists_reproduced(tmp_path, monkeypatch):
     assert len(m._journal_entries("nope.test")) == 1  # reproduced IS journaled
 
 
+def test_dedup_description_drops_title_repeat():
+    from argus.reporter import _dedup_description
+    # LLMs constantly repeat the title verbatim as the description -> drop it
+    assert _dedup_description("Login fails silently", "Login fails silently") == ""
+    assert _dedup_description("Console error: appConfig is not defined", "appConfig is not defined") == ""
+    # a description that genuinely elaborates is kept
+    assert _dedup_description("Login fails", "Login fails because the token is never sent to the server")
+
+
+def test_report_renders_string_steps_and_dedup_desc():
+    # end-to-end: a bug whose model gave title==description and evidence steps as
+    # a newline string must NOT render a repeated <p> or char-per-line steps.
+    b = _bug()
+    b.title = b.description = "Cart total ignores the discount code"
+    b.steps_to_reproduce = ["Add item to cart", "Apply code SAVE10", "Total unchanged"]
+    html = Reporter()._build_html(ExplorationResult(
+        url="u", bugs=[b], pages_visited=[], actions_taken=0, duration_seconds=0.0, focus_areas=[]))
+    assert html.count("Cart total ignores the discount code") == 1  # title only, no repeat <p>
+    assert "Apply code SAVE10" in html
+
+
 def test_looks_logged_out_heuristic():
     assert m._looks_logged_out(make_page_state(page_text="Please log in to continue"))
     assert m._looks_logged_out(make_page_state(page_text="Your session has expired"))
