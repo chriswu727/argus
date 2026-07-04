@@ -408,6 +408,26 @@ async def test_record_bug_string_steps_not_char_split():
         await _end()
 
 
+async def test_paste_into_fires_handler_and_default_insert():
+    page = ('<html><body>'
+            '<input id="h" placeholder="Coupon">'
+            '<input id="p" placeholder="Plain">'
+            "<script>document.getElementById('h').addEventListener('paste',function(e){"
+            "e.preventDefault();var t=e.clipboardData.getData('text');this.value='PASTED:'+t.toUpperCase();});"
+            '</script></body></html>')
+    await _session_on_page(page)
+    try:
+        pi = getattr(m.paste_into, "fn", m.paste_into)
+        await pi(description="Coupon field", text="save10")
+        await pi(description="Plain field", text="hello123")
+        vh = await m._session.browser._page.locator("#h").input_value()
+        vp = await m._session.browser._page.locator("#p").input_value()
+        assert vh == "PASTED:SAVE10"   # onpaste handler fired and transformed the paste
+        assert vp == "hello123"        # no handler -> default insert still worked
+    finally:
+        await _end()
+
+
 async def test_drop_file_onto_dropzone_with_real_bytes():
     import tempfile
     import os as _os
