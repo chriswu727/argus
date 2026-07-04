@@ -94,7 +94,7 @@ def _capture_body(raw: bytes, headers: dict) -> Optional[str]:
 # Playwright's :has-text engine doesn't pierce shadow — see _build_selector).
 _EXTRACT_ELEMENTS_JS = """
 () => {
-    const sel = 'a, button, input, select, textarea, [contenteditable="true"], [contenteditable=""], [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="checkbox"], [role="radio"], [role="switch"], [role="combobox"], [role="textbox"], [role="slider"], [role="spinbutton"], [role="option"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="gridcell"], [onclick], [tabindex]:not([tabindex="-1"]), [draggable="true"]';
+    const sel = 'a, button, input, select, textarea, summary, [contenteditable="true"], [contenteditable=""], [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="checkbox"], [role="radio"], [role="switch"], [role="combobox"], [role="textbox"], [role="slider"], [role="spinbutton"], [role="option"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="gridcell"], [onclick], [tabindex]:not([tabindex="-1"]), [draggable="true"]';
     const MAX = 400;
     const out = [];
     const seen = new Set();
@@ -164,6 +164,10 @@ _EXTRACT_ELEMENTS_JS = """
                 var s = [];
                 var e = el.getAttribute('aria-expanded');
                 if (e === 'true') s.push('expanded'); else if (e === 'false') s.push('collapsed');
+                // Native <details>/<summary> uses the `open` property, not
+                // aria-expanded — surface the same expanded/collapsed signal.
+                else if (el.tagName === 'SUMMARY' && el.parentElement && el.parentElement.tagName === 'DETAILS')
+                    s.push(el.parentElement.open ? 'expanded' : 'collapsed');
                 if (el.getAttribute('aria-pressed') === 'true') s.push('pressed');
                 var c = el.getAttribute('aria-current');
                 if (c && c !== 'false') s.push('current');
@@ -1483,12 +1487,28 @@ class BrowserDriver:
             pass  # navigation destroyed the context, eval blocked, etc. — best-effort
 
     async def click(self, element_index: int, elements: List[InteractiveElement]) -> bool:
+        loc = self._locator(element_index, elements)
         try:
-            await self._locator(element_index, elements).click(timeout=5_000)
+            await loc.click(timeout=5_000)
             await self._settle_network()  # best-effort; a click that kicks off a
             await self._settle_dom()      # hanging fetch must NOT read as failed
             return True
         except Exception:
+            # A visually-hidden checkbox/radio (opacity:0 restyled — CSS-only tabs,
+            # styled toggles, TodoMVC) fails Playwright's actionability hit-test even
+            # though it IS the real control a user drives via its label. Toggle it
+            # programmatically: el.click() fires click+change, so both :checked-driven
+            # CSS (tab panels) and onchange handlers run. Only for these input types —
+            # a normal click that failed should stay failed (honest).
+            el = elements[element_index]
+            if (el.type or "").lower() in ("checkbox", "radio"):
+                try:
+                    await loc.evaluate("el => el.click()")
+                    await self._settle_network()
+                    await self._settle_dom()
+                    return True
+                except Exception:
+                    return False
             return False
 
     async def type_text(

@@ -442,6 +442,43 @@ async def test_observe_shows_aria_expanded_pressed_current():
         await _end()
 
 
+async def test_css_only_tab_switches_via_hidden_radio():
+    # CSS-only tabs: a visually-hidden radio drives the panel via :checked. Playwright's
+    # hit-test can't click the hidden radio; the programmatic-click fallback must toggle it.
+    page = ('<html><head><style>.tabs input{position:absolute;opacity:0;width:1px;height:1px}'
+            '.panel{display:none}#tab2:checked~#panel2{display:block}</style></head>'
+            '<body><div class="tabs"><input type="radio" name="t" id="tab1" checked>'
+            '<input type="radio" name="t" id="tab2"><label for="tab1">Overview</label>'
+            '<label for="tab2">Installation</label>'
+            '<div class="panel" id="panel2">TAB2_CONTENT</div></div></body></html>')
+    await _session_on_page(page)
+    try:
+        r = await (getattr(m.click_what, "fn", m.click_what))("Installation")
+        assert "Clicked" in r
+        obs = await (getattr(m.observe, "fn", m.observe))()
+        assert "TAB2_CONTENT" in obs  # panel switched
+    finally:
+        await _end()
+
+
+async def test_native_details_summary_disclosure_opens():
+    # native <details>/<summary>: summary must be surfaced (with collapsed state) and
+    # clickable to reveal the hidden content — it has no tabindex/role/aria-expanded.
+    page = ('<html><body><details><summary>Show more</summary>'
+            '<p>HIDDEN_DETAIL</p></details></body></html>')
+    await _session_on_page(page)
+    try:
+        obs0 = await (getattr(m.observe, "fn", m.observe))()
+        assert "HIDDEN_DETAIL" not in obs0  # collapsed content hidden
+        assert "Show more" in obs0
+        r = await (getattr(m.click_what, "fn", m.click_what))("Show more")
+        assert "Clicked" in r
+        obs1 = await (getattr(m.observe, "fn", m.observe))()
+        assert "HIDDEN_DETAIL" in obs1  # disclosure opened
+    finally:
+        await _end()
+
+
 async def test_drag_at_coordinate_drag_fires_mouse_sequence():
     # coordinate drag for mouse-based draggables (Sortable.js/Trello) with no DOM
     # marker: mousedown -> incremental mousemove -> mouseup must all fire.
