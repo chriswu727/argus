@@ -431,6 +431,35 @@ def _visible_text_in_state(text: str, state: PageState) -> bool:
     return False
 
 
+async def _present_with_scroll(s: "Session", target: str, initial_state,
+                               visible_only: bool = False, max_scrolls: int = 20) -> bool:
+    """Presence check robust to VIRTUALIZED / infinite / below-the-fold lists.
+
+    A virtualization window (react-window/virtuoso) only renders the rows near
+    the viewport, so a row scrolled out of view is NOT in the DOM and reads as
+    absent — which would let the receipt false-certify a deletion of a row that
+    is actually still there. If the target isn't in the initial state, scroll
+    down (bounded) and re-check; stop at the page bottom, when scrolling stalls,
+    or after max_scrolls so infinite scroll can't run away."""
+    check = _visible_text_in_state if visible_only else _text_in_state
+    if check(target, initial_state):
+        return True
+    last_y = None
+    for _ in range(max_scrolls):
+        await s.browser.scroll_by(1000)
+        state = await s.browser.get_state()
+        if check(target, state):
+            return True
+        vp = state.viewport or {}
+        if vp.get("atBottom"):
+            break
+        y = vp.get("scrollY")
+        if y is not None and y == last_y:
+            break  # scroll position not advancing — nothing more to reveal
+        last_y = y
+    return False
+
+
 _EXPECT_KEYS = {"count", "gains", "removes", "text_present", "text_absent", "toast", "url_changed"}
 
 
@@ -654,7 +683,7 @@ async def _run_reproduction_check(s: "Session", verify: dict) -> dict:
             if _looks_logged_out(state):
                 inconclusive = "clean load hit a login wall — the session may have expired"
                 break
-            observations.append(_text_in_state(target, state))
+            observations.append(await _present_with_scroll(s, target, state))
     except Exception as e:  # navigation/render failure — report, don't crash record_bug
         return {"attempted": True, "reproduced": None, "at_url": nav_url,
                 "error": str(e)[:200], "mocks_suspended": suspended_mocks}
@@ -3926,7 +3955,7 @@ async def verify_persistence(
     after_state = await s.browser.get_state()
     s._last_elements = after_state.elements
 
-    present = _text_in_state(target_text, after_state)
+    present = await _present_with_scroll(s, target_text, after_state)
     matches = (present and expect_norm == "present") or (
         not present and expect_norm == "absent"
     )

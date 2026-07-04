@@ -388,6 +388,26 @@ async def test_click_at_below_fold_canvas_scrolls_and_lands():
         await _end()
 
 
+async def test_receipt_scroll_search_finds_virtualized_row():
+    # Window-virtualized list: only rows near window.scrollY are in the DOM.
+    page = ('<html><body><div id="c" style="height:5000px;position:relative"></div>'
+            "<script>var rows=[];for(var i=0;i<100;i++)rows.push(i==80?'ROW_TARGET':('Row '+i));"
+            "function render(){var top=window.scrollY;var start=Math.floor(top/50);"
+            "var end=start+Math.ceil(window.innerHeight/50)+2;var c=document.getElementById('c');c.innerHTML='';"
+            "for(var i=Math.max(0,start);i<end&&i<rows.length;i++){var d=document.createElement('div');"
+            "d.style.position='absolute';d.style.top=(i*50)+'px';d.textContent=rows[i];c.appendChild(d);}}"
+            "window.addEventListener('scroll',render);render();</script></body></html>")
+    await _session_on_page(page)
+    try:
+        st = await m._session.browser.get_state()
+        assert not m._text_in_state("ROW_TARGET", st)          # row 80 not rendered initially
+        assert await m._present_with_scroll(m._session, "ROW_TARGET", st) is True   # scroll-search finds it
+        st2 = await m._session.browser.get_state()
+        assert await m._present_with_scroll(m._session, "NOPE_NOT_A_ROW", st2) is False  # truly absent stays absent
+    finally:
+        await _end()
+
+
 async def test_verify_persistence_clear_storage_catches_localonly_save():
     class _H(http.server.BaseHTTPRequestHandler):
         def log_message(self, *a):
