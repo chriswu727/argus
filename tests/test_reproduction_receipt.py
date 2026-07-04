@@ -442,6 +442,26 @@ async def test_observe_shows_aria_expanded_pressed_current():
         await _end()
 
 
+async def test_observe_keeps_opacity0_restyled_checkbox():
+    # TodoMVC/Bootstrap/Material pattern: a real checkbox at opacity:0 behind a
+    # styled visual — must stay targetable (the opacity filter used to hide it,
+    # making the whole widget untargetable on real apps).
+    page = ('<html><body>'
+            '<label><input type="checkbox" style="opacity:0" aria-label="Accept terms" checked>Accept</label>'
+            '<button style="opacity:0">HiddenBtn</button>'
+            '</body></html>')
+    await _session_on_page(page)
+    try:
+        st = await m._session.browser.get_state()
+        labels = " ".join((e.aria_label or e.text or "") for e in st.elements)
+        assert "Accept terms" in labels    # opacity:0 checkbox is KEPT
+        assert "HiddenBtn" not in labels    # opacity:0 non-control button still filtered
+        cb = [e for e in st.elements if e.type == "checkbox"]
+        assert cb and cb[0].checked is True
+    finally:
+        await _end()
+
+
 async def test_observe_distinguishes_checked_checkboxes():
     from argus.resolver import describe
     page = ('<html><body>'

@@ -109,9 +109,16 @@ _EXTRACT_ELEMENTS_JS = """
         // whole subtree (opacity is not inherited, so a button inside an
         // opacity:0 fade-menu has its own opacity 1 and used to leak through).
         // Plus zero-size and off-the-left-edge (left:-9999px "sr-only" hack).
+        // EXCEPTION: checkbox/radio/file inputs are overwhelmingly restyled with
+        // opacity:0 behind a visible label/graphic (TodoMVC, Bootstrap, Material,
+        // custom file uploads) yet fully functional — don't let opacity hide them,
+        // or their whole widget becomes untargetable.
+        const _t = (el.type || '').toLowerCase();
+        const _skipOpacity = el.tagName.toLowerCase() === 'input' &&
+                             (_t === 'checkbox' || _t === 'radio' || _t === 'file');
         const _vis = el.checkVisibility
-            ? el.checkVisibility({opacityProperty: true, visibilityProperty: true, contentVisibilityAuto: true})
-            : (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0');
+            ? el.checkVisibility({opacityProperty: !_skipOpacity, visibilityProperty: true, contentVisibilityAuto: true})
+            : (style.display !== 'none' && style.visibility !== 'hidden' && (_skipOpacity || style.opacity !== '0'));
         if (!_vis || rect.width === 0 || rect.height === 0 || rect.right <= 0) return;
         const doc = el.ownerDocument;  // frame-local: label lookups must use the element's own document
         out.push({
