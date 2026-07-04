@@ -408,6 +408,32 @@ async def test_record_bug_string_steps_not_char_split():
         await _end()
 
 
+async def test_drop_file_onto_dropzone_with_real_bytes():
+    import tempfile
+    import os as _os
+    fd, fpath = tempfile.mkstemp(suffix=".txt")
+    _os.write(fd, b"HELLO_DROPZONE_REAL_BYTES_PAYLOAD")
+    _os.close(fd)
+    real_size = str(_os.path.getsize(fpath))
+    page = ('<html><body>'
+            '<div id="drop" role="button" tabindex="0">Drop files here</div>'
+            '<div id="result">no file</div>'
+            "<script>var d=document.getElementById('drop');"
+            "d.addEventListener('dragover',function(e){e.preventDefault();});"
+            "d.addEventListener('drop',function(e){e.preventDefault();var f=e.dataTransfer.files[0];"
+            "document.getElementById('result').textContent='GOT:'+f.name+':'+f.size;});"
+            '</script></body></html>')
+    await _session_on_page(page)
+    try:
+        await (getattr(m.drop_file, "fn", m.drop_file))(description="Drop files here", path=fpath)
+        pt = (await m._session.browser.get_state()).page_text
+        assert "GOT:" in pt and _os.path.basename(fpath) in pt   # dropzone handler got a real File
+        assert real_size in pt   # the ACTUAL byte size reached the handler (not a fabricated stub)
+    finally:
+        await _end()
+        _os.unlink(fpath)
+
+
 async def test_goto_survives_never_resolving_fetch():
     import time as _time
 
