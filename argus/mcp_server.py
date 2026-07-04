@@ -3691,6 +3691,14 @@ async def record_bug(
                 "target_text":"Buy groceries","at_url":"/tasks"}
               - Save didn't persist (new value missing): {"expect":"absent",
                 "target_text":"EDITED-XYZ","at_url":"/tasks/1/edit"}
+            IMPORTANT — the target must PROVE the symptom, not a nearby fact.
+            target_text has to be the exact string whose presence/absence ALONE
+            is the bug. For a COUNT or LOGIC inconsistency ("7 pending + 2 done
+            != 8 total") no single text check establishes it — verifying that
+            "8 total" merely EXISTS does not confirm the inconsistency and would
+            stamp a misleading VERIFIED on tangential evidence. Record those as
+            observation-based (omit verify), or verify the specific wrong value
+            that should not be there.
             For a MULTI-STEP bug (the symptom only appears after a journey),
             add "replay": true — Argus re-drives the recorded action trace
             (click_what/type_into/select_into/navigate) in a fresh cold context
@@ -3726,6 +3734,14 @@ async def record_bug(
                 form_error, state_verification, misleading_success,
                 count_mismatch, text_anomaly, broken_image, seo_issue,
                 accessibility, performance, mixed_content.
+                Pick the SPECIFIC type, not the generic ux_issue: a "Saved!" /
+                success toast that lied -> misleading_success; a delete or edit
+                that did not persist -> state_verification; a wrong/inconsistent
+                count or total -> count_mismatch; a JS exception or dead page ->
+                crash; a form losing data / rejecting valid input -> form_error.
+                Reserve ux_issue for genuine usability friction with no better
+                fit — a data-loss or persistence bug labeled "ux_issue" reads as
+                cosmetic next to its HIGH severity.
     """
     s = _require_session()
 
