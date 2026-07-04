@@ -388,6 +388,22 @@ async def test_click_at_below_fold_canvas_scrolls_and_lands():
         await _end()
 
 
+async def test_observe_excludes_opacity0_ancestor_subtree():
+    # opacity is not inherited, so a button inside an opacity:0 fade-menu has its
+    # OWN opacity 1 — it used to leak into observe. checkVisibility catches it.
+    page = ('<html><body>'
+            '<div style="opacity:0"><button>HiddenInFade</button></div>'
+            '<button>VisibleBtn2</button></body></html>')
+    await _session_on_page(page)
+    try:
+        st = await m._session.browser.get_state()
+        labels = " ".join((e.text or "") for e in st.elements)
+        assert "VisibleBtn2" in labels
+        assert "HiddenInFade" not in labels  # hidden by an ancestor's opacity:0
+    finally:
+        await _end()
+
+
 async def test_observe_fidelity_hidden_widgets_disabled():
     page = ('<html><body>'
             '<button id="vis">VisibleBtn</button>'

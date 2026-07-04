@@ -51,6 +51,13 @@ _KIND_HINTS = {
     "dropdown": "select",
     "select": "select",
     "menu": "select",
+    "combobox": "select",
+    "switch": "switch",
+    "toggle": "switch",
+    "slider": "slider",
+    "spinbutton": "spinbutton",
+    "spinner": "spinbutton",
+    "stepper": "spinbutton",
 }
 
 # Filler words to drop from descriptions before scoring. Includes row-scoping
@@ -114,8 +121,26 @@ def kind_of(el: InteractiveElement) -> str:
         return "input"
     if el.tag == "select":
         return "select"
-    if el.role in ("button", "link", "tab", "menuitem"):
-        return el.role
+    # ARIA-role widgets (div/span with role=) — surface the role as the kind so
+    # observe renders "switch"/"slider"/"spinbutton" instead of a generic
+    # div/span, and they're targetable by that word ("the Dark mode switch").
+    role = el.role
+    if role == "switch":
+        return "switch"
+    if role in ("checkbox", "menuitemcheckbox"):
+        return "checkbox"
+    if role in ("radio", "menuitemradio"):
+        return "radio"
+    if role == "slider":
+        return "slider"
+    if role == "spinbutton":
+        return "spinbutton"
+    if role in ("combobox", "listbox"):
+        return "select"
+    if role == "textbox":
+        return "input"
+    if role in ("button", "link", "tab", "menuitem", "option"):
+        return role
     return el.tag
 
 

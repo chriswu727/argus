@@ -104,11 +104,15 @@ _EXTRACT_ELEMENTS_JS = """
         seen.add(el);
         const rect = el.getBoundingClientRect();
         const style = (el.ownerDocument.defaultView || window).getComputedStyle(el);
-        // Invisible-to-a-human elements must not appear as interactive: zero-size,
-        // display:none, visibility:hidden, fully transparent (opacity 0), or
-        // positioned entirely off the left edge (the left:-9999px "sr-only" hack).
-        if (rect.width === 0 || rect.height === 0 || style.display === 'none' ||
-            style.visibility === 'hidden' || style.opacity === '0' || rect.right <= 0) return;
+        // Invisible-to-a-human elements must not appear as interactive. Use
+        // checkVisibility so an ANCESTOR's opacity:0 / visibility:hidden hides the
+        // whole subtree (opacity is not inherited, so a button inside an
+        // opacity:0 fade-menu has its own opacity 1 and used to leak through).
+        // Plus zero-size and off-the-left-edge (left:-9999px "sr-only" hack).
+        const _vis = el.checkVisibility
+            ? el.checkVisibility({opacityProperty: true, visibilityProperty: true, contentVisibilityAuto: true})
+            : (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0');
+        if (!_vis || rect.width === 0 || rect.height === 0 || rect.right <= 0) return;
         const doc = el.ownerDocument;  // frame-local: label lookups must use the element's own document
         out.push({
             index: out.length,
