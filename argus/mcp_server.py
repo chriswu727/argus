@@ -2485,8 +2485,7 @@ async def upload_file(description: str, paths: list) -> str:
     Wraps Playwright's `set_input_files` — works on both visible and
     hidden file inputs (most modern UIs hide the real input behind a
     styled label). For drag-drop upload zones that don't have an
-    underlying `<input type=file>`, this won't work; those need a
-    real drag.
+    underlying `<input type=file>`, this won't work; use drop_file.
 
     Args:
         description: Match the file input. "file", "upload", or the
@@ -2515,6 +2514,46 @@ async def upload_file(description: str, paths: list) -> str:
     if not ok:
         return f"upload_file({description!r}) — failed."
     return f"Attached {len(paths)} file(s) to {description!r}: {', '.join(paths)}"
+
+
+@mcp.tool()
+async def drop_file(description: str, path: str) -> str:
+    """Drop a real file onto a DROPZONE — the modern drag-and-drop upload area
+    (react-dropzone / a <div> listening for drop events) that is NOT an
+    <input type=file>.
+
+    upload_file only works on a real file input; drag_what does an element-to-
+    element mouse drag that never attaches a file (and misleadingly reports
+    success on a dropzone). This dispatches a synthetic drop carrying the ACTUAL
+    bytes of `path`, so the dropzone's handler receives a genuine File (name +
+    size + contents) — letting you test upload validation, size/type limits, and
+    preview rendering. After it, observe() to confirm the zone accepted it.
+
+    Args:
+        description: Match the dropzone (its visible text / label / role).
+        path: Absolute path to the file to drop.
+    """
+    s = _require_session()
+    err = _require_web_session(s, "drop_file")
+    if err:
+        return err
+    import os
+    if not os.path.exists(path):
+        return f"drop_file: file not found: {path}"
+    el, err = _resolve_or_error(s, description)
+    if err:
+        return err
+    idx = s._last_elements.index(el)
+    ok = await s.browser.drop_file(idx, path, s._last_elements)
+    if not ok:
+        return f"drop_file: failed to drop {path} onto {description!r}."
+    label = el.text or el.aria_label or el.name or el.tag
+    s.steps.append(f"drop_file({os.path.basename(path)!r} -> {description!r})")
+    _record_action(s, "drop_file", f"{os.path.basename(path)} onto {description}")
+    new_state = await s.browser.get_state()
+    s._last_elements = new_state.elements
+    return (f"Dropped {os.path.basename(path)} onto \"{label[:50]}\". "
+            f"Call observe() to verify the dropzone accepted the file.")
 
 
 @mcp.tool()
