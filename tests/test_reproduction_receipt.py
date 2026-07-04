@@ -408,6 +408,22 @@ async def test_record_bug_string_steps_not_char_split():
         await _end()
 
 
+async def test_observe_shows_aria_expanded_pressed_current():
+    from argus.resolver import describe
+    page = ('<html><body>'
+            '<button aria-expanded="false" aria-label="Filters">Filters</button>'
+            '<button aria-expanded="true" aria-label="Menu">Menu</button>'
+            '<button aria-pressed="true" aria-label="Bold">B</button>'
+            '<a href="#" aria-current="page" aria-label="Home">Home</a></body></html>')
+    await _session_on_page(page)
+    try:
+        ds = {e.aria_label: describe(e) for e in (await m._session.browser.get_state()).elements}
+        assert "[collapsed]" in ds["Filters"] and "[expanded]" in ds["Menu"]
+        assert "[pressed]" in ds["Bold"] and "[current]" in ds["Home"]
+    finally:
+        await _end()
+
+
 async def test_observe_distinguishes_checked_checkboxes():
     from argus.resolver import describe
     page = ('<html><body>'

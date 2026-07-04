@@ -484,6 +484,10 @@ def describe(el: InteractiveElement) -> str:
     # Live checked state — without it a checked and unchecked box look identical.
     if el.checked is not None:
         parts.append("[checked]" if el.checked else "[unchecked]")
+    # ARIA state — is a dropdown/accordion expanded, a toggle pressed, a nav item
+    # current? Otherwise a collapsed and an expanded control look the same.
+    if getattr(el, "aria_state", None):
+        parts.append(f"[{el.aria_state}]")
     if el.href:
         parts.append(f"-> {el.href[:60]}")
     if el.parent_context and el.parent_context.strip():

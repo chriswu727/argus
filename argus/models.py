@@ -55,6 +55,7 @@ class InteractiveElement:
     href: Optional[str] = None
     value: Optional[str] = None
     checked: Optional[bool] = None  # checkbox/radio/switch live checked state (None = N/A)
+    aria_state: Optional[str] = None  # compact ARIA state: expanded/collapsed/pressed/current
     disabled: bool = False
     role: Optional[str] = None
     aria_label: Optional[str] = None
