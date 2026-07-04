@@ -479,9 +479,8 @@ def describe(el: InteractiveElement) -> str:
     # checked state below is what matters). When there's no other label, the
     # value IS the label.
     _t = (el.type or "").lower()
-    if (el.value and el.value != label and _t not in ("password", "checkbox", "radio")
-            and el.tag != "select"):  # a select's internal value attr ("az") is noise;
-        parts.append(f'= "{el.value[:40]}"' if label else f'"{el.value[:60]}"')  # its selected TEXT is the label
+    if el.value and el.value != label and _t not in ("password", "checkbox", "radio"):
+        parts.append(f'= "{el.value[:40]}"' if label else f'"{el.value[:60]}"')
     # Live checked state — without it a checked and unchecked box look identical.
     if el.checked is not None:
         parts.append("[checked]" if el.checked else "[unchecked]")

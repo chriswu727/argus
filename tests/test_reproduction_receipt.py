@@ -442,6 +442,22 @@ async def test_observe_shows_aria_expanded_pressed_current():
         await _end()
 
 
+async def test_observe_select_shows_label_and_selected_option():
+    from argus.resolver import describe
+    page = ('<html><body>'
+            '<select aria-label="Sort"><option value="az">Name A-Z</option>'
+            '<option value="za" selected>Name Z-A</option></select>'
+            '<select><option>USA</option><option selected>Canada</option></select></body></html>')
+    await _session_on_page(page)
+    try:
+        joined = " | ".join(describe(e) for e in (await m._session.browser.get_state()).elements if e.tag == "select")
+        assert 'select "Sort" = "Name Z-A"' in joined     # labelled: label + current selection
+        assert 'select "Canada"' in joined                # unlabelled: selection is the label
+        assert "Name A-Z" not in joined and "USA" not in joined  # NOT all options mashed together
+    finally:
+        await _end()
+
+
 async def test_observe_keeps_opacity0_restyled_checkbox():
     # TodoMVC/Bootstrap/Material pattern: a real checkbox at opacity:0 behind a
     # styled visual — must stay targetable (the opacity filter used to hide it,
