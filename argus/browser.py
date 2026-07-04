@@ -1567,6 +1567,14 @@ class BrowserDriver:
         await self._page.evaluate("window.scrollBy(0, 500)")
         await asyncio.sleep(0.5)
 
+    async def scroll_by(self, px: int = 1000):
+        """Scroll a larger step (for scanning a long / virtualized list), letting
+        lazy-load and virtualization settle before the next read."""
+        if self._page is None:
+            return
+        await self._page.evaluate("(d) => window.scrollBy(0, d)", int(px))
+        await asyncio.sleep(0.4)
+
     async def screenshot(self, path: str, full_page: bool = False) -> str:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         await self._page.screenshot(path=path, full_page=full_page)
