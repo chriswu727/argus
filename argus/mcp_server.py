@@ -1336,6 +1336,33 @@ def _resolve_or_error(
 
 
 @mcp.tool()
+def _coverage_line(s, state) -> str:
+    """Surface internal destinations the agent hasn't visited — the COVER step made
+    concrete. Agents chronically explore a narrow slice (the recall probe: 2 navigate
+    calls, whole flows like /register and /help never opened), so bugs on unvisited
+    pages are never found. List unseen internal link paths to nudge breadth."""
+    from urllib.parse import urlparse
+    try:
+        cur = urlparse(state.url).path.rstrip("/") or "/"
+        visited = {urlparse(u).path.rstrip("/") or "/" for u in s.pages_visited}
+        seen, unseen = set(), []
+        for lk in (state.links or []):
+            if not lk.get("isInternal"):
+                continue
+            p = urlparse(lk.get("href") or "").path.rstrip("/") or "/"
+            if p == cur or p in visited or p in seen:
+                continue
+            seen.add(p)
+            unseen.append(p)
+        if not unseen:
+            return ""
+        shown = ", ".join(unseen[:6]) + (" …" if len(unseen) > 6 else "")
+        return (f"\n\nNot yet explored ({len(unseen)} internal page(s)): {shown}\n"
+                "  (Coverage — bugs hide on pages you never open; walk these before end_session.)")
+    except Exception:
+        return ""
+
+
 async def observe() -> str:
     """Observe the current target — page, app, or screen. Read this first.
 
@@ -1364,7 +1391,7 @@ async def observe() -> str:
     s._last_elements = state.elements
     if state.url not in s.pages_visited:
         s.pages_visited.append(state.url)
-    return _format_observation(state) + delta_note
+    return _format_observation(state) + delta_note + _coverage_line(s, state)
 
 
 def _format_screen_observation(obs) -> str:
