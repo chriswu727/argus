@@ -131,8 +131,12 @@ async def run_session(model, max_steps, cost_cap, cost_so_far):
             print(f"  [budget stop at step {step}]", flush=True)
             break
         try:
+            # Per-call timeout + one retry: a single stalled API call must abort
+            # this trial (the except breaks the loop), not hang the whole bench —
+            # a pro completion stalled ~5min once and blocked everything.
             resp = litellm.completion(model=model, messages=msgs, tools=TOOLS,
-                                      tool_choice="auto", temperature=0.4, max_tokens=900)
+                                      tool_choice="auto", temperature=0.4, max_tokens=900,
+                                      timeout=60, num_retries=1)
         except Exception as e:
             print("  completion err:", str(e)[:200], flush=True)
             break
