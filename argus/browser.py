@@ -94,7 +94,7 @@ def _capture_body(raw: bytes, headers: dict) -> Optional[str]:
 # Playwright's :has-text engine doesn't pierce shadow — see _build_selector).
 _EXTRACT_ELEMENTS_JS = """
 () => {
-    const sel = 'a, button, input, select, textarea, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [onclick], [tabindex]:not([tabindex="-1"]), [draggable="true"]';
+    const sel = 'a, button, input, select, textarea, [contenteditable="true"], [contenteditable=""], [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="checkbox"], [role="radio"], [role="switch"], [role="combobox"], [role="textbox"], [role="slider"], [role="spinbutton"], [role="option"], [role="menuitemcheckbox"], [role="menuitemradio"], [onclick], [tabindex]:not([tabindex="-1"]), [draggable="true"]';
     const MAX = 400;
     const out = [];
     const seen = new Set();
@@ -104,7 +104,11 @@ _EXTRACT_ELEMENTS_JS = """
         seen.add(el);
         const rect = el.getBoundingClientRect();
         const style = (el.ownerDocument.defaultView || window).getComputedStyle(el);
-        if (rect.width === 0 || rect.height === 0 || style.display === 'none' || style.visibility === 'hidden') return;
+        // Invisible-to-a-human elements must not appear as interactive: zero-size,
+        // display:none, visibility:hidden, fully transparent (opacity 0), or
+        // positioned entirely off the left edge (the left:-9999px "sr-only" hack).
+        if (rect.width === 0 || rect.height === 0 || style.display === 'none' ||
+            style.visibility === 'hidden' || style.opacity === '0' || rect.right <= 0) return;
         const doc = el.ownerDocument;  // frame-local: label lookups must use the element's own document
         out.push({
             index: out.length,

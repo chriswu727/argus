@@ -388,6 +388,31 @@ async def test_click_at_below_fold_canvas_scrolls_and_lands():
         await _end()
 
 
+async def test_observe_fidelity_hidden_widgets_disabled():
+    page = ('<html><body>'
+            '<button id="vis">VisibleBtn</button>'
+            '<button style="opacity:0">TransparentBtn</button>'
+            '<a href="#" style="position:absolute;left:-9999px">OffScreenLink</a>'
+            '<div contenteditable="true">EditableArea</div>'
+            '<div role="switch" aria-checked="false" tabindex="0">ToggleSwitch</div>'
+            '<button disabled>DisabledBtn</button>'
+            '</body></html>')
+    await _session_on_page(page)
+    try:
+        st = await m._session.browser.get_state()
+        labels = " ".join((e.text or e.aria_label or e.name or "") for e in st.elements)
+        assert "VisibleBtn" in labels
+        assert "TransparentBtn" not in labels   # opacity:0 -> excluded from interactive els
+        assert "OffScreenLink" not in labels     # left:-9999px -> excluded
+        assert "EditableArea" in labels          # contenteditable now enumerated
+        assert "ToggleSwitch" in labels          # role=switch now enumerated
+        assert any(e.disabled and "DisabledBtn" in (e.text or "") for e in st.elements)
+        obs = await (getattr(m.observe, "fn", m.observe))()
+        assert "[disabled]" in obs               # disabled state surfaced in observe
+    finally:
+        await _end()
+
+
 async def test_press_key_escape_dismisses_modal():
     # The canonical keyboard case click/type can't do: Escape closes a modal.
     page = ('<html><body><div id="m">MODAL_OPEN</div>'
