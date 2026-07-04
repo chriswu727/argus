@@ -235,6 +235,18 @@ def test_short_truncates_on_word_boundary():
     assert " ".join(m._short("alpha beta gamma delta", 12).replace("…", "").split()) in "alpha beta gamma delta"
 
 
+def test_verify_nudge_fires_on_state_change_clicks():
+    from argus.mcp_server import _verify_nudge
+    # state-changing clicks -> nudge to verify_persistence (the moat's bug class)
+    for lbl in ("Delete", "Save changes", "Add task", "Submit", "Toggle done", "Remove item"):
+        assert "verify_persistence" in _verify_nudge(lbl, had_toast=False), lbl
+    # navigation / non-mutating -> no nudge (avoid nagging)
+    assert _verify_nudge("Home", had_toast=False) == ""
+    assert _verify_nudge("Next page", had_toast=False) == ""
+    # a toast already carried the same warning -> don't double-nag
+    assert _verify_nudge("Delete", had_toast=True) == ""
+
+
 def test_looks_logged_out_heuristic():
     assert m._looks_logged_out(make_page_state(page_text="Please log in to continue"))
     assert m._looks_logged_out(make_page_state(page_text="Your session has expired"))
