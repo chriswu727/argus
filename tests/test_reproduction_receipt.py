@@ -366,6 +366,28 @@ async def test_canvas_surfaced_and_click_at_lands():
         await _end()
 
 
+async def test_click_at_below_fold_canvas_scrolls_and_lands():
+    # click_at on a below-the-fold canvas used to silently miss but report success.
+    page = ('<html><body><div style="height:1600px">spacer</div>'
+            '<canvas id="c" width="200" height="150" style="width:200px;height:150px"></canvas>'
+            '<div id="out">none</div>'
+            "<script>document.getElementById('c').addEventListener('click',function(e){"
+            "document.getElementById('out').textContent='HIT_BELOW';});</script>"
+            '</body></html>')
+    await _session_on_page(page)
+    try:
+        st = await m._session.browser.get_state()
+        cv = st.canvases[0]
+        vph = await m._session.browser._page.evaluate("() => window.innerHeight")
+        assert cv["y"] > vph  # canvas center is below the fold
+        ok_msg = await (getattr(m.click_at, "fn", m.click_at))(x=cv["x"], y=cv["y"])
+        assert "Clicked" in ok_msg
+        st2 = await m._session.browser.get_state()
+        assert "HIT_BELOW" in st2.page_text  # it scrolled into view and actually landed
+    finally:
+        await _end()
+
+
 async def test_press_key_escape_dismisses_modal():
     # The canonical keyboard case click/type can't do: Escape closes a modal.
     page = ('<html><body><div id="m">MODAL_OPEN</div>'
