@@ -408,6 +408,41 @@ async def test_record_bug_string_steps_not_char_split():
         await _end()
 
 
+async def test_goto_survives_never_resolving_fetch():
+    import time as _time
+
+    class _H(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            if self.path == "/hang":
+                _time.sleep(30)  # never responds within the test -> networkidle never fires
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.end_headers()
+            self.wfile.write(b'<html><body><div id="s">Loading forever spinner</div>'
+                             b"<script>fetch('/hang').then(r=>r.text()).then(t=>{"
+                             b"document.getElementById('s').textContent=t;});</script></body></html>")
+
+    class _S(socketserver.ThreadingTCPServer):
+        allow_reuse_address = True
+        daemon_threads = True
+    srv = _S(("127.0.0.1", 0), _H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_address[1]}/"
+    t0 = _time.time()
+    await _start_session_url(base)
+    try:
+        assert _time.time() - t0 < 20  # did NOT hang the full 30s on the pending fetch
+        obs = await (getattr(m.observe, "fn", m.observe))()
+        assert "Loading forever spinner" in obs  # the stuck-loading state is observable
+    finally:
+        await _end()
+        srv.shutdown()
+
+
 async def test_receipt_scroll_search_finds_virtualized_row():
     # Window-virtualized list: only rows near window.scrollY are in the DOM.
     page = ('<html><body><div id="c" style="height:5000px;position:relative"></div>'

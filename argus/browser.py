@@ -1109,7 +1109,18 @@ class BrowserDriver:
             self._attach_page_listeners(self._page)
         # Returns the main-frame Response so callers can detect 4xx/5xx (a fresh
         # load that errored must not certify a symptom by its absence).
-        return await self._page.goto(url, wait_until="networkidle", timeout=30_000)
+        # domcontentloaded ALWAYS fires once the DOM is parsed and still returns
+        # the response. Then BEST-EFFORT wait for networkidle so SPAs that render
+        # after fetches are captured — but bounded: a never-resolving fetch (a
+        # stuck "Loading…" spinner) means networkidle never fires, so we time out
+        # and proceed with the loaded DOM. That makes the stuck state OBSERVABLE
+        # (and flaggable as a bug) instead of a 30s hang reported as a load failure.
+        resp = await self._page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+        try:
+            await self._page.wait_for_load_state("networkidle", timeout=6_000)
+        except Exception:
+            pass
+        return resp
 
     # -- state extraction --
 
@@ -1550,6 +1561,38 @@ class BrowserDriver:
     ) -> bool:
         try:
             await self._locator(element_index, elements).set_input_files(paths, timeout=5_000)
+            return True
+        except Exception:
+            return False
+
+    async def drop_file(
+        self, element_index: int, path: str,
+        elements: List[InteractiveElement],
+    ) -> bool:
+        """Drop a real on-disk file onto a dropzone element (react-dropzone-style
+        DnD upload). Builds a DataTransfer with a File carrying the ACTUAL bytes
+        and dispatches dragenter/dragover/drop — which upload_file (input-only)
+        and drag_what (element-to-element, no files) can't do."""
+        import base64
+        import mimetypes
+        try:
+            data = Path(path).read_bytes()
+            name = Path(path).name
+            mime = mimetypes.guess_type(name)[0] or "application/octet-stream"
+            await self._locator(element_index, elements).evaluate(
+                """(el, info) => {
+                    const bin = atob(info.b64);
+                    const arr = new Uint8Array(bin.length);
+                    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+                    const file = new File([arr], info.name, {type: info.type});
+                    const dt = new DataTransfer();
+                    dt.items.add(file);
+                    for (const t of ['dragenter', 'dragover', 'drop']) {
+                        el.dispatchEvent(new DragEvent(t, {bubbles: true, cancelable: true, dataTransfer: dt}));
+                    }
+                }""",
+                {"name": name, "type": mime, "b64": base64.b64encode(data).decode("ascii")})
+            await self._settle_dom()
             return True
         except Exception:
             return False
