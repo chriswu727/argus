@@ -260,6 +260,17 @@ def test_single_char_discriminator_rows():
     assert resolve_element("Delete Task 2", rows).found is rows[3]
 
 
+def test_aria_widget_kind_and_targeting():
+    from argus.models import InteractiveElement as E
+    sw = E(index=0, tag="div", role="switch", aria_label="Dark mode")
+    sl = E(index=1, tag="div", role="slider", aria_label="Volume")
+    assert kind_of(sw) == "switch" and kind_of(sl) == "slider"
+    assert "switch" in describe(sw)  # rendered as switch, not generic div
+    # targetable by the type word, not only the bare label
+    assert resolve_element("the Dark mode switch", [sw, E(index=2, tag="button", text="Save")]).found is sw
+    assert resolve_element("Volume slider", [sl, sw]).found is sl
+
+
 def test_kind_word_label_resolves_verbatim_not_wrong_kind():
     from argus.models import InteractiveElement as E
     page = [E(index=0, tag="button", aria_label="Menu"),
