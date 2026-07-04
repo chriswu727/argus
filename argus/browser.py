@@ -122,6 +122,12 @@ _EXTRACT_ELEMENTS_JS = """
             placeholder: el.placeholder || null,
             href: el.href || null,
             value: el.value || null,
+            // Live checked state for checkbox/radio (and role=switch/checkbox via
+            // aria-checked) — without it, a checked and unchecked box look
+            // identical in observe. null for non-checkable elements.
+            checked: (el.type === 'checkbox' || el.type === 'radio') ? el.checked
+                     : (el.getAttribute('aria-checked') === 'true' ? true
+                        : (el.getAttribute('aria-checked') === 'false' ? false : null)),
             disabled: el.disabled || false,
             role: el.getAttribute('role') || null,
             // Fall back to the field's VISIBLE label (a person targets a form

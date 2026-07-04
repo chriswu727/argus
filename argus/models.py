@@ -54,6 +54,7 @@ class InteractiveElement:
     placeholder: Optional[str] = None
     href: Optional[str] = None
     value: Optional[str] = None
+    checked: Optional[bool] = None  # checkbox/radio/switch live checked state (None = N/A)
     disabled: bool = False
     role: Optional[str] = None
     aria_label: Optional[str] = None

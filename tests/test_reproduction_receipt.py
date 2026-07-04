@@ -408,6 +408,22 @@ async def test_record_bug_string_steps_not_char_split():
         await _end()
 
 
+async def test_observe_distinguishes_checked_checkboxes():
+    from argus.resolver import describe
+    page = ('<html><body>'
+            '<label>Remember me<input type="checkbox" checked></label>'
+            '<label>Subscribe<input type="checkbox"></label></body></html>')
+    await _session_on_page(page)
+    try:
+        cbs = [e for e in (await m._session.browser.get_state()).elements if e.type == "checkbox"]
+        assert len(cbs) == 2
+        assert {e.checked for e in cbs} == {True, False}   # live checked state captured
+        ds = " ".join(describe(e) for e in cbs)
+        assert "[checked]" in ds and "[unchecked]" in ds    # and shown distinctly
+    finally:
+        await _end()
+
+
 async def test_paste_into_fires_handler_and_default_insert():
     page = ('<html><body>'
             '<input id="h" placeholder="Coupon">'

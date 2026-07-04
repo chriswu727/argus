@@ -475,9 +475,15 @@ def describe(el: InteractiveElement) -> str:
     # Show a filled field's CURRENT value so the agent can SEE what it contains
     # (verify a rename/edit persisted, spot a stale/pre-filled value) — an
     # aria-labelled input used to show only its label, hiding the value. Skip
-    # passwords. When there's no other label, the value IS the label.
-    if el.value and el.value != label and (el.type or "").lower() != "password":
+    # passwords, and checkbox/radio (their value is a meaningless "on" — the
+    # checked state below is what matters). When there's no other label, the
+    # value IS the label.
+    _t = (el.type or "").lower()
+    if el.value and el.value != label and _t not in ("password", "checkbox", "radio"):
         parts.append(f'= "{el.value[:40]}"' if label else f'"{el.value[:60]}"')
+    # Live checked state — without it a checked and unchecked box look identical.
+    if el.checked is not None:
+        parts.append("[checked]" if el.checked else "[unchecked]")
     if el.href:
         parts.append(f"-> {el.href[:60]}")
     if el.parent_context and el.parent_context.strip():
