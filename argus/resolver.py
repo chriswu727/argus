@@ -68,7 +68,7 @@ _KIND_HINTS = {
 _STOPWORDS = {
     "the", "a", "an", "this", "that", "in", "on", "of", "to",
     "row", "rows", "item", "items", "entry", "task", "tasks", "issue", "ticket",
-    "near", "for", "with",
+    "column", "columns", "near", "for", "with",
     "named", "labeled", "labelled", "label", "labels", "containing", "value", "whose",
     "navigation", "nav", "navbar", "header", "footer", "sidebar", "toolbar", "bar",
 }
