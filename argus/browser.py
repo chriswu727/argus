@@ -763,6 +763,20 @@ class BrowserDriver:
             out.append(entry)
         return out
 
+    async def clear_client_storage(self) -> bool:
+        """Wipe localStorage + sessionStorage for the current origin, so a
+        following reload reflects only SERVER-persisted state — a "Save" that
+        only wrote client storage will NOT survive (that's the bug to catch).
+        Caveat: apps that keep an auth token in localStorage will log out, which
+        the receipt's login-wall guard treats as inconclusive (never certifies)."""
+        try:
+            await self._page.evaluate(
+                "() => { try { localStorage.clear(); } catch(e){} "
+                "try { sessionStorage.clear(); } catch(e){} }")
+            return True
+        except Exception:
+            return False
+
     # -- network mocking --
 
     async def add_route(

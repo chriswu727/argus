@@ -609,11 +609,13 @@ async def _run_reproduction_check(s: "Session", verify: dict) -> dict:
     "Clean load" here is a fresh same-context reload — it re-reads
     server-backed state (cookies/session persist, so auth survives) and any
     active request mocks are suspended for the check. It does NOT clear
-    localStorage/sessionStorage: a symptom that lives purely in client web
-    storage can survive the reload, so an `expect=absent` claim against
+    localStorage/sessionStorage by default: a symptom that lives purely in client
+    web storage can survive the reload, so an `expect=absent` claim against
     client-only state may read present. This is the right boundary for the
     common case (don't log the agent out), but it means the receipt proves
-    "server-backed truth", not "all client state cleared".
+    "server-backed truth", not "all client state cleared". Pass
+    verify["clear_storage"]=True to wipe client storage before the reload and
+    prove SERVER persistence (catches a "save" that only wrote localStorage).
 
     Returns a receipt dict; never raises.
     """
@@ -636,6 +638,11 @@ async def _run_reproduction_check(s: "Session", verify: dict) -> dict:
     suspended_mocks = await s.browser.suspend_mocks()
     inconclusive = None
     try:
+        if verify.get("clear_storage"):
+            # Opt-in: prove SERVER persistence by wiping client storage first, so
+            # a localStorage-only "save" doesn't survive the reload and certify.
+            await s.browser.goto(nav_url)
+            await s.browser.clear_client_storage()
         for _ in range(2):
             resp = await s.browser.goto(nav_url)
             state = await s.browser.get_state()
@@ -3866,6 +3873,7 @@ async def verify_persistence(
     expect: str,
     target_text: str,
     after_url: str = "",
+    clear_storage: bool = False,
 ) -> str:
     """Force a fresh page load and report whether `target_text` is present
     or absent — your tool for catching the "Saved!" toast that lied.
@@ -3890,6 +3898,13 @@ async def verify_persistence(
                 should be in after the fresh page load.
         target_text: The text or value you're checking for.
         after_url: Page to load and inspect. Defaults to the current URL.
+        clear_storage: When True, wipe localStorage/sessionStorage before the
+            reload so you test TRUE server persistence — a "Save" that only wrote
+            client storage will read absent (data would be lost on another
+            device/browser). Default False keeps client storage (proves
+            server-backed truth without logging out). Use True when the feature
+            is supposed to persist to a server/account. If clearing logs the app
+            out, the result is unreliable — re-check without it.
     """
     s = _require_session()
     expect_norm = (expect or "").strip().lower()
@@ -3899,10 +3914,14 @@ async def verify_persistence(
             f"Use 'present' or 'absent'."
         )
 
-    s.steps.append(f'verify_persistence({expect_norm}, {target_text[:60]!r})')
+    s.steps.append(f'verify_persistence({expect_norm}, {target_text[:60]!r}'
+                   f'{", clear_storage" if clear_storage else ""})')
 
     current_url = s.browser._page.url if s.browser._page else ""
     nav_url = _resolve_url(s, after_url) if after_url else current_url
+    if clear_storage:
+        await s.browser.goto(nav_url)            # land on the right origin
+        await s.browser.clear_client_storage()   # then wipe client storage
     await s.browser.goto(nav_url)
     after_state = await s.browser.get_state()
     s._last_elements = after_state.elements

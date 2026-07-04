@@ -388,6 +388,43 @@ async def test_click_at_below_fold_canvas_scrolls_and_lands():
         await _end()
 
 
+async def test_verify_persistence_clear_storage_catches_localonly_save():
+    class _H(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.end_headers()
+            self.wfile.write((
+                '<html><body><input id="v" placeholder="Value">'
+                '<button id="save" onclick="save()">Save</button><div id="disp"></div>'
+                "<script>function save(){localStorage.setItem('val',document.getElementById('v').value);render();}"
+                "function render(){var x=localStorage.getItem('val');document.getElementById('disp').textContent=x?('STORED:'+x):'';}"
+                "render();</script></body></html>").encode())
+
+    class _S(socketserver.ThreadingTCPServer):
+        allow_reuse_address = True
+    srv = _S(("127.0.0.1", 0), _H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_address[1]}/"
+    await _start_session_url(base)
+    try:
+        await (getattr(m.type_into, "fn", m.type_into))(description="Value field", text="MAGICVAL")
+        await (getattr(m.click_what, "fn", m.click_what))(description="Save button")
+        vp = getattr(m.verify_persistence, "fn", m.verify_persistence)
+        # default reload keeps localStorage -> the local-only save reads persisted
+        r1 = await vp(expect="present", target_text="STORED:MAGICVAL")
+        assert "MATCH" in r1 and "MISMATCH" not in r1
+        # clear_storage proves SERVER persistence -> the local-only save is gone
+        r2 = await vp(expect="present", target_text="STORED:MAGICVAL", clear_storage=True)
+        assert "MISMATCH" in r2
+    finally:
+        await _end()
+        srv.shutdown()
+
+
 async def test_download_capture_and_verify_broken_export():
     # "Export CSV" writes ONLY the header (a broken export) — get_downloads must
     # surface it so a tester can catch the missing data rows.
