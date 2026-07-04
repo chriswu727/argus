@@ -1395,11 +1395,34 @@ class BrowserDriver:
         except Exception:
             return False
 
+    async def _point_in_view(self, x: int, y: int):
+        """Scroll a viewport point (from observe's canvas coords) into view if
+        it's outside the fold, and return the point to actually click — or None
+        if nothing is there. page.mouse.click never auto-scrolls and never errors
+        on an off-screen point, so a below-fold canvas click would silently miss
+        AND report success. This makes coordinate actions land or fail honestly."""
+        try:
+            info = await self._page.evaluate("() => ({h: window.innerHeight, sy: window.scrollY})")
+            h, sy0 = info["h"], info["sy"]
+            if y < 0 or y >= h:
+                page_y = y + sy0  # observe gives viewport coords; make page-absolute
+                await self._page.evaluate("(ty) => window.scrollTo(0, ty)", int(page_y - h / 2))
+                sy1 = await self._page.evaluate("() => window.scrollY")
+                y = int(page_y - sy1)  # actual viewport y after the (maybe clamped) scroll
+            present = await self._page.evaluate(
+                "(p) => !!document.elementFromPoint(p[0], p[1])", [x, y])
+            return (x, y) if present else None
+        except Exception:
+            return (x, y)  # can't verify (rare) — best-effort proceed
+
     async def click_at(self, x: int, y: int) -> bool:
         """Real mouse click at viewport pixel (x, y) — the escape hatch for
         canvas/WebGL UIs with no DOM element to target by description."""
         try:
-            await self._page.mouse.click(x, y)
+            pt = await self._point_in_view(x, y)
+            if pt is None:
+                return False
+            await self._page.mouse.click(pt[0], pt[1])
             await self._settle_dom()
             return True
         except Exception:
@@ -1407,7 +1430,10 @@ class BrowserDriver:
 
     async def hover_at(self, x: int, y: int) -> bool:
         try:
-            await self._page.mouse.move(x, y)
+            pt = await self._point_in_view(x, y)
+            if pt is None:
+                return False
+            await self._page.mouse.move(pt[0], pt[1])
             await self._settle_dom()
             return True
         except Exception:
@@ -1415,7 +1441,10 @@ class BrowserDriver:
 
     async def type_at(self, x: int, y: int, text: str) -> bool:
         try:
-            await self._page.mouse.click(x, y)  # focus the point, then type
+            pt = await self._point_in_view(x, y)
+            if pt is None:
+                return False
+            await self._page.mouse.click(pt[0], pt[1])  # focus the point, then type
             await self._page.keyboard.type(text)
             await self._settle_dom()
             return True
