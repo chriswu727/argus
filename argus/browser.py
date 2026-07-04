@@ -125,7 +125,13 @@ _EXTRACT_ELEMENTS_JS = """
             index: out.length,
             tag: el.tagName.toLowerCase(),
             type: el.type || null,
-            text: (el.textContent || '').trim().slice(0, 100) || null,
+            // A <select> DISPLAYS its selected option, not all of them — using
+            // textContent mashes every option together ("Name (A to Z)Name (Z to
+            // A)Price..."), which is noise in observe and the report. Show the
+            // selected option's visible text instead.
+            text: (el.tagName === 'SELECT')
+                  ? (((el.selectedOptions && el.selectedOptions.length ? el.selectedOptions[0].text : '') || '').trim().slice(0, 100) || null)
+                  : ((el.textContent || '').trim().slice(0, 100) || null),
             placeholder: el.placeholder || null,
             href: el.href || null,
             value: el.value || null,
