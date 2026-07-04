@@ -151,7 +151,8 @@ def test_repro_detail_surfaces_what_was_checked():
     from argus.reporter import _repro_detail
     ok = _repro_detail({"attempted": True, "reproduced": True, "target_text": "Buy groceries",
                         "expect": "present", "at_url": "/tasks"})
-    assert "Independently confirmed" in ok and "Buy groceries" in ok and "/tasks" in ok
+    # plain-sentence wording; URL intentionally dropped (the card shows it above)
+    assert "Independently confirmed" in ok and "Buy groceries" in ok and "is present on the page" in ok
     # observation-based / auto-captured / inconclusive carry no detail line
     assert _repro_detail(None) == ""
     assert _repro_detail({"attempted": False, "auto_captured": True}) == ""
@@ -213,6 +214,25 @@ def test_report_renders_string_steps_and_dedup_desc():
         url="u", bugs=[b], pages_visited=[], actions_taken=0, duration_seconds=0.0, focus_areas=[]))
     assert html.count("Cart total ignores the discount code") == 1  # title only, no repeat <p>
     assert "Apply code SAVE10" in html
+
+
+def test_report_steps_no_double_numbering_and_repro_wording():
+    from argus.reporter import _format_steps, _repro_detail
+    # a leading "N." the model left is stripped so the <ol> numbers once
+    h = _format_steps(["1. Navigate to /new", "2. Click Save"])
+    assert "1. 1." not in ("<ol>" + h) and h.count("<li>") == 2
+    # repro line is a plain sentence with whitespace collapsed, no "expected X absent"
+    rd = _repro_detail({"attempted": True, "reproduced": True,
+                        "target_text": "8\nTotal", "expect": "present", "at_url": "/tasks"})
+    assert "8 Total" in rd and "expected" not in rd and "is present on the page" in rd
+    rd2 = _repro_detail({"attempted": True, "reproduced": True,
+                         "target_text": "Buy groceries", "expect": "absent"})
+    assert "is absent from the page" in rd2
+
+
+def test_short_truncates_on_word_boundary():
+    assert m._short("Task creation never persists it", 20).endswith("…")
+    assert " ".join(m._short("alpha beta gamma delta", 12).replace("…", "").split()) in "alpha beta gamma delta"
 
 
 def test_looks_logged_out_heuristic():
