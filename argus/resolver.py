@@ -60,7 +60,8 @@ _KIND_HINTS = {
 # matched first by the exact-label fast path, so dropping these is safe.
 _STOPWORDS = {
     "the", "a", "an", "this", "that", "in", "on", "of", "to",
-    "row", "rows", "item", "items", "entry", "task", "tasks", "near", "for", "with",
+    "row", "rows", "item", "items", "entry", "task", "tasks", "issue", "ticket",
+    "near", "for", "with",
     "named", "labeled", "labelled", "label", "labels", "containing", "value", "whose",
     "navigation", "nav", "navbar", "header", "footer", "sidebar", "toolbar", "bar",
 }
@@ -336,8 +337,19 @@ def resolve_element(
             return ResolveResult(found=exact[0],
                                  candidates=[(110, exact[0])], reason="unique")
 
-    description, ordinal = extract_ordinal(description)
-    core, _ = split_description(description)
+    # A trailing "#N" is read as a POSITION by extract_ordinal ("Delete #2" = the
+    # 2nd Delete). But "#N" is just as often a LITERAL identifier — issue #42,
+    # ticket #7, order #1001. If any candidate's visible text/row carries the
+    # literal "#N" token, it's an identifier, not a position: keep it as content
+    # so scoring targets the right row instead of a positional guess.
+    _hm = re.search(r"#\s*(\d+)", description)
+    if _hm and any(_has_token("#" + _hm.group(1),
+                              (el.text or "") + " " + (el.parent_context or "")) for el in pool):
+        ordinal = None
+        core, _ = split_description(description)
+    else:
+        description, ordinal = extract_ordinal(description)
+        core, _ = split_description(description)
 
     # Kind-only call: the description was just a kind word ("dropdown",
     # "button", "the textbox") and after stripping it `core` is empty.
