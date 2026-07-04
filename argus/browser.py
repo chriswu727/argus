@@ -125,16 +125,22 @@ _EXTRACT_ELEMENTS_JS = """
             index: out.length,
             tag: el.tagName.toLowerCase(),
             type: el.type || null,
-            // A <select> DISPLAYS its selected option, not all of them — using
-            // textContent mashes every option together ("Name (A to Z)Name (Z to
-            // A)Price..."), which is noise in observe and the report. Show the
-            // selected option's visible text instead.
-            text: (el.tagName === 'SELECT')
-                  ? (((el.selectedOptions && el.selectedOptions.length ? el.selectedOptions[0].text : '') || '').trim().slice(0, 100) || null)
+            // A <select>'s textContent mashes every option together
+            // ("Name (A to Z)Name (Z to A)Price...") — noise. Leave text null so
+            // the label (aria/associated-<label>) is the name, and put the
+            // SELECTED option's visible text in value below. Result:
+            // labelled -> `select "Sort" = "Name Z-A"`, unlabelled -> the
+            // selection is the label: `select "Name (A to Z)"`.
+            text: (el.tagName === 'SELECT') ? null
                   : ((el.textContent || '').trim().slice(0, 100) || null),
             placeholder: el.placeholder || null,
             href: el.href || null,
-            value: el.value || null,
+            // For a select, value = the SELECTED option's visible text (not its
+            // internal value attr "az"), so describe shows the human-readable
+            // current choice.
+            value: (el.tagName === 'SELECT')
+                   ? (((el.selectedOptions && el.selectedOptions.length ? el.selectedOptions[0].text : el.value) || '').trim().slice(0, 80) || null)
+                   : (el.value || null),
             // Live checked state for checkbox/radio (and role=switch/checkbox via
             // aria-checked) — without it, a checked and unchecked box look
             // identical in observe. null for non-checkable elements.
