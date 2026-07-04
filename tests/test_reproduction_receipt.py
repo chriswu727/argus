@@ -388,6 +388,26 @@ async def test_click_at_below_fold_canvas_scrolls_and_lands():
         await _end()
 
 
+async def test_download_capture_and_verify_broken_export():
+    # "Export CSV" writes ONLY the header (a broken export) — get_downloads must
+    # surface it so a tester can catch the missing data rows.
+    page = ('<html><body><button id="exp" onclick="dl()">Export CSV</button>'
+            '<script>function dl(){'
+            "var b=new Blob(['Name,Amount\\n'],{type:'text/csv'});"
+            "var a=document.createElement('a');a.href=URL.createObjectURL(b);"
+            "a.download='report.csv';document.body.appendChild(a);a.click();}"
+            '</script></body></html>')
+    await _session_on_page(page)
+    try:
+        await (getattr(m.click_what, "fn", m.click_what))(description="Export CSV button")
+        out = await (getattr(m.get_downloads, "fn", m.get_downloads))()
+        assert "report.csv" in out
+        assert "Name,Amount" in out    # preview reveals the header-only content
+        assert "SUSPICIOUS" in out     # 12 bytes < 50 -> flagged as likely-broken
+    finally:
+        await _end()
+
+
 async def test_resize_sweeps_responsive_breakpoint():
     page = ('<html><head><style>'
             '.mobile{display:none}@media(max-width:768px){.desktop{display:none}.mobile{display:block}}'
