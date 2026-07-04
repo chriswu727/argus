@@ -1101,6 +1101,15 @@ class BrowserDriver:
 
     # -- navigation --
 
+    async def _settle_network(self, page=None, timeout: int = 6_000):
+        """Best-effort wait for network to go idle. A never-resolving fetch (a
+        stuck 'Loading…' spinner) means networkidle NEVER fires, so this must
+        never block long or throw — the caller proceeds with the loaded DOM."""
+        try:
+            await (page or self._page).wait_for_load_state("networkidle", timeout=timeout)
+        except Exception:
+            pass
+
     async def goto(self, url: str):
         if self._page is None:
             # All tabs were closed; reopen one so navigation recovers the
@@ -1116,10 +1125,7 @@ class BrowserDriver:
         # and proceed with the loaded DOM. That makes the stuck state OBSERVABLE
         # (and flaggable as a bug) instead of a 30s hang reported as a load failure.
         resp = await self._page.goto(url, wait_until="domcontentloaded", timeout=30_000)
-        try:
-            await self._page.wait_for_load_state("networkidle", timeout=6_000)
-        except Exception:
-            pass
+        await self._settle_network()
         return resp
 
     # -- state extraction --
@@ -1328,7 +1334,8 @@ class BrowserDriver:
         try:
             if start_url:
                 try:
-                    resp = await page.goto(start_url, wait_until="networkidle", timeout=30_000)
+                    resp = await page.goto(start_url, wait_until="domcontentloaded", timeout=30_000)
+                    await self._settle_network(page)
                     if resp is not None and resp.status >= 400:
                         return {"steps": [{"act": f"goto {start_url}", "ok": False,
                                            "reason": f"HTTP {resp.status}"}],
@@ -1343,7 +1350,8 @@ class BrowserDriver:
                 val = act.get("value")
                 if tool == "navigate":
                     try:
-                        resp = await page.goto(val, wait_until="networkidle", timeout=30_000)
+                        resp = await page.goto(val, wait_until="domcontentloaded", timeout=30_000)
+                        await self._settle_network(page)
                         if resp is not None and resp.status >= 400:
                             steps.append({"act": f"navigate {val}", "ok": False, "reason": f"HTTP {resp.status}"})
                             diverged = True
@@ -1365,7 +1373,7 @@ class BrowserDriver:
                     loc = self._locator(elements.index(r.found), elements, page=page)
                     if tool == "click_what":
                         await loc.click(timeout=5_000)
-                        await page.wait_for_load_state("networkidle", timeout=10_000)
+                        await self._settle_network(page)
                     elif tool == "type_into":
                         await loc.fill(val or "", timeout=5_000)
                     elif tool == "select_into":
@@ -1414,8 +1422,8 @@ class BrowserDriver:
     async def click(self, element_index: int, elements: List[InteractiveElement]) -> bool:
         try:
             await self._locator(element_index, elements).click(timeout=5_000)
-            await self._page.wait_for_load_state("networkidle", timeout=10_000)
-            await self._settle_dom()
+            await self._settle_network()  # best-effort; a click that kicks off a
+            await self._settle_dom()      # hanging fetch must NOT read as failed
             return True
         except Exception:
             return False
@@ -1599,7 +1607,8 @@ class BrowserDriver:
 
     async def go_back(self) -> bool:
         try:
-            await self._page.go_back(wait_until="networkidle", timeout=10_000)
+            await self._page.go_back(wait_until="domcontentloaded", timeout=10_000)
+            await self._settle_network()
             return True
         except Exception:
             return False
