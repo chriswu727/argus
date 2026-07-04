@@ -469,9 +469,15 @@ def resolve_element(
 def describe(el: InteractiveElement) -> str:
     """Format an element for display in an ambiguous-resolution shortlist."""
     parts = [kind_of(el)]
-    label = el.text or el.aria_label or el.placeholder or el.value or el.name
+    label = el.text or el.aria_label or el.placeholder or el.name
     if label:
         parts.append(f'"{label[:60]}"')
+    # Show a filled field's CURRENT value so the agent can SEE what it contains
+    # (verify a rename/edit persisted, spot a stale/pre-filled value) — an
+    # aria-labelled input used to show only its label, hiding the value. Skip
+    # passwords. When there's no other label, the value IS the label.
+    if el.value and el.value != label and (el.type or "").lower() != "password":
+        parts.append(f'= "{el.value[:40]}"' if label else f'"{el.value[:60]}"')
     if el.href:
         parts.append(f"-> {el.href[:60]}")
     if el.parent_context and el.parent_context.strip():
