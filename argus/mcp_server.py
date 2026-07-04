@@ -2233,6 +2233,38 @@ async def type_into(description: str, text: str) -> str:
 
 
 @mcp.tool()
+async def paste_into(description: str, text: str) -> str:
+    """Paste `text` into a field — fires the element's onpaste handler, then
+    inserts the text if no handler consumed it.
+
+    Different from type_into: pasting dispatches a `paste` ClipboardEvent (not
+    per-key keydown/input), so it exercises paste-SPECIFIC logic — a coupon/token
+    field that reformats on paste, an input that strips or rejects pasted content,
+    a card or OTP field that splits a pasted value across boxes, a rich editor
+    that sanitizes pasted HTML. Use type_into for normal typing; use paste_into to
+    test paste behavior specifically. After it, observe() to see how the field
+    handled the paste.
+    """
+    s = _require_session()
+    err = _require_web_session(s, "paste_into")
+    if err:
+        return err
+    el, err = _resolve_or_error(s, description)
+    if err:
+        return err
+    idx = s._last_elements.index(el)
+    ok = await s.browser.paste_into(idx, text, s._last_elements)
+    if not ok:
+        return f"paste_into: failed on {description!r}."
+    label = el.text or el.aria_label or el.placeholder or el.name or el.tag
+    s.steps.append(f"paste_into({description!r}, {text[:40]!r})")
+    _record_action(s, "paste_into", f"{text[:40]} into {description}")
+    new_state = await s.browser.get_state()
+    s._last_elements = new_state.elements
+    return f'Pasted into "{label[:50]}". Call observe() to see how the field handled the paste.'
+
+
+@mcp.tool()
 async def select_into(description: str, value: str) -> str:
     """Select `value` in the dropdown best matching `description`."""
     s = _require_session()

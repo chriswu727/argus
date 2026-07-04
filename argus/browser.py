@@ -1605,6 +1605,39 @@ class BrowserDriver:
         except Exception:
             return False
 
+    async def paste_into(
+        self, element_index: int, text: str,
+        elements: List[InteractiveElement],
+    ) -> bool:
+        """Paste `text` into an element via a synthetic paste ClipboardEvent (so
+        the app's onpaste handler fires — sanitization, auto-format, OTP split),
+        then simulate the default insert if the handler did NOT consume it.
+        type_into fires keydown/input, never a paste event, so it can't test this."""
+        try:
+            await self._locator(element_index, elements).evaluate(
+                """(el, text) => {
+                    el.focus();
+                    const dt = new DataTransfer();
+                    dt.setData('text/plain', text);
+                    const ev = new ClipboardEvent('paste', {bubbles: true, cancelable: true, clipboardData: dt});
+                    const notPrevented = el.dispatchEvent(ev);
+                    if (notPrevented) {
+                        const tag = el.tagName;
+                        if (tag === 'INPUT' || tag === 'TEXTAREA') {
+                            const s = el.selectionStart ?? el.value.length;
+                            const e = el.selectionEnd ?? el.value.length;
+                            el.value = el.value.slice(0, s) + text + el.value.slice(e);
+                            el.dispatchEvent(new Event('input', {bubbles: true}));
+                        } else if (el.isContentEditable) {
+                            document.execCommand('insertText', false, text);
+                        }
+                    }
+                }""", text)
+            await self._settle_dom()
+            return True
+        except Exception:
+            return False
+
     async def go_back(self) -> bool:
         try:
             await self._page.go_back(wait_until="domcontentloaded", timeout=10_000)
