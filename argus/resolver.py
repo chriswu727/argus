@@ -471,7 +471,14 @@ def resolve_element(
 def describe(el: InteractiveElement) -> str:
     """Format an element for display in an ambiguous-resolution shortlist."""
     parts = [kind_of(el)]
-    label = el.text or el.aria_label or el.placeholder or el.name
+    _txt = (el.text or "").strip()
+    # An ICON button's visible text is a glyph ("+", "×", "≡", "‹"); its aria-label
+    # ("Zoom in", "Close", "Next") is far more useful, so prefer it when the text
+    # carries no letters. Otherwise text wins (the label a human reads).
+    if el.aria_label and _txt and not any(c.isalpha() for c in _txt):
+        label = el.aria_label
+    else:
+        label = el.text or el.aria_label or el.placeholder or el.name
     if label:
         parts.append(f'"{label[:60]}"')
     # Show a filled field's CURRENT value so the agent can SEE what it contains
