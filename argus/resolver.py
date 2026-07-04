@@ -109,6 +109,8 @@ def extract_ordinal(desc: str) -> Tuple[str, Optional[int]]:
 
 def kind_of(el: InteractiveElement) -> str:
     """Bucket an element into a coarse 'kind' category."""
+    if el.type == "contenteditable":  # rich-text editor — a text-entry surface
+        return "input"
     if el.tag == "a":
         return "link"
     if el.tag == "button":

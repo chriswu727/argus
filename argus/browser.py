@@ -124,7 +124,9 @@ _EXTRACT_ELEMENTS_JS = """
         out.push({
             index: out.length,
             tag: el.tagName.toLowerCase(),
-            type: el.type || null,
+            // Tag a contenteditable (rich-text editor) as a text-entry surface so
+            // type_into (kind=input) can target it, not just click_what.
+            type: el.type || (el.isContentEditable ? 'contenteditable' : null),
             // A <select>'s textContent mashes every option together
             // ("Name (A to Z)Name (Z to A)Price...") — noise. Leave text null so
             // the label (aria/associated-<label>) is the name, and put the
@@ -133,7 +135,10 @@ _EXTRACT_ELEMENTS_JS = """
             // selection is the label: `select "Name (A to Z)"`.
             text: (el.tagName === 'SELECT') ? null
                   : ((el.textContent || '').trim().slice(0, 100) || null),
-            placeholder: el.placeholder || null,
+            // aria-placeholder / data-placeholder cover contenteditable rich-text
+            // editors (Quill, ProseMirror, Draft) whose empty-state hint isn't a
+            // real <input> placeholder — otherwise the editor is an unlabelled div.
+            placeholder: el.placeholder || el.getAttribute('aria-placeholder') || el.getAttribute('data-placeholder') || null,
             href: el.href || null,
             // For a select, value = the SELECTED option's visible text (not its
             // internal value attr "az"), so describe shows the human-readable
@@ -1484,11 +1489,21 @@ class BrowserDriver:
     async def type_text(
         self, element_index: int, text: str, elements: List[InteractiveElement]
     ) -> bool:
+        loc = self._locator(element_index, elements)
         try:
-            await self._locator(element_index, elements).fill(text, timeout=5_000)
+            await loc.fill(text, timeout=5_000)
             return True
         except Exception:
-            return False
+            # Rich-text editors / contenteditable that fill() can't handle: focus,
+            # select any existing content, and type via the keyboard.
+            try:
+                await loc.click(timeout=5_000)
+                await self._page.keyboard.press("Control+A")
+                await self._page.keyboard.type(text)
+                await self._settle_dom()
+                return True
+            except Exception:
+                return False
 
     async def select_option(
         self, element_index: int, value: str, elements: List[InteractiveElement]
