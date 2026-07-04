@@ -260,6 +260,18 @@ def test_single_char_discriminator_rows():
     assert resolve_element("Delete Task 2", rows).found is rows[3]
 
 
+def test_hash_n_identifier_vs_positional():
+    def issue(i, num, title):
+        e = make_element(i, tag="button", text="Delete"); e.parent_context = f"#{num} {title}"; return e
+    els = [issue(0, 7, "Fix login"), issue(1, 42, "Broken chart"), issue(2, 3, "Typo")]
+    # "#42" is a LITERAL identifier (a row carries it) -> the #42 row, not position 42
+    assert resolve_element("Delete issue #42", els).found is els[1]
+    # plain positional "#N" (no row carries it) still selects the Nth
+    plain = [make_element(i, tag="button", text="Delete") for i in range(3)]
+    assert resolve_element("Delete #2", plain).found is plain[1]
+    assert resolve_element("Delete #3", plain).found is plain[2]
+
+
 def test_type_noun_and_id_token_no_silent_wrong_action():
     def cb(i):
         e = make_element(i, tag="input", type="checkbox"); e.id = f"task-{i}"
