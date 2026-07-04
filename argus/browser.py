@@ -138,6 +138,13 @@ _EXTRACT_ELEMENTS_JS = """
                 if (el.getAttribute('aria-pressed') === 'true') s.push('pressed');
                 var c = el.getAttribute('aria-current');
                 if (c && c !== 'false') s.push('current');
+                if (el.getAttribute('aria-selected') === 'true') s.push('selected');
+                // Validation error: explicit aria-invalid, OR native HTML5
+                // :invalid but ONLY when the field has a value (a filled-but-bad
+                // field is the signal; an empty required field is not yet a bug).
+                var inv = el.getAttribute('aria-invalid');
+                if (inv === 'true') s.push('invalid');
+                else { try { if (el.value && el.matches && el.matches(':invalid')) s.push('invalid'); } catch(_) {} }
                 return s.length ? s.join(' ') : null;
             })(),
             disabled: el.disabled || false,

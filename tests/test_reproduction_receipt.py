@@ -408,6 +408,24 @@ async def test_record_bug_string_steps_not_char_split():
         await _end()
 
 
+async def test_observe_shows_invalid_and_selected_state():
+    from argus.resolver import describe
+    page = ('<html><body>'
+            '<input type="email" aria-invalid="true" aria-label="Email" value="not-an-email">'
+            '<input type="email" aria-label="Native" value="bad@" required>'
+            '<input type="text" aria-label="Empty" required>'
+            '<div role="tab" aria-selected="true" aria-label="Tab1">Tab1</div></body></html>')
+    await _session_on_page(page)
+    try:
+        ds = {e.aria_label: describe(e) for e in (await m._session.browser.get_state()).elements}
+        assert "[invalid]" in ds["Email"]           # explicit aria-invalid
+        assert "[invalid]" in ds["Native"]          # native :invalid on a FILLED field
+        assert "[invalid]" not in ds["Empty"]       # empty required -> not flagged (no noise)
+        assert "[selected]" in ds["Tab1"]
+    finally:
+        await _end()
+
+
 async def test_observe_shows_aria_expanded_pressed_current():
     from argus.resolver import describe
     page = ('<html><body>'
