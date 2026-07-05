@@ -442,6 +442,23 @@ async def test_observe_shows_aria_expanded_pressed_current():
         await _end()
 
 
+async def test_emulate_device_applies_mobile_profile():
+    # True device emulation (not just resize): mobile viewport, touch, mobile UA.
+    page = '<html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body>m</body></html>'
+    await _session_on_page(page)
+    try:
+        r = await (getattr(m.emulate_device, "fn", m.emulate_device))("iPhone 13")
+        assert "iPhone 13" in r and "touch=True" in r
+        info = await m._session.browser._page.evaluate(
+            "() => ({w: innerWidth, iphone: navigator.userAgent.includes('iPhone'), touch: navigator.maxTouchPoints})")
+        assert info["w"] == 390 and info["iphone"] is True and info["touch"] >= 1
+        # unknown device -> honest error, no crash
+        r2 = await (getattr(m.emulate_device, "fn", m.emulate_device))("Nonexistent Phone 9000")
+        assert "unknown device" in r2
+    finally:
+        await _end()
+
+
 async def test_css_only_tab_switches_via_hidden_radio():
     # CSS-only tabs: a visually-hidden radio drives the panel via :checked. Playwright's
     # hit-test can't click the hidden radio; the programmatic-click fallback must toggle it.

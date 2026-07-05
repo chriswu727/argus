@@ -2459,6 +2459,38 @@ async def resize(width: int, height: int) -> str:
 
 
 @mcp.tool()
+async def emulate_device(device: str) -> str:
+    """Re-open the current page as a real MOBILE DEVICE — touch, mobile user-agent,
+    device-pixel-ratio, and viewport — not just a viewport resize.
+
+    resize() only changes width/height; many mobile bugs need the full device
+    identity: touch-only interactions, mobile-only nav, content gated on a mobile
+    UA, or a broken viewport-meta layout. Session state (cookies/login) carries
+    over, so you can log in on desktop then switch to mobile. Common device names:
+    "iPhone 13", "iPhone SE", "Pixel 5", "iPad Pro 11", "Galaxy S9+". Use resize()
+    for a plain breakpoint sweep; use this for true device emulation. observe()
+    after to see the mobile layout.
+    """
+    s = _require_session()
+    err = _require_web_session(s, "emulate_device")
+    if err:
+        return err
+    r = await s.browser.emulate_device(device)
+    if not r.get("ok"):
+        ex = r.get("examples") or []
+        tail = f" Try one of: {', '.join(ex)}." if ex else ""
+        return f"emulate_device: {r.get('reason', 'failed')}.{tail}"
+    s.steps.append(f"emulate_device({device})")
+    _record_action(s, "emulate_device", device)
+    new_state = await s.browser.get_state()
+    s._last_elements = new_state.elements
+    vp = r.get("viewport") or {}
+    return (f"Now emulating {device} — {vp.get('width')}x{vp.get('height')}, "
+            f"touch={r.get('has_touch')}, mobile={r.get('is_mobile')}. "
+            f"Call observe() to see the mobile layout.")
+
+
+@mcp.tool()
 async def click_at(x: int, y: int) -> str:
     """Click at viewport pixel (x, y) — the escape hatch for CANVAS/WebGL UIs.
 
