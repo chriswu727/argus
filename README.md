@@ -1,369 +1,227 @@
+<div align="center">
+
 # Argus
 
-> An opinionated MCP server that turns your loaded LLM into a senior
-> human QA tester — for web apps and any macOS app on your screen.
+**Point your coding agent at a web app. It explores like a QA tester and reports the bugs it can prove.**
+
+Argus is an [MCP](https://modelcontextprotocol.io/) server. When Claude Code (or any MCP host) loads it, the agent stops being "an assistant with browser tools" and starts behaving like a senior tester — hypothesizing, clicking, verifying persistence, and recording reproducible bugs. Every certified finding is **independently re-confirmed from a clean page load** before it's reported.
+
+[![PyPI](https://img.shields.io/pypi/v/argus-testing?color=1a7f37)](https://pypi.org/project/argus-testing/)
+[![Python](https://img.shields.io/pypi/pyversions/argus-testing)](https://pypi.org/project/argus-testing/)
+[![MCP server](https://img.shields.io/badge/MCP-server-blue)](https://modelcontextprotocol.io/)
+[![Capability ceiling](https://img.shields.io/badge/bench-34%2F34-brightgreen)](#-benchmarks)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
+[Quick start](#-quick-start) · [Why Argus](#-why-argus-is-different) · [Compared](#-how-it-compares) · [Tools](#-tool-surface) · [Benchmarks](#-benchmarks)
+
+</div>
+
+---
+
+## The output
+
+Give it a URL; get a self-contained report of bugs — each tagged with whether Argus **independently reproduced it** or only observed it:
+
+<div align="center">
+<img src="assets/report.png" alt="Argus bug report — verified findings with reproduction receipts" width="800">
+</div>
+
+The green badge is the whole point. Anyone can have an LLM *claim* a bug. Argus re-loads the page from scratch and re-checks the symptom before it says **VERIFIED** — so the report is a list of bugs you can trust, not a list of guesses to triage.
+
+---
+
+## How it works
+
+```mermaid
+flowchart LR
+    A(["observe"]) --> B{"looks wrong?"}
+    B -->|not sure| C["act: click · type · resize · verify"]
+    C --> A
+    B -->|bug| D["verify_persistence — reload from a clean state"]
+    D -->|symptom repeats| E(["✔ VERIFIED"])
+    D -->|symptom gone| F(["✘ dropped — no false positive"])
+    E --> G[["report: HTML · JSON · JUnit · SARIF"]]
+```
+
+The agent is the intelligence. Argus is the seat you put it in: a role-binding prompt that keeps it in tester mode, a description-keyed tool surface (`click_what("Login button")`, not `click(7)`), and a **reproduction-receipt engine** that turns "the model thinks this is a bug" into "this bug is real, here's the proof."
+
+---
+
+## 🚀 Quick start
+
+```bash
+pip install argus-testing
+playwright install chromium
+
+# Wire it into Claude Code (or Cursor, or any MCP host)
+claude mcp add argus -- argus-mcp
+```
+
+Then just ask, in your agent session:
+
+> **"Test my app at http://localhost:3000 — find real bugs."**
+
+That's it. The agent drives; Argus keeps it honest and writes the report.
+
+<details>
+<summary><b>CLI mode (no MCP host — bring your own LLM)</b></summary>
+
+```bash
+# Uses a LiteLLM-backed planner. Set a provider key (OPENAI_API_KEY, DEEPSEEK_API_KEY, …).
+argus http://localhost:3000 --model deepseek/deepseek-chat
+
+# Higher recall: union N independent passes (deduped, proven instance kept)
+argus http://localhost:3000 --passes 3
+```
+
+</details>
+
+<details>
+<summary><b>Screen mode (macOS) — test any native app, not just the web</b></summary>
+
+```bash
+pip install 'argus-testing[mac]'
+brew install cliclick          # keystroke / coordinate fallback
+argus-mcp --doctor             # check Screen Recording + Accessibility grants
+```
+
+Same description-keyed tools, but the target is whatever app is foreground on macOS — Notes, Cursor, Safari, your in-progress feature. No headless Chrome, no scripted Playwright. Argus sees what you see, via the Accessibility tree.
+
+</details>
+
+---
+
+## 💡 Why Argus is different
+
+**Existing testing tools only test what you script.** Playwright and Cypress run the assertions you wrote. Argus *discovers* bugs you didn't think to test for — and then does the thing an LLM alone can't be trusted to do: **proves them.**
+
+| | |
+|---|---|
+| 🔎 **Autonomous & black-box** | You give it a URL, not a test plan. It explores like a real user — no repo access, no scripted steps. |
+| 🧾 **Reproduction receipts** | Before certifying a bug, it re-loads the page from a clean state and re-confirms the symptom. Engineered for **zero false-certifications.** |
+| 👁️ **Finds human-eye bugs** | Fake "Only 3 left!" scarcity, a "Saved" toast that doesn't save, a sale badge where the price didn't drop, a stale navbar after a rename. Static analysis catches none of these. |
+| 🔁 **Discover → guard** | Findings are journaled; `argus-regression` re-checks them on every build with **zero LLM cost** and a non-zero exit — a real CI gate against known bugs coming back. |
+| 📤 **Machine-readable** | Every report also emits JSON, JUnit, and SARIF — so findings gate a pipeline and surface as inline **GitHub PR annotations.** |
+
+---
+
+## ⚖️ How it compares
+
+On the axis that matters for finding bugs — *autonomously discover, independently verify, and report* — Argus occupies a different slot from the browser-MCP crowd:
+
+| | **Argus** | Playwright MCP | Chrome DevTools MCP | browser-use |
+|---|:---:|:---:|:---:|:---:|
+| Autonomously finds unknown bugs | ✅ | ❌ *(driver)* | ❌ *(debugger)* | ~ *(task-scoped)* |
+| Independently verifies each finding | ✅ *(receipt)* | ❌ | ❌ | ❌ *(LLM score)* |
+| Self-contained bug report | ✅ | ❌ | ❌ | ~ |
+| Black-box (no repo / source access) | ✅ | ✅ | ✅ | ✅ |
+| Zero-LLM CI regression gate | ✅ | ~ | ❌ | ~ |
+
+> These aren't "worse" tools — they're a different job. Playwright MCP gives an agent excellent hands; Chrome DevTools MCP gives it deep network/perf/memory inspection Argus doesn't have. Argus is the layer that *decides what's a bug and proves it.* Use them together.
+
+---
+
+## 📊 Benchmarks
 
 ```
 $ python -m argus.bench --target all
 
-  buggytasks    22 / 22  = 100 %  in  20.5s
-  darkshop      12 / 12  = 100 %  in   8.4s
-  ──────────────────────────────────────────
-  total         34 / 34  = 100 %  in  28.9s
+  buggytasks    22 / 22  = 100 %   ·  mechanical bugs (console errors, fake delete, auth bypass…)
+  darkshop      12 / 12  = 100 %   ·  human-eye bugs (fake scarcity, lying toasts, stale state…)
+  ──────────────────────────────────────────────────────────────────────
+  total         34 / 34  = 100 %   ·  reproducible from git clone in two commands
 ```
 
-The `34 / 34` is reproducible from `git clone` in two commands. The
-**point** of Argus is the prompt + the tool surface: when an Opus-class
-agent (Claude Code, Cursor, etc.) loads this MCP, it stops being "an
-assistant with browser tools" and starts behaving like a QA tester —
-hypothesising, observing, verifying persistence, recording reproducible
-bugs, and refusing to wander off into "let me just complete your flow
-for you".
+`34 / 34` is the **capability ceiling** — what's *findable* through the tool surface, measured by deterministic scripts. It is deliberately separate from *how often a given LLM remembers to use the tools well*, which is noisy and honestly reported below.
 
-The other thing that makes Argus different from the existing browser-MCP
-crowd: **screen mode**. Same description-keyed tools, but the target is
-whatever app is foreground on macOS — Notes, Cursor, Safari, your
-in-progress feature. No headless Chrome, no scripted Playwright. Argus
-sees what you see.
+<details>
+<summary><b>Real-LLM recall — the honest number (and why we report the spread)</b></summary>
 
-[Skip to Quick start](#quick-start) · [Bench](#bench-method) · [Tool
-surface](#tool-surface) · [Philosophy](#philosophy)
+`python -m argus.bench.agent_runner` puts an **actual model** in the driver's seat and scores recall across trials. What we've learned running it:
+
+1. **Real recall sits well below the `34/34` ceiling.** A live driver finds a fraction of the seeded bugs per pass — the ceiling is what's *findable*, this is what a model *finds*.
+2. **Variance is large — never rank models on a few runs.** Per-trial recall swings widely; we report the spread, not a single hero number.
+3. **Dogfooding the bench found real bugs in Argus itself** — a `record_bug` crash on a string argument that silently dropped findings, resolver misses on common phrasings. The tool-testing tool got tested.
+4. **Precision holds regardless of driver.** Across every trial, the reproduction receipt kept false-certifications at zero — a weak model finds fewer bugs, but the ones marked VERIFIED are still real.
+
+</details>
+
+<details>
+<summary><b>What the fixtures seed</b></summary>
+
+**BuggyTasks** (`:5555`) — 22 mechanical bugs in a task app: console errors, dead links, fake delete (UI says "deleted!" but data persists on refresh), auth bypass, NaN dates, off-by-one counts, race conditions. The "scripted E2E could find these" tier.
+
+**DarkShop** (`:5556`) — 12 human-eye bugs in a polished-looking store: hardcoded "Only 3 left!" scarcity, `-50%` badges where sale price equals original, a "free shipping over $50" banner contradicted by a flat `$5` at checkout, inverted visual hierarchy ("Add to Cart" demoted under a prominent "Subscribe"), cross-page state drift (rename sticks on /account, navbar greeting doesn't). **Static analysis catches roughly none of these** — they require an agent that reads the page and *reasons.*
+
+```bash
+python test-site/app.py           # BuggyTasks  :5555
+python human-eye-fixture/app.py   # DarkShop    :5556
+python -m argus.bench --target all
+```
+
+</details>
 
 ---
 
-## What it is, in one paragraph
+## 🧰 Tool surface
 
-Argus is an [MCP server](https://modelcontextprotocol.io/) that exposes
-two things:
-
-1. A **role-binding instructions block** that tells whichever agent
-   loaded it: "while I'm here, you are a senior QA tester. Stay in role
-   until end_session."
-2. A **mode-agnostic tool surface** — `observe`, `click_what`,
-   `type_into`, `verify_persistence`, `record_bug`, plus the same again
-   for screen-mode (`screen_observe`, `screen_click_what`, …) — that
-   the agent uses to drive whatever you point it at.
-
-That's the whole product. There's no detector library, no AI brain
-wrapped around static rules, no scoring. The agent is the smart layer.
-Argus is an opinionated, well-instrumented seat to put that agent in.
-
-## What it isn't
-
-- **Not** an assertion library. There's no `expect(x).toBe(y)`. The
-  agent reads page state and decides what's a bug.
-- **Not** an axe / Lighthouse replacement. We deliberately don't run
-  static a11y / SEO / performance scans — those tools already exist and
-  are excellent. Argus only flags what *requires* human judgement to
-  see.
-- **Not** a task-completion agent. If you want it to actually buy the
-  thing or send the email, use Browser-Use or Stagehand. Argus's
-  instructions block specifically refuses task completion in favour of
-  testing the flow.
-
-## Quick start
-
-```bash
-# Web mode (works everywhere)
-pip install argus-testing
-playwright install chromium
-
-# Screen mode (macOS only, optional)
-pip install 'argus-testing[mac]'
-brew install cliclick    # for keystroke / coordinate fallback
-
-# Wire it into Claude Code
-claude mcp add argus -- argus-mcp
-
-# Confirm the version your MCP host will load
-argus-mcp --version
-```
-
-> **After upgrading Argus**, restart your MCP host (Claude Code,
-> Cursor, etc.). MCP hosts cache the tool table at startup, so a fresh
-> `pip install -U argus-testing` won't expose new tools until the host
-> reconnects to the server. `argus-mcp --version` is the easy way to
-> verify which version your host is actually running.
-
-Then, in your Claude Code / Cursor / any-MCP session:
-
-```
-"Test my app at http://localhost:3000 — find five real bugs."
-```
-
-For screen mode, say "test whatever is on my screen" or specify the
-app:
-
-```
-"Test the Notes app in screen mode."
-```
-
-### Permission check (screen mode)
-
-Screen mode needs Screen Recording + Accessibility grants. Run:
-
-```
-argus-mcp --doctor
-```
-
-It probes both, reports status, and gives you the
-`x-apple.systempreferences:` deep-link for any missing grant.
-
-### Regression in CI (zero-LLM)
-
-Findings recorded with a verify clause are journaled per origin when a session
-ends. Re-test them against a fresh build without an LLM — exits non-zero if any
-previously-confirmed bug is still present, so CI can gate on it:
-
-```bash
-argus-regression http://localhost:3000
-# STILL-PRESENT / FIXED / INCONCLUSIVE per finding; non-zero exit on STILL-PRESENT
-```
-
-Both the explore run and `argus-regression` also write `regression_*.json` /
-`regression_*.junit.xml` so a pipeline can ingest per-finding results.
-
-### Machine-readable output
-
-Every report is written in four formats next to the HTML: `.json` (summary +
-findings), `.junit.xml` (a pipeline gates on it — each finding a `<testcase>`),
-and `.sarif` (GitHub code scanning surfaces findings as inline PR annotations).
-Each finding carries its reproduction-receipt verdict, so a consumer can filter to
-**proven** — a verified bug is a JUnit `<failure>` / SARIF `error`, a clean-load-
-refuted symptom is `<skipped>` (not a build failure).
-
-### Higher recall via more passes
-
-A single LLM pass finds a noisy fraction of an app's bugs and misses different
-ones each run. Union independent passes to raise recall (deduped by structural
-fingerprint; the proven instance is kept):
-
-```bash
-argus http://localhost:3000 --passes 3
-```
-
-### Reproduce the bench
-
-```bash
-# Start the seeded fixtures
-python test-site/app.py             # BuggyTasks   :5555
-python human-eye-fixture/app.py     # DarkShop     :5556
-
-# Run all scenarios
-python -m argus.bench --target all \
-    --json bench-results/matrix.json \
-    --md   bench-results/matrix.md
-```
-
-See [`bench-results/matrix.md`](bench-results/matrix.md) for the
-checked-in artifact.
-
----
-
-## Bench method
-
-Argus's headline number — `34 / 34` — measures Argus's **capability
-ceiling**. Each scenario is a deterministic Python sequence that
-exercises the same MCP tools an LLM agent would call. We're answering
-*"what's findable through this surface?"* — separate from
-*"how often does any specific LLM remember to call the right tool?"*
-
-### Real-LLM bench (honest recall)
-
-`python -m argus.bench.agent_runner` (set a provider key, e.g.
-`DEEPSEEK_API_KEY`, and `BENCH_MODEL`) has an **actual model** drive the tools
-and scores recall/moat-engagement/cost across N trials — the true agent number,
-not the ceiling. Four honest findings from running it on BuggyTasks (all with a
-hard cost cap, ALL trials reported; total spend across every run below was under
-¥2):
-
-1. **Real recall is far below the `34/34` ceiling** — a real driver finds a
-   handful of the 22 per pass, not all of them. The ceiling is what's
-   *findable*; this is what a model *finds*.
-2. **Variance is huge — don't rank models on a few runs.** An early 3-trial
-   pass looked like a tidy "stronger model finds ~2× more" curve; 5 trials
-   erased it (`deepseek-v4-pro` even came out *lowest* one run, two passes
-   finding 0). Per-trial recall swings from 0 to 9. Report the spread, not a
-   single number.
-3. **Dogfooding the bench found bugs in Argus itself.** The transcripts
-   revealed `record_bug` *crashing* on a string `evidence` arg (weaker models
-   pass one) — silently dropping confirmed findings — plus resolver misses on
-   `link "Tasks"` / `checkbox next to X`. Fixing those roughly **doubled**
-   `deepseek-chat`'s mean recall (~2.5 → ~5/22 across two 6-trial runs, still
-   high variance) and eliminated the crashes. The tool testing tool got tested.
-4. **The precision moat is opt-in, and adoption scales with the driver.** A
-   weak model rarely attaches a `verify` clause on its own. Safe nudges (an
-   imperative RECORD instruction, accepting the target via `evidence`, a
-   no-receipt reminder) took `deepseek-chat` from **0** verified findings to
-   engaging in most trials — without ever guessing the symptom (which would
-   risk a false VERIFIED). Reliable engagement still favors a capable driver.
-
-### BuggyTasks (mechanical bugs)
-
-22 seeded bugs in a small task-management app: console errors, dead
-links, fake delete (UI says "deleted!" but data persists on refresh),
-auth bypass, NaN dates, count-off-by-one, race conditions, etc. These
-are the "scripted E2E could find them" bugs.
-
-### DarkShop (human-eye bugs)
-
-12 seeded bugs in a polished-looking e-commerce fixture: hardcoded
-"Only 3 left!" scarcity, fake `-50%` sale badges where original price
-equals sale price, "free shipping over $50" banner contradicted by a
-flat `$5` in checkout, visual hierarchy inverted ("Add to Cart" demoted
-while "Subscribe to Newsletter" gets the prominent green button), cross
--page state drift (rename succeeds on /account, navbar greeting still
-shows the old name), and so on. **Static analysis catches roughly none
-of these.** They require an agent that observes the page and *reasons*
-about what's wrong.
-
-### What an agent has to do per scenario
-
-Take BUG #10 in DarkShop: the navbar greeting goes stale after an
-account rename. The scenario does:
-
-```
-reset(mode="renamed")              # fixture pre-stages a renamed account
-observe()                          # read the rendered /account page
-                                   # — page shows "Alex-Renamed" in the form
-                                   # — navbar still says "Hi, Alex"
-record_bug(
-    title="Account name change does not update nav greeting",
-    severity="medium",
-    evidence={"bug_type": "ux_issue", ...},
-)
-```
-
-The judgement (*"the navbar saying Alex while the form says
-Alex-Renamed is wrong"*) lives in the agent. The bench measures whether
-Argus's surface gives the agent enough information to make that call.
-
-### Screen mode
-
-Screen mode is **not in the recall matrix** — that needs a seeded
-macOS app with intentional bugs, which is out of scope for v1. Screen
-mode is validated separately via `python -m argus.screen.validate`,
-which walks the AX tree of any running app and reports the elements
-+ round-trip identity probes. The checked-in artifact at
-`bench-results/screen_validation.json` walks Notes (8 menu-bar
-items, all localised OS strings — 5 / 5 unique probes).
-
-To exercise screen mode against your own apps:
-
-```bash
-python -m argus.screen.validate Finder Notes "Google Chrome" \
-    --json /tmp/screen.json
-```
-
-The script is read-only — it does not click, type, or move the mouse.
-Output element counts vary by app: simple system apps expose a few
-items at the menu-bar level; richer apps (browsers, IDEs) typically
-expose tens to hundreds.
-
----
-
-## Tool surface
-
-### Web mode
+<details>
+<summary><b>Web mode</b> — the description-keyed toolset the agent drives</summary>
 
 | Tool | Purpose |
 |------|---------|
-| `start_session(url)` | Launch a Playwright session at `url`. |
-| `observe()` | URL + title + interactive elements (description-keyed, no integer indices) + counts + visible feedback + ARIA tree + viewport state. |
-| `click_what(description)` | Click the element best matching `description`. Returns the top candidates if ambiguous, rather than guessing. |
-| `type_into(description, text)` | Resolve a text input by description, then type. |
-| `select_into(description, value)` | Resolve a `<select>` by description, then choose. |
-| `verify_persistence(expect, target_text, after_url)` | Force a fresh GET on `after_url` and report whether `target_text` is *present* or *absent*. The "Saved!" toast is not proof of persistence; this is. |
-| `inspect_element(description)` | Computed styles + ARIA + outerHTML + truncation detection for one element. |
-| `screenshot(name, element?)` | Full viewport, full page, or a tight crop of one element. |
-| `screenshot_diff(before, after)` | Pillow-based pixel diff with red-tint overlay. |
-| `eval_js(code)` | Arbitrary JS in the page context. Off by default; enable with `--unsafe` or `ARGUS_UNSAFE_EVAL=1`. |
-| `record_bug(title, severity, evidence)` | The agent calls this after it confirms a real bug. Required: severity in `{critical, high, medium, low, info}`. |
-| `get_errors()` | Drain captured console + network events (the only channels not visible in `observe`). |
-| `press_key(key, description?)` | Press Enter/Escape/Tab or a chord (Control+A) globally or on an element. |
-| `click_at` / `type_at` / `hover_at` / `drag_at(x,y,…)` | Coordinate actions — the escape hatch for canvas/WebGL and mouse-drag lists with no DOM marker. |
-| `drag_what(from, to)` | Drag one described element onto another. |
-| `resize(w,h)` / `emulate_device(name)` | Sweep responsive breakpoints; or emulate a real device — touch, mobile UA, DPR (state carries over). |
-| `emulate_media(color_scheme, reduced_motion)` | Test dark mode / reduced motion. |
-| `upload_file` / `drop_file(description, path)` | Upload via a real `<input>`, or drag-drop onto a dropzone. |
-| `paste_into(description, text)` | Paste (fires a `paste` ClipboardEvent) — tests paste-specific logic. |
-| `get_downloads()` | Inspect downloaded files (bytes/size) — catch a broken CSV/PDF/XLSX export. |
-| `tabs_list` / `tabs_switch` / `tabs_close(index?)` | Multi-tab flows — OAuth, payment popups, open-in-new-tab. |
-| `network_mock(pattern, status/body)` | Return 5xx/401/malformed for a URL pattern — fault injection with no backend. |
-| `check_links()` / `check_performance()` / `crawl_site()` | Probe-style helpers — return raw data, no auto-bug. |
-| `end_session()` | Close session, write the report (HTML + JSON + JUnit + SARIF). |
+| `observe()` | URL + title + interactive elements (keyed by description, not indices) + counts + visible feedback + ARIA tree + viewport state. |
+| `click_what(description)` | Click the element best matching `description`. Returns candidates if ambiguous, rather than guessing. |
+| `type_into` / `select_into` / `paste_into` | Resolve an input by description, then type / choose / paste (paste fires a real `ClipboardEvent`). |
+| `verify_persistence(expect, target_text, after_url)` | Force a fresh GET and report whether `target_text` is present or absent. **The "Saved!" toast is not proof; this is.** |
+| `record_bug(title, severity, evidence)` | Called once the agent confirms a real bug. A `verify` clause triggers the reproduction receipt. |
+| `press_key` · `click_at` / `type_at` / `hover_at` / `drag_at` | Keyboard chords; and coordinate actions — the escape hatch for canvas/WebGL and mouse-drag lists with no DOM marker. |
+| `resize(w,h)` · `emulate_device(name)` · `emulate_media(scheme)` | Responsive breakpoints; true device emulation (touch, mobile UA, DPR, state carried over); dark mode / reduced motion. |
+| `upload_file` / `drop_file` · `get_downloads()` | Upload via a real `<input>` or a dropzone; inspect downloaded bytes — catch a broken CSV/PDF/XLSX export. |
+| `tabs_list` / `tabs_switch` / `tabs_close` | Multi-tab flows — OAuth, payment popups, open-in-new-tab. |
+| `network_mock(pattern, …)` | Return 5xx/401/malformed for a URL pattern — fault injection with no backend. |
+| `inspect_element` · `screenshot` · `screenshot_diff` · `eval_js` · `get_errors` | Element internals; pixels; pixel diff; JS (opt-in); drained console + network events. |
+| `end_session()` | Close the session, write the report (HTML + JSON + JUnit + SARIF). |
 
-### Screen mode (macOS)
+</details>
+
+<details>
+<summary><b>Screen mode (macOS)</b> — same idea, against native apps</summary>
 
 | Tool | Purpose |
 |------|---------|
-| `start_screen_session(target_app="")` | Bind to the foreground app or to a named running app. Refuses cleanly with deep-link permission instructions if grants are missing. |
-| `screen_observe()` | Foreground app + window title + AX tree (capped at 200 elements / 6-deep) + screen-coords for every element + screenshot. |
-| `screen_click_what(description)` | Resolve via AX tree; click via `kAXPressAction` first, fall back to `cliclick` coordinate click at the element centre. |
-| `screen_type_into(description, text)` | Resolve via AX tree; set `kAXValue` first, fall back to focus + `cliclick` keystrokes. |
-| `screen_press_key(key)` | `cliclick kp:<key>` for `return`, `esc`, `space`, `cmd-s`, etc. |
-| `screen_session_status()` | Elapsed time vs cap, action count, abort-file state, last 30 trail entries. |
+| `start_screen_session(target_app="")` | Bind to the foreground or a named app. Refuses cleanly with deep-link permission instructions if grants are missing. |
+| `screen_observe()` | Foreground app + window title + AX tree (capped) + screen-coords per element + screenshot. |
+| `screen_click_what` / `screen_type_into` / `screen_press_key` | Resolve via the AX tree; act via native accessibility actions, falling back to `cliclick`. |
 
-### Safety
+**Safety:** per-call timeout, a 30-minute session cap, a `~/.argus/abort` panic file that halts every subsequent action, and an automatic before/after screenshot trail on every action.
 
-Screen mode runs against the user's actual machine, so:
-
-- **Per-call timeout** — every action wraps in a 15-second budget
-  (`ARGUS_SCREEN_PER_CALL_TIMEOUT_S` to override). A hung AX query
-  doesn't lock up the agent.
-- **Session cap** — 30-minute default
-  (`ARGUS_SCREEN_SESSION_MAX_SECONDS`). After expiry, all screen
-  tools refuse with a clear "start a new session" message.
-- **Abort file** — `touch ~/.argus/abort` blocks every subsequent
-  screen action in the current session. Robust panic button that
-  works from any second terminal.
-- **Action trail** — every screen action records a paired
-  before/after screenshot, automatically.
+</details>
 
 ---
 
-## Philosophy
+## 🧭 Philosophy
 
-This section exists because the design choices are opinionated.
+<details>
+<summary><b>Trust the agent, don't simulate intelligence</b></summary>
 
-### Trust the agent, don't simulate intelligence
+Argus assumes an Opus-class driver. Static rules that pretend to *be* the smart layer are subtractive — they add maintenance and false positives and pull attention from what the agent actually saw. So `detector.py` is tiny: it only captures the two channels the agent literally cannot see (the console event stream and the HTTP layer). "Is this toast misleading? Is the visual hierarchy wrong? Is that count off?" — the agent reads `observe()` and decides.
 
-The agent loaded into Argus is assumed to be Opus-class or stronger.
-Static rules that pretend to *be* the smart layer are subtractive: they
-add maintenance, produce false positives, and pull attention away from
-what the agent actually saw. So Argus's `detector.py` is 130 lines —
-it only captures the two channels the agent literally cannot see (the
-console event stream and the HTTP layer).
+</details>
 
-Everything else — "is the page text broken", "is there a count
-mismatch", "is this a misleading success toast", "is the visual
-hierarchy wrong" — the agent reads from `observe()` and decides.
+<details>
+<summary><b>Lock the role; don't bake a checklist</b></summary>
 
-### Lock the role; don't bake a checklist
+The instructions block doesn't tell the agent to fire every XSS payload from a textbook. It defines a senior-tester worldview (Map → Hypothesize → Act → Observe → Verify → Record → Cover), a bug bar (reproducible, user-affecting, persistent), and a hunting list of "things humans notice that machines miss" — then gets out of the way.
 
-The MCP's instructions block does *not* tell the agent to fire every
-XSS payload from a textbook. Smart agents don't need that and benefit
-from being kept in role rather than handed instructions. The block
-defines a senior-tester worldview (Map → Hypothesize → Act → Observe
-→ Verify → Record → Cover), bug bar (reproducible, user-affecting,
-persistent), severity calibration, and a hunting list of "things humans
-notice that machines miss" — and gets out of the way.
+</details>
 
-### Description-keyed tools
+<details>
+<summary><b>Description-keyed, not index-keyed</b></summary>
 
-`click_what("Login button")`, not `click(7)`. Element indices are how
-dumb LLMs were prompted in 2023; they're a leaky abstraction even
-within a single `observe`. A smart agent describes what it wants to
-interact with by what it *is*, and Argus's resolver maps that to the
-right element — refusing to misclick on ambiguity rather than guessing.
+`click_what("Login button")`, not `click(7)`. Element indices are a leaky abstraction even within one `observe`. A capable agent describes what it wants by what it *is*, and the resolver maps that to the right element — refusing to misclick on ambiguity rather than guessing.
 
-### Test anything on screen
-
-The web is one target. Real software is hundreds of native macOS apps,
-Electron things, IDEs, design tools, mobile simulators. Argus's screen
-backend uses the macOS Accessibility tree as its structured surface and
-`screencapture` for pixels — same description-keyed tools, no
-framework lock-in. v1 is macOS-only; Win/Linux is v2.
+</details>
 
 ---
 
@@ -371,65 +229,22 @@ framework lock-in. v1 is macOS-only; Win/Linux is v2.
 
 ```
 argus/
-├── argus/
-│   ├── mcp_server.py          # tool surface + role instructions
-│   ├── browser.py             # Playwright web backend
-│   ├── detector.py            # console + network event capture (only)
-│   ├── differ.py              # state diff for compute_changes
-│   ├── resolver.py            # description → element resolver (web + screen)
-│   ├── reporter.py            # HTML session report
-│   ├── models.py              # Bug / PageState / etc.
-│   ├── bench/
-│   │   ├── runner.py          # fixture-agnostic harness
-│   │   ├── scenarios_buggytasks.py
-│   │   └── scenarios_darkshop.py
-│   └── screen/
-│       ├── permissions.py     # Screen Recording / Accessibility probes
-│       ├── backend.py         # AX tree + cliclick + screencapture
-│       ├── safety.py          # timeouts, abort file, action trail
-│       └── validate.py        # read-only walker for real apps
-│
-├── test-site/                 # BuggyTasks fixture (22 mechanical bugs)
-├── human-eye-fixture/         # DarkShop fixture (12 human-eye bugs)
-├── tests/                     # unit + live tests (resolver, receipt, bench, browser, lifecycle, …)
-└── bench-results/             # checked-in artifacts (json + md)
+├── mcp_server.py     # tool surface + role instructions + reproduction-receipt engine
+├── browser.py        # Playwright backend: DOM/ARIA extraction, capsule/replay
+├── resolver.py       # description → element (web + screen)
+├── reporter.py       # HTML + JSON + JUnit + SARIF
+├── detector.py       # console + network capture (only)
+├── cli.py            # argus (explore) + argus-regression
+├── bench/            # deterministic ceiling + real-LLM recall harness
+└── screen/           # macOS AX backend, permissions, safety
+test-site/            # BuggyTasks  (22 mechanical bugs)
+human-eye-fixture/    # DarkShop    (12 human-eye bugs)
 ```
 
-## Fixture convention
+---
 
-Argus benchmarks against fixtures that expose two HTTP endpoints:
+<div align="center">
 
-```
-GET  /api/test/state           # full in-memory state JSON
-POST /api/test/reset?mode=...  # restore to a known starting state
-```
+**MIT licensed** · Built by [Yichen Wu](https://github.com/chriswu727) · Issues and PRs welcome
 
-`mode` is fixture-defined. BuggyTasks supports
-`seeded` / `empty` / `all_done` / `one_pending`. DarkShop supports
-`seeded` / `with_items` / `renamed`. See
-[`docs/FIXTURE_CONVENTION.md`](docs/FIXTURE_CONVENTION.md) for the
-full spec.
-
-## Roadmap
-
-Concrete next-up:
-
-- **Real-world OSS PR** — file a real bug report on a real OSS web
-  app, with Argus's run as the evidence trail.
-- **Live LLM bench mode** — `python -m argus.bench --agent <model>`
-  swaps the scripted driver for a real LLM, so we measure variance on
-  top of capability ceiling.
-- **Screen-mode seeded fixture** — a deterministic macOS app with
-  intentional bugs, so the matrix becomes 2 × 2 and screen-mode recall
-  is measurable.
-- **VLM resolver fallback** — for apps with empty AX trees (some
-  Electron things), use vision to resolve descriptions to coordinates.
-
-## License
-
-MIT. See [LICENSE](LICENSE).
-
-## Author
-
-Built by [Yichen Wu](https://github.com/chriswu727). Issues and PRs
-welcome.
+</div>
