@@ -1663,6 +1663,43 @@ class BrowserDriver:
         except Exception:
             return False
 
+    async def emulate_device(self, device_name: str) -> Dict:
+        """Re-open the current page under a real device profile (touch, mobile UA,
+        device-scale-factor, viewport) — not just a viewport resize like resize().
+        UA/touch/DPR are context-creation options, so this swaps the context;
+        cookies + localStorage carry over via storage_state so a logged-in session
+        survives. Surfaces mobile-only bugs (touch targets, mobile nav, UA-gated
+        content, viewport-meta layout) a desktop pass can't see."""
+        try:
+            descriptor = (self._playwright.devices or {}).get(device_name)
+            if not descriptor:
+                names = list((self._playwright.devices or {}).keys())
+                return {"ok": False, "reason": f"unknown device {device_name!r}",
+                        "examples": [n for n in ("iPhone 13", "Pixel 5", "iPad Pro 11", "Galaxy S9+") if n in names]}
+            cfg = {k: v for k, v in descriptor.items() if k != "default_browser_type"}
+            url = self._page.url if self._page else None
+            try:
+                storage = await self._context.storage_state()
+            except Exception:
+                storage = None
+            old = self._context
+            self._context = await self._browser.new_context(
+                accept_downloads=True, storage_state=storage, **cfg)
+            self._context.on("page", self._on_new_page)
+            self._page = await self._context.new_page()
+            self._attach_page_listeners(self._page)
+            try:
+                await old.close()
+            except Exception:
+                pass
+            if url and not url.startswith("about:"):
+                await self.goto(url)
+            self.viewport = descriptor.get("viewport") or self.viewport
+            return {"ok": True, "device": device_name, "viewport": descriptor.get("viewport"),
+                    "is_mobile": descriptor.get("is_mobile"), "has_touch": descriptor.get("has_touch")}
+        except Exception as e:
+            return {"ok": False, "reason": str(e)[:150]}
+
     async def drag(
         self, source_index: int, target_index: int,
         elements: List[InteractiveElement],
