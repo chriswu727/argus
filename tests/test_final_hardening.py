@@ -254,6 +254,37 @@ def test_coverage_line_lists_unvisited_internal_pages():
     assert _coverage_line(s2, state) == ""
 
 
+def test_sarif_export_valid_and_carries_verdict():
+    # SARIF lets GitHub code scanning surface Argus findings as PR annotations;
+    # severity maps to error/warning/note and the receipt verdict rides through.
+    import json
+    import os
+    import tempfile
+
+    bugs = [
+        Bug(type=BugType.MISLEADING_SUCCESS, severity=Severity.HIGH, title="Lying toast",
+            description="d", url="/e", steps_to_reproduce=["a"],
+            reproduction_receipt={"reproduced": True, "runs": "2/2"}),
+        Bug(type=BugType.CONSOLE_ERROR, severity=Severity.MEDIUM, title="Refuted",
+            description="", url="/y", steps_to_reproduce=[],
+            reproduction_receipt={"reproduced": False}),
+        Bug(type=BugType.UX_ISSUE, severity=Severity.LOW, title="Nit <script>&",
+            description="", url="/z", steps_to_reproduce=[], reproduction_receipt=None),
+    ]
+    res = ExplorationResult(url="http://x", bugs=bugs, pages_visited=["/e"],
+                            actions_taken=3, duration_seconds=1.0, focus_areas=[], screenshots=[])
+    d = tempfile.mkdtemp()
+    Reporter().generate(res, d)
+    sf = [f for f in os.listdir(d) if f.endswith(".sarif")][0]
+    doc = json.load(open(os.path.join(d, sf)))          # parses => valid JSON + escaping OK
+    assert doc["version"] == "2.1.0"
+    run = doc["runs"][0]
+    assert run["tool"]["driver"]["name"] == "Argus"
+    assert [r["level"] for r in run["results"]] == ["error", "warning", "note"]  # high/med/low
+    assert run["results"][0]["properties"]["verified"] is True
+    assert all("ruleId" in r and "message" in r for r in run["results"])
+
+
 def test_machine_readable_export_json_and_junit():
     # Argus must be consumable programmatically (API/CI), not just readable — the
     # HTML report now ships JSON + JUnit siblings carrying the receipt verdict.
