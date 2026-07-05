@@ -2521,6 +2521,38 @@ async def emulate_device(device: str) -> str:
 
 
 @mcp.tool()
+async def emulate_media(color_scheme: str = "", reduced_motion: str = "") -> str:
+    """Emulate a media preference to test the app under it — DARK MODE
+    (color_scheme="dark"), light ("light"), or reduced motion
+    (reduced_motion="reduce").
+
+    Dark-mode bugs — invisible text (same color as the dark background), unreadable
+    contrast, icons/borders that vanish, a theme that only half-applies — are a
+    class a manual pass routinely misses because you must toggle an OS/browser
+    setting to even see them. Keeps page state. After it, screenshot()/observe() and
+    judge whether the themed UI is still usable (an element you can't read IS a bug).
+    """
+    s = _require_session()
+    err = _require_web_session(s, "emulate_media")
+    if err:
+        return err
+    if not color_scheme and not reduced_motion:
+        return ('emulate_media: pass color_scheme="dark"/"light" and/or '
+                'reduced_motion="reduce".')
+    ok = await s.browser.emulate_media(color_scheme or None, reduced_motion or None)
+    if not ok:
+        return "emulate_media: failed (valid: color_scheme dark|light|no-preference, reduced_motion reduce|no-preference)."
+    what = ", ".join(x for x in (f"color_scheme={color_scheme}" if color_scheme else "",
+                                 f"reduced_motion={reduced_motion}" if reduced_motion else "") if x)
+    s.steps.append(f"emulate_media({what})")
+    _record_action(s, "emulate_media", what)
+    new_state = await s.browser.get_state()
+    s._last_elements = new_state.elements
+    return (f"Now emulating {what}. Call screenshot()/observe() to check the themed "
+            f"UI is still readable and usable.")
+
+
+@mcp.tool()
 async def click_at(x: int, y: int) -> str:
     """Click at viewport pixel (x, y) — the escape hatch for CANVAS/WebGL UIs.
 

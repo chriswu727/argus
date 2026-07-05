@@ -1700,6 +1700,26 @@ class BrowserDriver:
         except Exception as e:
             return {"ok": False, "reason": str(e)[:150]}
 
+    async def emulate_media(self, color_scheme: Optional[str] = None,
+                            reduced_motion: Optional[str] = None) -> bool:
+        """Emulate a CSS media preference on the live page (no context swap needed —
+        page.emulate_media is page-level). Lets a tester see the app in dark mode /
+        reduced-motion, where theme bugs (invisible text, unreadable contrast, a
+        half-applied theme) hide because you'd normally have to toggle OS settings."""
+        kwargs: Dict = {}
+        if color_scheme:
+            kwargs["color_scheme"] = color_scheme
+        if reduced_motion:
+            kwargs["reduced_motion"] = reduced_motion
+        if not kwargs:
+            return False
+        try:
+            await self._page.emulate_media(**kwargs)
+            await self._settle_dom()
+            return True
+        except Exception:
+            return False
+
     async def drag(
         self, source_index: int, target_index: int,
         elements: List[InteractiveElement],

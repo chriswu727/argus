@@ -442,6 +442,26 @@ async def test_observe_shows_aria_expanded_pressed_current():
         await _end()
 
 
+async def test_emulate_media_dark_mode_applies():
+    # Dark-mode testing: emulate prefers-color-scheme:dark and confirm the page's
+    # dark @media rule actually takes effect (so theme bugs become observable).
+    page = ('<html><head><style>body{background:#fff}'
+            '@media (prefers-color-scheme: dark){body{background:rgb(17,17,17)}}</style></head>'
+            '<body>x</body></html>')
+    await _session_on_page(page)
+    try:
+        em = getattr(m.emulate_media, "fn", m.emulate_media)
+        r = await em(color_scheme="dark")
+        assert "color_scheme=dark" in r
+        info = await m._session.browser._page.evaluate(
+            "() => ({dark: matchMedia('(prefers-color-scheme: dark)').matches, "
+            "bg: getComputedStyle(document.body).backgroundColor})")
+        assert info["dark"] is True and info["bg"] == "rgb(17, 17, 17)"   # dark theme applied
+        assert "pass color_scheme" in await em()                          # empty args -> guidance
+    finally:
+        await _end()
+
+
 async def test_click_surfaces_new_tab():
     # A click that opens a new tab (target=_blank / window.open) must be signalled,
     # or multi-tab flows (OAuth, popups) go silently untested.
