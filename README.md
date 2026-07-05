@@ -9,10 +9,10 @@ Argus is an [MCP](https://modelcontextprotocol.io/) server. When Claude Code (or
 [![PyPI](https://img.shields.io/pypi/v/argus-testing?color=1a7f37)](https://pypi.org/project/argus-testing/)
 [![Python](https://img.shields.io/pypi/pyversions/argus-testing)](https://pypi.org/project/argus-testing/)
 [![MCP server](https://img.shields.io/badge/MCP-server-blue)](https://modelcontextprotocol.io/)
-[![Capability ceiling](https://img.shields.io/badge/bench-34%2F34-brightgreen)](#-benchmarks)
+[![Capability ceiling](https://img.shields.io/badge/bench-34%2F34-brightgreen)](#benchmarks)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-[Quick start](#-quick-start) · [Why Argus](#-why-argus-is-different) · [Compared](#-how-it-compares) · [Tools](#-tool-surface) · [Benchmarks](#-benchmarks)
+[Quick start](#quick-start) · [Why Argus](#why-argus-is-different) · [Compared](#how-it-compares) · [Tools](#tool-surface) · [Benchmarks](#benchmarks)
 
 </div>
 
@@ -38,8 +38,8 @@ flowchart LR
     B -->|not sure| C["act: click · type · resize · verify"]
     C --> A
     B -->|bug| D["verify_persistence — reload from a clean state"]
-    D -->|symptom repeats| E(["✔ VERIFIED"])
-    D -->|symptom gone| F(["✘ dropped — no false positive"])
+    D -->|symptom repeats| E(["VERIFIED"])
+    D -->|symptom gone| F(["dropped — no false positive"])
     E --> G[["report: HTML · JSON · JUnit · SARIF"]]
 ```
 
@@ -47,7 +47,7 @@ The agent is the intelligence. Argus is the seat you put it in: a role-binding p
 
 ---
 
-## 🚀 Quick start
+## Quick start
 
 ```bash
 pip install argus-testing
@@ -91,37 +91,37 @@ Same description-keyed tools, but the target is whatever app is foreground on ma
 
 ---
 
-## 💡 Why Argus is different
+## Why Argus is different
 
 **Existing testing tools only test what you script.** Playwright and Cypress run the assertions you wrote. Argus *discovers* bugs you didn't think to test for — and then does the thing an LLM alone can't be trusted to do: **proves them.**
 
 | | |
 |---|---|
-| 🔎 **Autonomous & black-box** | You give it a URL, not a test plan. It explores like a real user — no repo access, no scripted steps. |
-| 🧾 **Reproduction receipts** | Before certifying a bug, it re-loads the page from a clean state and re-confirms the symptom. Engineered for **zero false-certifications.** |
-| 👁️ **Finds human-eye bugs** | Fake "Only 3 left!" scarcity, a "Saved" toast that doesn't save, a sale badge where the price didn't drop, a stale navbar after a rename. Static analysis catches none of these. |
-| 🔁 **Discover → guard** | Findings are journaled; `argus-regression` re-checks them on every build with **zero LLM cost** and a non-zero exit — a real CI gate against known bugs coming back. |
-| 📤 **Machine-readable** | Every report also emits JSON, JUnit, and SARIF — so findings gate a pipeline and surface as inline **GitHub PR annotations.** |
+| **Autonomous & black-box** | You give it a URL, not a test plan. It explores like a real user — no repo access, no scripted steps. |
+| **Reproduction receipts** | Before certifying a bug, it re-loads the page from a clean state and re-confirms the symptom. Engineered for **zero false-certifications.** |
+| **Finds human-eye bugs** | Fake "Only 3 left!" scarcity, a "Saved" toast that doesn't save, a sale badge where the price didn't drop, a stale navbar after a rename. Static analysis catches none of these. |
+| **Discover → guard** | Findings are journaled; `argus-regression` re-checks them on every build with **zero LLM cost** and a non-zero exit — a real CI gate against known bugs coming back. |
+| **Machine-readable** | Every report also emits JSON, JUnit, and SARIF — so findings gate a pipeline and surface as inline **GitHub PR annotations.** |
 
 ---
 
-## ⚖️ How it compares
+## How it compares
 
 On the axis that matters for finding bugs — *autonomously discover, independently verify, and report* — Argus occupies a different slot from the browser-MCP crowd:
 
 | | **Argus** | Playwright MCP | Chrome DevTools MCP | browser-use |
 |---|:---:|:---:|:---:|:---:|
-| Autonomously finds unknown bugs | ✅ | ❌ *(driver)* | ❌ *(debugger)* | ~ *(task-scoped)* |
-| Independently verifies each finding | ✅ *(receipt)* | ❌ | ❌ | ❌ *(LLM score)* |
-| Self-contained bug report | ✅ | ❌ | ❌ | ~ |
-| Black-box (no repo / source access) | ✅ | ✅ | ✅ | ✅ |
-| Zero-LLM CI regression gate | ✅ | ~ | ❌ | ~ |
+| Autonomously finds unknown bugs | Yes | No *(driver)* | No *(debugger)* | Partial *(task-scoped)* |
+| Independently verifies each finding | Yes *(receipt)* | No | No | No *(LLM score)* |
+| Self-contained bug report | Yes | No | No | Partial |
+| Black-box (no repo / source access) | Yes | Yes | Yes | Yes |
+| Zero-LLM CI regression gate | Yes | Partial | No | Partial |
 
 > These aren't "worse" tools — they're a different job. Playwright MCP gives an agent excellent hands; Chrome DevTools MCP gives it deep network/perf/memory inspection Argus doesn't have. Argus is the layer that *decides what's a bug and proves it.* Use them together.
 
 ---
 
-## 📊 Benchmarks
+## Benchmarks
 
 ```
 $ python -m argus.bench --target all
@@ -163,7 +163,7 @@ python -m argus.bench --target all
 
 ---
 
-## 🧰 Tool surface
+## Tool surface
 
 <details>
 <summary><b>Web mode</b> — the description-keyed toolset the agent drives</summary>
@@ -200,7 +200,7 @@ python -m argus.bench --target all
 
 ---
 
-## 🧭 Philosophy
+## Philosophy
 
 <details>
 <summary><b>Trust the agent, don't simulate intelligence</b></summary>
