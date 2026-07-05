@@ -120,6 +120,28 @@ argus-regression http://localhost:3000
 # STILL-PRESENT / FIXED / INCONCLUSIVE per finding; non-zero exit on STILL-PRESENT
 ```
 
+Both the explore run and `argus-regression` also write `regression_*.json` /
+`regression_*.junit.xml` so a pipeline can ingest per-finding results.
+
+### Machine-readable output
+
+Every report is written in four formats next to the HTML: `.json` (summary +
+findings), `.junit.xml` (a pipeline gates on it — each finding a `<testcase>`),
+and `.sarif` (GitHub code scanning surfaces findings as inline PR annotations).
+Each finding carries its reproduction-receipt verdict, so a consumer can filter to
+**proven** — a verified bug is a JUnit `<failure>` / SARIF `error`, a clean-load-
+refuted symptom is `<skipped>` (not a build failure).
+
+### Higher recall via more passes
+
+A single LLM pass finds a noisy fraction of an app's bugs and misses different
+ones each run. Union independent passes to raise recall (deduped by structural
+fingerprint; the proven instance is kept):
+
+```bash
+argus http://localhost:3000 --passes 3
+```
+
 ### Reproduce the bench
 
 ```bash
@@ -258,8 +280,18 @@ expose tens to hundreds.
 | `eval_js(code)` | Arbitrary JS in the page context. Off by default; enable with `--unsafe` or `ARGUS_UNSAFE_EVAL=1`. |
 | `record_bug(title, severity, evidence)` | The agent calls this after it confirms a real bug. Required: severity in `{critical, high, medium, low, info}`. |
 | `get_errors()` | Drain captured console + network events (the only channels not visible in `observe`). |
+| `press_key(key, description?)` | Press Enter/Escape/Tab or a chord (Control+A) globally or on an element. |
+| `click_at` / `type_at` / `hover_at` / `drag_at(x,y,…)` | Coordinate actions — the escape hatch for canvas/WebGL and mouse-drag lists with no DOM marker. |
+| `drag_what(from, to)` | Drag one described element onto another. |
+| `resize(w,h)` / `emulate_device(name)` | Sweep responsive breakpoints; or emulate a real device — touch, mobile UA, DPR (state carries over). |
+| `emulate_media(color_scheme, reduced_motion)` | Test dark mode / reduced motion. |
+| `upload_file` / `drop_file(description, path)` | Upload via a real `<input>`, or drag-drop onto a dropzone. |
+| `paste_into(description, text)` | Paste (fires a `paste` ClipboardEvent) — tests paste-specific logic. |
+| `get_downloads()` | Inspect downloaded files (bytes/size) — catch a broken CSV/PDF/XLSX export. |
+| `tabs_list` / `tabs_switch` / `tabs_close(index?)` | Multi-tab flows — OAuth, payment popups, open-in-new-tab. |
+| `network_mock(pattern, status/body)` | Return 5xx/401/malformed for a URL pattern — fault injection with no backend. |
 | `check_links()` / `check_performance()` / `crawl_site()` | Probe-style helpers — return raw data, no auto-bug. |
-| `end_session()` | Close session, write the HTML report. |
+| `end_session()` | Close session, write the report (HTML + JSON + JUnit + SARIF). |
 
 ### Screen mode (macOS)
 
