@@ -292,6 +292,19 @@ def test_machine_readable_export_json_and_junit():
     assert refuted.find("skipped") is not None          # refuted is not a build failure
 
 
+def test_edge_case_hint_once_per_field_type():
+    # A tester's edge-case checklist surfaces once per field TYPE per session
+    # (targets input-validation misses), then goes silent — no nagging.
+    from argus.mcp_server import _edge_case_hint
+    from types import SimpleNamespace as NS
+    s = NS()
+    num, txt, ta = NS(type="number", tag="input"), NS(type="text", tag="input"), NS(type=None, tag="textarea")
+    assert "number field" in _edge_case_hint(s, num)   # first number -> hint
+    assert _edge_case_hint(s, num) == ""               # second number -> silent
+    assert "text field" in _edge_case_hint(s, txt)     # a different type -> hint
+    assert "textarea field" in _edge_case_hint(s, ta)  # textarea resolved via tag
+
+
 def test_regression_output_dir_respects_env(monkeypatch):
     # A QA tool shouldn't lose its own journal: the --output default must NOT
     # override an exported ARGUS_OUTPUT_DIR (the dir the journal was written to).

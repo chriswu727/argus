@@ -1251,6 +1251,39 @@ def _new_tab_line(s, before_count: int) -> str:
             f"call tabs_switch({idx}) to inspect and test it.")
 
 
+_EDGE_CASES = {
+    "number": "negative, zero, a huge value (overflow), decimals, and non-numeric text",
+    "email": "no @, a space, a trailing dot, unicode, and a very long value",
+    "tel": "letters, a too-short number, spaces/dashes, and a leading +",
+    "url": "no scheme, a space, javascript:, and a very long value",
+    "date": "an impossible date (2024-13-40), a far-future/past year, and free text",
+    "password": "empty, one character, a very long value, and whitespace-only",
+    "search": "empty, whitespace-only, a DIFFERENT case than the stored data, and special chars",
+    "textarea": "empty, whitespace-only, a very long value, and HTML/script content",
+    "text": "empty, whitespace-only, a very long value, special chars <>&\"'/, and unicode/emoji",
+}
+
+
+def _edge_case_hint(s, el) -> str:
+    """A tester tries the same handful of edge cases on each field TYPE — empty,
+    boundary, wrong-type, special chars — where validation bugs hide (whitespace
+    accepted, no max length, unbounded numbers, case-sensitive search). Agents type
+    ONE valid value and move on, so those go unfound. Surface the type's checklist
+    ONCE per field-type per session (opt-in judgment, not a nag)."""
+    ftype = (getattr(el, "type", None) or "").lower()
+    key = ftype if ftype in _EDGE_CASES else ("textarea" if getattr(el, "tag", "") == "textarea" else "text")
+    seen = getattr(s, "_edge_hinted", None)
+    if seen is None:
+        seen = set()
+        s._edge_hinted = seen
+    if key in seen:
+        return ""
+    seen.add(key)
+    return (f"\n  Edge cases a tester probes on this {key} field (not just one valid "
+            f"value): {_EDGE_CASES[key]}. Submit each and watch for input accepted when "
+            f"it should be rejected.")
+
+
 def _new_events_line(s, before_console: int, before_network: int) -> str:
     """One-line surface of console/network errors that fired since the given
     counts — a PEEK, not a drain (get_errors still records them as findings).
@@ -2307,7 +2340,8 @@ async def type_into(description: str, text: str) -> str:
             f"The element may be disabled or the page may have re-rendered."
         )
     _record_action(s, "type_into", description, text)
-    return f'Typed into "{label[:60]}" (via description {description!r}).'
+    return (f'Typed into "{label[:60]}" (via description {description!r}).'
+            f'{_edge_case_hint(s, el)}')
 
 
 @mcp.tool()
