@@ -1,5 +1,7 @@
 import asyncio
 import sys
+from pathlib import Path
+from typing import Optional
 
 import click
 from rich.console import Console
@@ -137,21 +139,25 @@ async def _run_regression(url: str, output: str, headless: bool = True) -> int:
         return 2
 
     still = gone = incon = 0
+    results = []
     try:
         console.print(f"Re-testing {len(entries)} journaled finding(s) for {origin}:\n")
         for e in entries:
             r = await mcp._run_reproduction_check(sess, e.get("verify") or {})
             rep = r.get("reproduced")
             if rep is True:
-                tag, color = "STILL-PRESENT", "red"
+                tag, color, status = "STILL-PRESENT", "red", "STILL-PRESENT"
                 still += 1
             elif rep is False:
-                tag, color = "FIXED        ", "green"
+                tag, color, status = "FIXED        ", "green", "FIXED"
                 gone += 1
             else:
-                tag, color = "INCONCLUSIVE ", "yellow"
+                tag, color, status = "INCONCLUSIVE ", "yellow", "INCONCLUSIVE"
                 incon += 1
             console.print(f"  [{color}]{tag}[/] [{e.get('severity', '?').upper()}] {e.get('title', '')[:70]}")
+            results.append({"title": e.get("title", ""), "severity": e.get("severity", "?"),
+                            "status": status, "runs": r.get("runs"),
+                            "url": (e.get("verify") or {}).get("at_url") or url})
     finally:
         try:
             await sess.browser.stop()
@@ -159,4 +165,47 @@ async def _run_regression(url: str, output: str, headless: bool = True) -> int:
             pass
 
     console.print(f"\n{still} still present · {gone} fixed · {incon} inconclusive")
+    art = _write_regression_artifact(output, url, results)
+    if art:
+        console.print(f"[dim]Machine-readable: {art}.json · {art}.junit.xml[/]")
     return 1 if still else 0
+
+
+def _write_regression_artifact(output_dir: str, url: str, results: list) -> Optional[str]:
+    """Emit the regression run as JSON + JUnit so CI can consume it, not just the
+    exit code — STILL-PRESENT = a <failure> (a known bug came back / never got
+    fixed), FIXED = a passing testcase, INCONCLUSIVE = <skipped>. Same machine-
+    readable contract as the explore report. Best-effort; never breaks the run."""
+    import json
+    import xml.etree.ElementTree as ET
+    from datetime import datetime
+    try:
+        out = Path(output_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        still = sum(1 for r in results if r["status"] == "STILL-PRESENT")
+        doc = {
+            "tool": "argus-regression", "url": url,
+            "generated_at": datetime.now().isoformat(),
+            "summary": {"total": len(results), "still_present": still,
+                        "fixed": sum(1 for r in results if r["status"] == "FIXED"),
+                        "inconclusive": sum(1 for r in results if r["status"] == "INCONCLUSIVE")},
+            "findings": results,
+        }
+        (out / f"regression_{ts}.json").write_text(json.dumps(doc, indent=2, ensure_ascii=False), encoding="utf-8")
+        suite = ET.Element("testsuite", {"name": "argus-regression",
+                                         "tests": str(len(results)), "failures": str(still)})
+        for r in results:
+            tc = ET.SubElement(suite, "testcase", {
+                "classname": f"argus.regression.{r['severity']}",
+                "name": f"[{r['status']}] {r['title']}"[:250]})
+            if r["status"] == "STILL-PRESENT":
+                f = ET.SubElement(tc, "failure", {"message": "known bug still present", "type": "regression"})
+                f.text = f"{r['title']}\nruns={r.get('runs')}\nurl={r.get('url')}"
+            elif r["status"] == "INCONCLUSIVE":
+                ET.SubElement(tc, "skipped", {"message": "symptom check inconclusive"})
+        xml = '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(suite, encoding="unicode")
+        (out / f"regression_{ts}.junit.xml").write_text(xml, encoding="utf-8")
+        return str(out / f"regression_{ts}")
+    except Exception:
+        return None
