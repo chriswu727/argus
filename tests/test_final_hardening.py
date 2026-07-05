@@ -292,6 +292,36 @@ def test_machine_readable_export_json_and_junit():
     assert refuted.find("skipped") is not None          # refuted is not a build failure
 
 
+def test_regression_artifact_json_and_junit():
+    # argus-regression must be CI-consumable, not just an exit code: STILL-PRESENT
+    # is a build failure (a known bug came back), FIXED passes, INCONCLUSIVE skips.
+    import json
+    import os
+    import tempfile
+    import xml.etree.ElementTree as ET
+    from argus.cli import _write_regression_artifact
+
+    results = [
+        {"title": "came back", "severity": "high", "status": "STILL-PRESENT", "runs": "2/2", "url": "/x"},
+        {"title": "fixed now", "severity": "medium", "status": "FIXED", "runs": "0/2", "url": "/y"},
+        {"title": "flaky", "severity": "low", "status": "INCONCLUSIVE", "runs": "1/2", "url": "/z"},
+    ]
+    d = tempfile.mkdtemp()
+    base = _write_regression_artifact(d, "http://x", results)
+    assert base and os.path.exists(base + ".json") and os.path.exists(base + ".junit.xml")
+
+    j = json.load(open(base + ".json"))
+    assert j["summary"] == {"total": 3, "still_present": 1, "fixed": 1, "inconclusive": 1}
+
+    root = ET.parse(base + ".junit.xml").getroot()
+    assert root.get("tests") == "3" and root.get("failures") == "1"
+    cases = {tc.get("name"): tc for tc in root.findall("testcase")}
+    still = next(tc for n, tc in cases.items() if n.startswith("[STILL-PRESENT]"))
+    incon = next(tc for n, tc in cases.items() if n.startswith("[INCONCLUSIVE]"))
+    assert still.find("failure") is not None      # a returned bug fails the build
+    assert incon.find("skipped") is not None       # inconclusive is not a failure
+
+
 def test_verify_nudge_fires_on_state_change_clicks():
     from argus.mcp_server import _verify_nudge
     # state-changing clicks -> nudge to verify_persistence (the moat's bug class)
