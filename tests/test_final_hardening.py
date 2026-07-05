@@ -254,6 +254,44 @@ def test_coverage_line_lists_unvisited_internal_pages():
     assert _coverage_line(s2, state) == ""
 
 
+def test_machine_readable_export_json_and_junit():
+    # Argus must be consumable programmatically (API/CI), not just readable — the
+    # HTML report now ships JSON + JUnit siblings carrying the receipt verdict.
+    import json
+    import os
+    import tempfile
+    import xml.etree.ElementTree as ET
+
+    bugs = [
+        Bug(type=BugType.MISLEADING_SUCCESS, severity=Severity.HIGH, title="Lying toast",
+            description="d", url="/e", steps_to_reproduce=["a", "b"],
+            reproduction_receipt={"reproduced": True, "runs": "2/2", "mode": "clean"}),
+        Bug(type=BugType.CONSOLE_ERROR, severity=Severity.MEDIUM, title="Refuted",
+            description="", url="/y", steps_to_reproduce=[],
+            reproduction_receipt={"reproduced": False, "runs": "0/2"}),
+        Bug(type=BugType.UX_ISSUE, severity=Severity.LOW, title="Nit <script>&",
+            description="", url="/z", steps_to_reproduce=[], reproduction_receipt=None),
+    ]
+    res = ExplorationResult(url="http://x", bugs=bugs, pages_visited=["/e"],
+                            actions_taken=3, duration_seconds=1.0, focus_areas=[], screenshots=[])
+    d = tempfile.mkdtemp()
+    Reporter().generate(res, d)
+    jf = [f for f in os.listdir(d) if f.endswith(".json")][0]
+    xf = [f for f in os.listdir(d) if f.endswith(".junit.xml")][0]
+
+    doc = json.load(open(os.path.join(d, jf)))
+    assert doc["summary"] == {"total": 3, "verified": 1, "by_severity": {"high": 1, "medium": 1, "low": 1}}
+    assert [f["verified"] for f in doc["findings"]] == [True, False, False]
+
+    root = ET.parse(os.path.join(d, xf)).getroot()  # parses => XML escaping is valid
+    assert root.get("tests") == "3" and root.get("failures") == "1"
+    cases = {tc.get("name"): tc for tc in root.findall("testcase")}
+    proven = next(tc for n, tc in cases.items() if n.startswith("[PROVEN]"))
+    refuted = next(tc for n, tc in cases.items() if n.startswith("[REFUTED]"))
+    assert proven.find("failure") is not None          # proven bug fails the build
+    assert refuted.find("skipped") is not None          # refuted is not a build failure
+
+
 def test_verify_nudge_fires_on_state_change_clicks():
     from argus.mcp_server import _verify_nudge
     # state-changing clicks -> nudge to verify_persistence (the moat's bug class)
