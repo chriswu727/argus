@@ -18,12 +18,13 @@ console = Console()
 @click.option("--config", "-c", "config_file", help="YAML config with focus areas")
 @click.option("--focus", "-f", multiple=True, help="Focus area (repeatable)")
 @click.option("--max-steps", "-n", default=50, help="Max exploration steps")
+@click.option("--passes", "-p", default=1, help="Independent exploration passes; findings are UNION-ed and deduped. A single LLM pass finds a noisy ~fraction of bugs; more passes raise recall (at ~N x cost/time).")
 @click.option("--headed", is_flag=True, help="Show browser window")
 @click.option("--output", "-o", default="./argus-reports", help="Report output dir")
 @click.option("--model", default="gpt-4o-mini", help="LLM model (any LiteLLM-supported: gpt-4o, claude-sonnet-4-20250514, deepseek/deepseek-chat, ollama/llama3, etc.)")
 @click.option("--api-base", default=None, help="Custom API base URL (for OpenAI-compatible providers)")
 @click.option("--api-key", default=None, help="API key (overrides env var)")
-def main(url, config_file, focus, max_steps, headed, output, model, api_base, api_key):
+def main(url, config_file, focus, max_steps, passes, headed, output, model, api_base, api_key):
     """Argus — AI-powered exploratory QA agent (CLI / LLM-planner mode).
 
     Give it a URL and Argus drives a Playwright browser using a LiteLLM-
@@ -54,7 +55,7 @@ def main(url, config_file, focus, max_steps, headed, output, model, api_base, ap
         )
 
     try:
-        result = asyncio.run(_run(cfg))
+        result = asyncio.run(_run_passes(cfg, max(1, passes)))
     except KeyboardInterrupt:
         console.print("\n[yellow]Interrupted. Argus stopped exploring.[/]")
         sys.exit(130)
@@ -88,6 +89,65 @@ def main(url, config_file, focus, max_steps, headed, output, model, api_base, ap
 async def _run(cfg: Config):
     explorer = Explorer(cfg)
     return await explorer.run()
+
+
+async def _run_passes(cfg: Config, passes: int):
+    """Run N independent exploration passes and UNION their findings. A single LLM
+    pass finds a noisy fraction of an app's bugs and misses different ones each time;
+    unioning independent passes is the cheapest reliable recall lift (the bench
+    already scores union-over-trials — this brings it into the product)."""
+    results = []
+    for i in range(passes):
+        if passes > 1:
+            console.print(f"[dim]— pass {i + 1}/{passes} —[/]")
+        results.append(await _run(cfg))
+    merged = _merge_results(results)
+    if passes > 1:
+        total = sum(len(r.bugs) for r in results)
+        console.print(f"[dim]Union: {len(merged.bugs)} distinct finding(s) from "
+                      f"{total} across {passes} passes.[/]")
+    return merged
+
+
+def _merge_results(results: list):
+    """Union bugs across passes, deduped by structural fingerprint (not the LLM
+    title, so a genuinely new bug is never collapsed). When the same bug appears in
+    multiple passes, keep the PROVEN instance — recall must not cost precision."""
+    from .models import ExplorationResult
+    from .mcp_server import _bug_fingerprint
+
+    if len(results) == 1:
+        return results[0]
+
+    def _verified(b) -> bool:
+        return (b.reproduction_receipt or {}).get("reproduced") is True
+
+    by_fp: dict = {}
+    order: list = []
+    for res in results:
+        for b in res.bugs:
+            fp = _bug_fingerprint(b)
+            if fp not in by_fp:
+                by_fp[fp] = b
+                order.append(fp)
+            elif _verified(b) and not _verified(by_fp[fp]):
+                by_fp[fp] = b  # upgrade to the proven instance
+    pages: list = []
+    for res in results:
+        for p in (res.pages_visited or []):
+            if p not in pages:
+                pages.append(p)
+    base = results[0]
+    return ExplorationResult(
+        url=base.url,
+        bugs=[by_fp[fp] for fp in order],
+        pages_visited=pages,
+        actions_taken=sum(r.actions_taken for r in results),
+        duration_seconds=sum(r.duration_seconds for r in results),
+        focus_areas=base.focus_areas,
+        screenshots=base.screenshots,
+        timestamp=base.timestamp,
+    )
 
 
 @click.command()
