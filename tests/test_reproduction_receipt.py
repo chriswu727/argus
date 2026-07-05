@@ -442,6 +442,22 @@ async def test_observe_shows_aria_expanded_pressed_current():
         await _end()
 
 
+async def test_click_surfaces_new_tab():
+    # A click that opens a new tab (target=_blank / window.open) must be signalled,
+    # or multi-tab flows (OAuth, popups) go silently untested.
+    page = ('<html><body><a href="about:blank" target="_blank">Open external</a>'
+            '<button>Normal</button></body></html>')
+    await _session_on_page(page)
+    try:
+        click = getattr(m.click_what, "fn", m.click_what)
+        r0 = await click("Normal")
+        assert "new tab" not in r0.lower()                 # no false signal
+        r = await click("Open external")
+        assert "new tab opened" in r.lower() and "tabs_switch(1)" in r
+    finally:
+        await _end()
+
+
 async def test_emulate_device_applies_mobile_profile():
     # True device emulation (not just resize): mobile viewport, touch, mobile UA.
     page = '<html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body>m</body></html>'

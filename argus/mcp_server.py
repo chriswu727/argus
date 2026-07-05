@@ -1223,6 +1223,34 @@ def _verify_nudge(label: str, had_toast: bool) -> str:
     return ""
 
 
+def _tab_count(s) -> int:
+    try:
+        return len(s.browser._live_pages())
+    except Exception:
+        return 0
+
+
+def _new_tab_line(s, before_count: int) -> str:
+    """A click that opened a NEW tab (target=_blank, window.open, OAuth/payment
+    popup) otherwise gives no signal — the driver stays on the old page, so the
+    agent keeps observing it and the new-tab flow goes untested. Surface it so the
+    agent can switch and test it (the exact multi-tab flows scripted E2E skips)."""
+    try:
+        pages = s.browser._live_pages()
+    except Exception:
+        return ""
+    if len(pages) <= before_count:
+        return ""
+    idx = len(pages) - 1
+    try:
+        url = pages[idx].url or "(blank)"
+    except Exception:
+        url = "(unknown)"
+    return (f"\n  A new tab opened (tab {idx}): {url[:90]} — the click spawned a second "
+            f"tab (OAuth / popup / open-in-new-tab). You are still on the original tab; "
+            f"call tabs_switch({idx}) to inspect and test it.")
+
+
 def _new_events_line(s, before_console: int, before_network: int) -> str:
     """One-line surface of console/network errors that fired since the given
     counts — a PEEK, not a drain (get_errors still records them as findings).
@@ -2228,6 +2256,7 @@ async def click_what(description: str) -> str:
     # Peek error counts so we can surface any console/network error THIS click
     # triggers (see _new_events_line) without draining them from get_errors.
     _bc, _bn = len(s.browser.console_errors), len(s.browser.network_errors)
+    _bt = _tab_count(s)  # to detect a click that spawns a new tab
     # Route through browser.click so a duplicate-label target hits the RESOLVED
     # element (nth-aware), not the first DOM match.
     ok = await s.browser.click(s._last_elements.index(el), s._last_elements)
@@ -2247,6 +2276,7 @@ async def click_what(description: str) -> str:
         f"Now on: {new_state.url} — {len(new_state.elements)} interactive elements visible."
         f"{_toast_line(new_state.toast_messages)}"
         f"{_verify_nudge(label, bool(new_state.toast_messages))}"
+        f"{_new_tab_line(s, _bt)}"
         f"{_new_events_line(s, _bc, _bn)}\n"
         f"Call observe() to see what changed."
     )
