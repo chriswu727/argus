@@ -152,7 +152,7 @@ def _merge_results(results: list):
 
 @click.command()
 @click.argument("url")
-@click.option("--output", "-o", default="./argus-reports", help="Where the journal lives (ARGUS_OUTPUT_DIR)")
+@click.option("--output", "-o", default=None, help="Journal dir (defaults to $ARGUS_OUTPUT_DIR, else ./argus-reports)")
 @click.option("--headed", is_flag=True, help="Show browser window")
 def regression(url, output, headed):
     """Re-test journaled findings for URL's origin against the CURRENT build.
@@ -169,6 +169,15 @@ def regression(url, output, headed):
     sys.exit(code)
 
 
+def _resolve_output_dir(output: Optional[str]) -> str:
+    """An explicit --output wins; otherwise respect an already-exported
+    ARGUS_OUTPUT_DIR (the journal was written there by end_session) before falling
+    back. The old default silently overrode the env var, so a user's journal became
+    invisible ('no journaled findings')."""
+    import os
+    return output or os.environ.get("ARGUS_OUTPUT_DIR") or "./argus-reports"
+
+
 async def _run_regression(url: str, output: str, headless: bool = True) -> int:
     import os
     from urllib.parse import urlparse
@@ -176,6 +185,7 @@ async def _run_regression(url: str, output: str, headless: bool = True) -> int:
     import argus.mcp_server as mcp
     from .browser import BrowserDriver
 
+    output = _resolve_output_dir(output)
     os.environ["ARGUS_OUTPUT_DIR"] = output
     origin = urlparse(url).netloc or "default"
     entries = mcp._journal_entries(origin)
