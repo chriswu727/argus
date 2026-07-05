@@ -292,6 +292,17 @@ def test_machine_readable_export_json_and_junit():
     assert refuted.find("skipped") is not None          # refuted is not a build failure
 
 
+def test_regression_output_dir_respects_env(monkeypatch):
+    # A QA tool shouldn't lose its own journal: the --output default must NOT
+    # override an exported ARGUS_OUTPUT_DIR (the dir the journal was written to).
+    from argus.cli import _resolve_output_dir
+    monkeypatch.setenv("ARGUS_OUTPUT_DIR", "/my/dir")
+    assert _resolve_output_dir(None) == "/my/dir"          # env respected when no --output
+    assert _resolve_output_dir("/explicit") == "/explicit"  # explicit --output still wins
+    monkeypatch.delenv("ARGUS_OUTPUT_DIR")
+    assert _resolve_output_dir(None) == "./argus-reports"   # fallback when neither set
+
+
 def test_multipass_union_dedups_and_prefers_verified():
     # Multi-pass recall: union findings across passes, dedup by structural
     # fingerprint (not title), and when the same bug recurs keep the PROVEN one.
