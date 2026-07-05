@@ -119,6 +119,33 @@ class Bug:
     # human-readable steps_to_reproduce.
     replay_steps: List[Dict] = field(default_factory=list)
 
+    def to_dict(self) -> Dict:
+        """Machine-readable finding — for JSON/JUnit/SARIF export so Argus can be
+        consumed programmatically (CI gate, API, dashboard), not just read as HTML.
+        Carries the receipt verdict so a consumer can filter to PROVEN findings."""
+        r = self.reproduction_receipt or {}
+        verdict = r.get("reproduced")  # True / False / None (inconclusive)
+        return {
+            "title": self.title,
+            "severity": getattr(self.severity, "value", str(self.severity)),
+            "type": getattr(self.type, "value", str(self.type)),
+            "url": self.url,
+            "description": self.description,
+            "steps_to_reproduce": list(self.steps_to_reproduce or []),
+            # Trust tier: the reproduction receipt is Argus's differentiator — a
+            # consumer should be able to gate on PROVEN, not on say-so.
+            "verified": verdict is True,
+            "reproduction": {
+                "reproduced": verdict,
+                "flaky": r.get("flaky"),
+                "runs": r.get("runs"),
+                "mode": r.get("mode"),
+            } if r else None,
+            "console_logs": list(self.console_logs or []),
+            "network_logs": list(self.network_logs or []),
+            "timestamp": self.timestamp.isoformat() if hasattr(self.timestamp, "isoformat") else self.timestamp,
+        }
+
 
 @dataclass
 class Screenshot:

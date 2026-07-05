@@ -194,7 +194,67 @@ class Reporter:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         path = out / f"report_{ts}.html"
         path.write_text(self._build_html(result), encoding="utf-8")
+        # Machine-readable siblings so Argus is consumable, not just readable:
+        # JSON for API/programmatic use, JUnit XML for CI (the universal format
+        # a pipeline can gate on). Best-effort — a serialization hiccup must not
+        # cost the human-readable report that already succeeded.
+        try:
+            (out / f"report_{ts}.json").write_text(self._build_json(result), encoding="utf-8")
+            (out / f"report_{ts}.junit.xml").write_text(self._build_junit(result), encoding="utf-8")
+        except Exception:
+            pass
         return str(path)
+
+    def _build_json(self, r: ExplorationResult) -> str:
+        import json
+        findings = [b.to_dict() for b in r.bugs]
+        verified = sum(1 for f in findings if f.get("verified"))
+        by_sev: Dict[str, int] = {}
+        for f in findings:
+            by_sev[f["severity"]] = by_sev.get(f["severity"], 0) + 1
+        doc = {
+            "tool": "argus",
+            "url": r.url,
+            "generated_at": datetime.now().isoformat(),
+            "duration_seconds": r.duration_seconds,
+            "pages_visited": list(r.pages_visited or []),
+            "summary": {"total": len(findings), "verified": verified, "by_severity": by_sev},
+            "findings": findings,
+        }
+        return json.dumps(doc, indent=2, ensure_ascii=False)
+
+    def _build_junit(self, r: ExplorationResult) -> str:
+        # Each finding is a <testcase> with a <failure> — a CI pipeline treats the
+        # suite as failed if Argus found anything, the shift-left "did we ship a
+        # bug?" gate. Verdict is surfaced so a consumer can distinguish proven from
+        # unverified. Built with ElementTree for correct XML escaping.
+        import xml.etree.ElementTree as ET
+        findings = [b.to_dict() for b in r.bugs]
+        failures = sum(1 for f in findings if f.get("verified") is not False)
+        suite = ET.Element("testsuite", {
+            "name": "argus", "tests": str(len(findings)),
+            "failures": str(failures), "hostname": r.url or "",
+            "time": f"{r.duration_seconds or 0:.1f}",
+        })
+        for f in findings:
+            verdict = (f.get("reproduction") or {}).get("reproduced")
+            tier = "PROVEN" if verdict is True else ("REFUTED" if verdict is False else "UNVERIFIED")
+            tc = ET.SubElement(suite, "testcase", {
+                "classname": f"argus.{f['severity']}",
+                "name": f"[{tier}] {f['title']}"[:250],
+            })
+            body_lines = [f"URL: {f['url']}", f"Type: {f['type']}", f"Severity: {f['severity']}",
+                          f"Verdict: {tier}", "", f["description"] or ""]
+            if f.get("steps_to_reproduce"):
+                body_lines += ["", "Steps:"] + [f"  {i+1}. {s}" for i, s in enumerate(f["steps_to_reproduce"])]
+            # A REFUTED finding is not a build failure — record it as skipped, honest.
+            if verdict is False:
+                ET.SubElement(tc, "skipped", {"message": "symptom not reproduced on clean load"})
+            else:
+                fail = ET.SubElement(tc, "failure", {
+                    "message": f["title"][:200], "type": f["type"]})
+                fail.text = "\n".join(body_lines)
+        return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(suite, encoding="unicode")
 
     def _build_html(self, r: ExplorationResult) -> str:
         by_sev: Dict[Severity, List[Bug]] = {}
