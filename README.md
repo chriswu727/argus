@@ -1,3 +1,5 @@
+<!-- mcp-name: io.github.chriswu727/argus -->
+
 <div align="center">
 
 # Argus
