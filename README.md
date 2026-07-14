@@ -51,15 +51,16 @@ The agent is the intelligence. Argus supplies concise QA guidance, a description
 
 ## Quick start
 
+With [`uv`](https://docs.astral.sh/uv/) installed, no global Python package install is required:
+
 ```bash
-pip install argus-testing
-playwright install chromium
+uvx --from playwright playwright install chromium
 
 # Wire it into Claude Code (or Cursor, or any MCP host)
-claude mcp add argus -- argus-mcp
+claude mcp add argus -- uvx --from argus-testing argus-mcp
 ```
 
-The default `core` profile exposes the primary web-testing workflow without flooding the host with every specialist tool. Use `argus-mcp --list-tools` to inspect the selected profile, `--tool-profile screen` for native macOS testing, or `--tool-profile full` for the entire advanced surface. `ARGUS_TOOL_PROFILE` provides the same setting through the environment.
+The default `core` profile exposes the primary web-testing workflow without flooding the host with every specialist tool. Use `uvx --from argus-testing argus-mcp --list-tools` to inspect the selected profile, `--tool-profile screen` for native macOS testing, or `--tool-profile full` for the entire advanced surface. `ARGUS_TOOL_PROFILE` provides the same setting through the environment.
 
 Then just ask, in your agent session:
 
@@ -68,14 +69,25 @@ Then just ask, in your agent session:
 That's it. The agent drives; Argus keeps it honest and writes the report.
 
 <details>
+<summary><b>pip installation</b></summary>
+
+```bash
+pip install argus-testing
+playwright install chromium
+claude mcp add argus -- argus-mcp
+```
+
+</details>
+
+<details>
 <summary><b>CLI mode (no MCP host — bring your own LLM)</b></summary>
 
 ```bash
 # Uses a LiteLLM-backed planner. Set a provider key (OPENAI_API_KEY, DEEPSEEK_API_KEY, …).
-argus http://localhost:3000 --model deepseek/deepseek-chat
+uvx --from argus-testing argus http://localhost:3000 --model deepseek/deepseek-chat
 
 # Higher recall: union N independent passes (deduped, proven instance kept)
-argus http://localhost:3000 --passes 3
+uvx --from argus-testing argus http://localhost:3000 --passes 3
 ```
 
 </details>
@@ -170,44 +182,94 @@ python -m argus.bench --target all
 
 ## Tool surface
 
-`argus-mcp` starts with the focused `core` web profile. The tables below describe the wider surface; start with `--tool-profile full` only when you need specialist network, storage, tab, coordinate, or crawl controls. Screen mode has its own focused profile.
+`argus-mcp` starts with the focused `core` web profile. Every public tool is documented below. The counts are also available directly from the installed server:
+
+```bash
+uvx --from argus-testing argus-mcp --list-tools
+uvx --from argus-testing argus-mcp --tool-profile screen --list-tools
+uvx --from argus-testing argus-mcp --tool-profile full --list-tools
+```
+
+| Profile | Public tools | Intended use |
+|---------|-------------:|--------------|
+| `core` | 29 | Primary browser QA workflow; the default. |
+| `screen` | 14 | Focused native macOS testing through Accessibility and screenshots. |
+| `full` | 76 | Everything in core and screen, plus specialist browser, state, network, coordinate, and crawl controls. |
 
 <details>
-<summary><b>Web mode</b> — the description-keyed toolset the agent drives</summary>
+<summary><b>Core profile — 29 tools</b></summary>
 
-| Tool | Purpose |
-|------|---------|
-| `start_session(url, review_mode=...)` | Start `exploratory`, `visual`, or `regression` review and return the initial observation immediately. |
-| `observe()` | URL + title + interactive elements (keyed by description, not indices) + counts + visible feedback + ARIA tree + viewport state. |
-| `click_what(description)` | Click the element best matching `description`. Returns candidates if ambiguous, rather than guessing. |
-| `type_into` / `select_into` / `paste_into` | Resolve an input by description, then type / choose / paste (paste fires a real `ClipboardEvent`). |
-| `verify_persistence(expect, target_text, after_url)` | Force a fresh GET and report whether `target_text` is present or absent. **The "Saved!" toast is not proof; this is.** |
-| `record_bug(title, severity, evidence, verify=...)` | Called once the agent confirms a real bug. Verify text with `{expect, target_text, at_url}`, or a broken response with `{expect_status: 404, at_url}`. |
-| `record_observation(title, evidence, category)` | Keep qualitative visual, usability, content, responsive, or accessibility evidence separate from reproducible bugs. |
-| `press_key` · `click_at` / `type_at` / `hover_at` / `drag_at` | Keyboard chords; and coordinate actions — the escape hatch for canvas/WebGL and mouse-drag lists with no DOM marker. |
-| `resize(w,h)` · `emulate_device(name)` · `emulate_media(scheme)` | Responsive breakpoints; true device emulation (touch, mobile UA, DPR, state carried over); dark mode / reduced motion. |
-| `upload_file` / `drop_file` · `get_downloads()` | Upload via a real `<input>` or a dropzone; inspect downloaded bytes — catch a broken CSV/PDF/XLSX export. |
-| `tabs_list` / `tabs_switch` / `tabs_close` | Multi-tab flows — OAuth, payment popups, open-in-new-tab. |
-| `network_mock(pattern, …)` | Return 5xx/401/malformed for a URL pattern — fault injection with no backend. |
-| `inspect_element` · `check_layout` | Inspect interactive or visible non-interactive content; return bounded overflow, clipping, small-target, and overlay signals. |
-| `screenshot` · `screenshot_diff` | Wait for finite CSS transitions, then return an MCP image plus its absolute evidence path; pixel diff includes a red-tint overlay. |
-| `eval_js` · `get_errors` | JS (opt-in) and drained console + network events. Events keep their originating page and correlated console/network symptoms attach to one root-cause finding. |
-| `end_session()` | Close the session, write the report (HTML + JSON + JUnit + SARIF). |
+| Tools | Purpose |
+|-------|---------|
+| `start_session` | Start an `exploratory`, `visual`, or `regression` browser review and return the initial observation. |
+| `observe` | Return URL, title, description-keyed interactive elements, counts, visible feedback, ARIA tree, and viewport state. |
+| `click_what` | Click the element best matching a natural-language description; return candidates instead of guessing when ambiguous. |
+| `type_into` · `select_into` | Resolve a field by description, then type text or select an option. |
+| `hover_what` · `press_key` | Exercise hover states and keyboard interactions against description-keyed targets. |
+| `resize` · `emulate_device` | Test responsive breakpoints or reopen the page under real mobile touch, UA, DPR, and viewport settings. |
+| `upload_file` | Attach one or more local files to a matching file input. |
+| `navigate` · `go_back` · `scroll_down` | Navigate directly, return through browser history, or reveal content below the fold. |
+| `inspect_element` · `check_layout` | Inspect computed styles, ARIA and markup, or bounded overflow, clipping, small-target, and overlay signals. |
+| `screenshot` · `screenshot_diff` | Capture viewport, full-page, or element evidence and produce a red-tint pixel-diff overlay. |
+| `get_errors` | Drain correlated console errors and HTTP 4xx/5xx events captured since the previous read. |
+| `capsule_save` · `capsule_restore` | Save and restore a named authenticated or seeded browser state, with an optional liveness check. |
+| `verify_persistence` | Force a fresh load and check whether target text is present or absent. The “Saved!” toast is not proof; this is. |
+| `test_action` · `test_form` | Perform a description-keyed action or form submission and return the resulting state diff in one round trip. |
+| `check_links` · `check_performance` | Probe current-page internal links and expose raw browser performance metrics without auto-certifying generic audit findings. |
+| `regression_check` | Re-test journaled findings for the current origin without requiring another discovery pass. |
+| `record_bug` · `record_observation` | Record a reproducible defect with evidence and receipt, or keep a qualitative review note separate from certified bugs. |
+| `end_session` | Close the active session and emit HTML, JSON, JUnit, and SARIF reports. |
 
 </details>
 
 Reports keep original screenshots as evidence and, by default, write compact WebP previews under `report-assets/` instead of base64-embedding every full-size PNG into the HTML. Set `ARGUS_PORTABLE_REPORT=1` when a single self-contained HTML file is more important than size. JSON output includes complete reproduction receipts, review mode, tool-call and recorded-step counts, screenshot metadata, and qualitative observations. JUnit suite failure totals match the emitted `<failure>` nodes.
 
 <details>
-<summary><b>Screen mode (macOS)</b> — same idea, against native apps</summary>
+<summary><b>Screen profile — 14 tools</b></summary>
 
-| Tool | Purpose |
-|------|---------|
-| `start_screen_session(target_app="")` | Bind to the foreground or a named app. Refuses cleanly with deep-link permission instructions if grants are missing. |
-| `screen_observe()` | Foreground app + window title + AX tree (capped) + screen-coords per element + screenshot. |
-| `screen_click_what` / `screen_type_into` / `screen_press_key` | Resolve via the AX tree; act via native accessibility actions, falling back to `cliclick`. |
+| Tools | Purpose |
+|-------|---------|
+| `start_screen_session` | Bind to the foreground or a named macOS app after checking Screen Recording and Accessibility permissions. |
+| `screen_observe` | Return the foreground app, window title, bounded AX tree, screen coordinates, and a fresh screenshot. |
+| `screen_click_what` · `screen_type_into` · `screen_press_key` | Resolve against the AX tree and act through native accessibility, falling back to `cliclick`. |
+| `screen_wait_for_stable` | Wait until the target window remains visually stable within a configurable threshold. |
+| `screen_launch` · `screen_quit` · `screen_is_running` | Control and inspect an app by localized name, bundle ID, or absolute path. |
+| `screen_screenshot_region` | Capture a precise rectangular screen region for fine visual evidence. |
+| `screen_session_status` | Report elapsed time, remaining session budget, action counts, and the abort-file path. |
+| `record_bug` · `record_observation` · `end_session` | Use the shared evidence, reporting, and teardown tools in screen mode. |
 
 **Safety:** per-call timeout, a 30-minute session cap, a `~/.argus/abort` panic file that halts every subsequent action, and an automatic before/after screenshot trail on every action.
+
+</details>
+
+<details>
+<summary><b>Full profile — 76 tools</b></summary>
+
+The full profile includes every core and screen tool above plus these 36 specialist tools. Use it when the workflow genuinely needs low-level state, fault injection, multi-tab control, coordinates, or crawling.
+
+| Additional tools | Purpose |
+|------------------|---------|
+| `paste_into` · `right_click` | Fire a real clipboard paste event or open a target's context menu. |
+| `emulate_media` | Emulate dark/light color schemes and reduced-motion preferences. |
+| `click_at` · `type_at` · `hover_at` · `drag_at` · `drag_what` | Exercise canvas/WebGL, hover-reveal, and drag-and-drop interfaces by coordinates or description. |
+| `drop_file` | Dispatch a real file drop onto a matching dropzone. |
+| `set_dialog_handler` | Queue an accept, dismiss, or prompt response for the next JavaScript dialog. |
+| `eval_js` | Run arbitrary page-context JavaScript. It remains disabled unless the server also starts with `--unsafe`. |
+| `network_requests` · `network_request` | Inspect the bounded request log or retrieve full detail for one matching request. |
+| `network_mock` · `network_unmock` · `network_clear_mocks` · `network_clear_log` | Inject canned HTTP responses and independently reset active mocks or captured traffic. |
+| `cookies_get` · `cookies_set` · `cookies_clear` | Inspect, seed, or clear browser-context cookies. |
+| `storage_get` · `storage_set` · `storage_remove` · `storage_clear` | Inspect and mutate page-local `localStorage` or `sessionStorage`. |
+| `tabs_list` · `tabs_switch` · `tabs_close` | Control OAuth, payment, and other popup or multi-tab journeys. |
+| `wait_for_text` · `wait_for_request` | Wait for specific visible text or matching outgoing traffic with a bounded timeout. |
+| `get_downloads` | Inspect files downloaded during the session, including their paths and sizes. |
+| `crawl_site` | Crawl bounded internal pages and collect browser events, link results, and performance evidence. |
+| `screen_click_at` · `screen_hover_at` · `screen_drag` · `screen_keys` · `screen_type_at` | Use absolute screen coordinates and multi-key sequences when a native app exposes no useful AX element. |
+
+To expose `eval_js` as an operational tool rather than a disabled safety stub:
+
+```bash
+uvx --from argus-testing argus-mcp --tool-profile full --unsafe
+```
 
 </details>
 
