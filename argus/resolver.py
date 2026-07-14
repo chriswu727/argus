@@ -433,6 +433,25 @@ def resolve_element(
     top_score = scored[0][0]
     runner_up = scored[1][0] if len(scored) > 1 else 0
 
+    # A match that exists only in an ancestor's context is a useful suggestion,
+    # not permission to act. Without this floor, a request such as "Yichen Wu"
+    # could uniquely resolve to an unrelated footer link merely because the name
+    # appeared somewhere in its parent. Explicit URL-path targeting is the one
+    # safe low-score case: href matches intentionally carry a lower weight.
+    explicit_path_target = effective_kind == "link" and ("/" in core or "://" in core)
+    top_element = scored[0][1]
+    attribute_faces = [
+        re.sub(r"[_\-]+", " ", (top_element.name or "").lower()).strip(),
+        re.sub(r"[_\-]+", " ", (top_element.id or "").lower()).strip(),
+    ]
+    explicit_attribute_target = bool(effective_kind) and any(
+        face == core or _has_token(core, face) for face in attribute_faces
+    )
+    if top_score < 40 and not (
+        (explicit_path_target and top_score >= 24) or explicit_attribute_target or ordinal is not None
+    ):
+        return ResolveResult(found=None, candidates=scored[:5], reason="no_match")
+
     # Positional pick: "Delete #2" resolves the base label, then selects the
     # Nth top-scoring match in document order. This is the deterministic
     # escape hatch for N identical controls (lists, tables) — exactly the

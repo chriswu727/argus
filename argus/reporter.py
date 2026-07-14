@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import base64
+import hashlib
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
+from urllib.parse import quote
+
+from PIL import Image
 
 from .browser import _redact
 from .models import Bug, BugType, ExplorationResult, Screenshot, Severity
@@ -68,6 +73,8 @@ def _repro_badge(receipt: Optional[dict]) -> str:
     elif reproduced is False:
         if is_replay:
             color, label = "#b35900", f"NOT REPRODUCED · replayed {receipt.get('steps', '?')} steps, symptom absent"
+        elif receipt.get("expect_status") is not None:
+            color, label = "#b35900", f"NOT REPRODUCED · expected HTTP {receipt['expect_status']}"
         elif receipt.get("flaky"):
             color, label = "#9a6700", f"INTERMITTENT · {receipt.get('runs', '')} on reload"
         else:
@@ -77,8 +84,12 @@ def _repro_badge(receipt: Optional[dict]) -> str:
             color, label = "#6e7781", "INCONCLUSIVE · replay path diverged (a step no longer resolves)"
         elif is_replay:
             color, label = "#6e7781", "INCONCLUSIVE · symptom pre-existed the journey (not caused by these steps)"
+        elif receipt.get("reason"):
+            color, label = "#6e7781", f"INCONCLUSIVE · {receipt['reason']}"
+        elif receipt.get("error"):
+            color, label = "#6e7781", "REPRO CHECK ERRORED"
         else:
-            color, label = "#6e7781", "repro check errored"
+            color, label = "#6e7781", "INCONCLUSIVE · no verdict"
     return (f'<span class="rp" style="background:{color}">{_esc(label)}</span>')
 
 
@@ -90,7 +101,20 @@ def _repro_detail(receipt: Optional[dict]) -> str:
         return ""
     target = receipt.get("target_text")
     reproduced = receipt.get("reproduced")
-    if not target or reproduced is None:
+    if reproduced is None:
+        reason = receipt.get("reason") or receipt.get("error")
+        if reason:
+            return f'<div class="rd">Independent re-check was inconclusive: {_esc(str(reason))}.</div>'
+        return ""
+    if not target:
+        if receipt.get("expect_status") is not None:
+            expected = receipt["expect_status"]
+            observed = ", ".join(str(item) for item in receipt.get("observed_statuses", []))
+            if reproduced is True:
+                body = f"Independently confirmed on fresh loads: HTTP status is <code>{expected}</code>."
+            else:
+                body = f"Could not independently confirm HTTP <code>{expected}</code>; observed {observed or 'no response'}."
+            return f'<div class="rd">{body}</div>'
         return ""
     expect = (receipt.get("expect") or "present").strip().lower()
     # Collapse any literal newlines/whitespace the model baked into the target.
@@ -115,8 +139,34 @@ def _embed_image(path: str) -> Optional[str]:
     data = p.read_bytes()
     b64 = base64.b64encode(data).decode("ascii")
     suffix = p.suffix.lower()
-    mime = "image/png" if suffix == ".png" else "image/jpeg"
+    mime = {
+        ".png": "image/png",
+        ".webp": "image/webp",
+        ".gif": "image/gif",
+    }.get(suffix, "image/jpeg")
     return f"data:{mime};base64,{b64}"
+
+
+def _prepare_report_image(path: str, report_dir: Path, asset_dir: Path) -> Optional[str]:
+    source = Path(path).expanduser()
+    if not source.exists():
+        return None
+    digest = hashlib.sha256(str(source.resolve()).encode("utf-8")).hexdigest()[:10]
+    stem = "".join(char if char.isalnum() or char in "-_" else "_" for char in source.stem)
+    destination = asset_dir / f"{stem[:80]}_{digest}.webp"
+    try:
+        asset_dir.mkdir(parents=True, exist_ok=True)
+        if not destination.exists() or destination.stat().st_mtime < source.stat().st_mtime:
+            with Image.open(source) as image:
+                image.seek(0)
+                image.thumbnail((1600, 6000), Image.Resampling.LANCZOS)
+                if image.mode not in {"RGB", "RGBA"}:
+                    image = image.convert("RGBA" if "transparency" in image.info else "RGB")
+                image.save(destination, "WEBP", quality=78, method=6)
+    except Exception:
+        return None
+    relative = destination.relative_to(report_dir).as_posix()
+    return quote(relative, safe="/")
 
 
 _SEVERITY_COLORS = {
@@ -186,14 +236,32 @@ def _trust_rank(bug: Bug) -> int:
 
 
 class Reporter:
-    """Generates a self-contained HTML error report with embedded screenshots."""
+    """Generates HTML and machine-readable QA reports."""
 
-    def generate(self, result: ExplorationResult, output_dir: str) -> str:
+    def generate(
+        self,
+        result: ExplorationResult,
+        output_dir: str,
+        portable: Optional[bool] = None,
+    ) -> str:
         out = Path(output_dir)
         out.mkdir(parents=True, exist_ok=True)
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         path = out / f"report_{ts}.html"
-        path.write_text(self._build_html(result), encoding="utf-8")
+        if portable is None:
+            portable = os.environ.get("ARGUS_PORTABLE_REPORT", "").strip().lower() in {
+                "1", "true", "yes", "on",
+            }
+        asset_dir = None if portable else out / "report-assets" / f"report_{ts}"
+        path.write_text(
+            self._build_html(
+                result,
+                report_dir=out,
+                portable=portable,
+                asset_dir=asset_dir,
+            ),
+            encoding="utf-8",
+        )
         # Machine-readable siblings so Argus is consumable, not just readable:
         # JSON for API/programmatic use, JUnit XML for CI (the universal format
         # a pipeline can gate on). Best-effort — a serialization hiccup must not
@@ -257,7 +325,13 @@ class Reporter:
             "url": r.url,
             "generated_at": datetime.now().isoformat(),
             "duration_seconds": r.duration_seconds,
+            "review_mode": r.review_mode,
+            "tool_calls": r.tool_calls,
+            "actions_taken": r.actions_taken,
+            "focus_areas": list(r.focus_areas or []),
             "pages_visited": list(r.pages_visited or []),
+            "screenshots": [s.to_dict() for s in r.screenshots],
+            "observations": [o.to_dict() for o in r.observations],
             "summary": {"total": len(findings), "verified": verified, "by_severity": by_sev},
             "findings": findings,
         }
@@ -270,7 +344,10 @@ class Reporter:
         # unverified. Built with ElementTree for correct XML escaping.
         import xml.etree.ElementTree as ET
         findings = [b.to_dict() for b in r.bugs]
-        failures = sum(1 for f in findings if f.get("verified") is not False)
+        failures = sum(
+            1 for f in findings
+            if (f.get("reproduction") or {}).get("reproduced") is not False
+        )
         suite = ET.Element("testsuite", {
             "name": "argus", "tests": str(len(findings)),
             "failures": str(failures), "hostname": r.url or "",
@@ -296,7 +373,23 @@ class Reporter:
                 fail.text = "\n".join(body_lines)
         return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(suite, encoding="unicode")
 
-    def _build_html(self, r: ExplorationResult) -> str:
+    def _build_html(
+        self,
+        r: ExplorationResult,
+        report_dir: Optional[Path] = None,
+        portable: bool = True,
+        asset_dir: Optional[Path] = None,
+    ) -> str:
+        image_cache: Dict[str, Optional[str]] = {}
+
+        def image_src(path: str) -> Optional[str]:
+            if path not in image_cache:
+                if portable or report_dir is None or asset_dir is None:
+                    image_cache[path] = _embed_image(path)
+                else:
+                    image_cache[path] = _prepare_report_image(path, report_dir, asset_dir)
+            return image_cache[path]
+
         by_sev: Dict[Severity, List[Bug]] = {}
         for bug in r.bugs:
             by_sev.setdefault(bug.severity, []).append(bug)
@@ -359,9 +452,9 @@ class Reporter:
                 )
             ss = ""
             if bug.screenshot_path:
-                data_uri = _embed_image(bug.screenshot_path)
-                if data_uri:
-                    ss = f'<img src="{data_uri}" class="ss" alt="Bug screenshot">'
+                src = image_src(bug.screenshot_path)
+                if src:
+                    ss = f'<img src="{src}" class="ss" alt="Bug screenshot">'
             repro = _repro_badge(bug.reproduction_receipt)
             repro_detail = _repro_detail(bug.reproduction_receipt)
 
@@ -382,17 +475,32 @@ class Reporter:
         )
         no_bugs = '<div class="nb">No bugs found.</div>' if not r.bugs else ""
 
+        observations_html = ""
+        if r.observations:
+            observations_html = f'<h2>Review Observations ({len(r.observations)})</h2>'
+            for observation in r.observations:
+                image = ""
+                if observation.screenshot_path:
+                    src = image_src(observation.screenshot_path)
+                    if src:
+                        image = f'<img src="{src}" class="ss" alt="Observation screenshot">'
+                observations_html += f"""<div class="oc">
+<div class="oh"><span class="ot">{_esc(observation.category.upper())}</span>
+<span class="ou">{_esc(_redact(observation.url))}</span></div>
+<h3>{_esc(observation.title)}</h3>
+<p>{_esc(observation.evidence)}</p>{image}</div>"""
+
         # screenshots timeline
         screenshots_html = ""
         if r.screenshots:
             screenshots_html = '<h2>Testing Timeline</h2><div class="tl">'
             for ss in r.screenshots:
-                data_uri = _embed_image(ss.path)
-                if data_uri:
+                src = image_src(ss.path)
+                if src:
                     screenshots_html += f"""<div class="tc">
 <div class="th"><span class="ts">{_esc(ss.step)}</span>
 <span class="tu">{_esc(ss.url)}</span></div>
-<img src="{data_uri}" class="ti" alt="{_esc(ss.name)}">
+<img src="{src}" class="ti" alt="{_esc(ss.name)}">
 </div>"""
             screenshots_html += "</div>"
 
@@ -415,6 +523,10 @@ h3{{font-size:1.1rem;margin:.5rem 0;color:#f1f5f9}}
 .sv2{{font-size:1.5rem;font-weight:700;color:#f8fafc}}
 .sl{{color:#64748b;font-size:.85rem}}
 .bc{{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:1.2rem;margin-bottom:1rem;overflow:hidden;word-break:break-word}}
+.oc{{background:#172033;border:1px solid #334155;border-left:3px solid #38bdf8;border-radius:8px;padding:1.2rem;margin-bottom:1rem;overflow:hidden;word-break:break-word}}
+.oh{{display:flex;gap:.75rem;align-items:center;margin-bottom:.5rem}}
+.ot{{color:#7dd3fc;font-size:.75rem;font-weight:700}}
+.ou{{color:#64748b;font-size:.75rem;margin-left:auto;word-break:break-all}}
 .bh{{display:flex;gap:.5rem;align-items:center;margin-bottom:.5rem}}
 .bt{{color:#64748b;font-size:.85rem}}
 .rp{{color:#fff;padding:2px 8px;border-radius:4px;font-size:.72rem;font-weight:600;margin-left:auto}}
@@ -439,16 +551,19 @@ li{{margin:.2rem 0}}
 </style></head>
 <body><div class="c">
 <h1>Argus QA Report</h1>
-<div class="m">{_esc(r.url)} — {r.timestamp.strftime("%Y-%m-%d %H:%M:%S")} — {r.duration_seconds:.1f}s</div>
+<div class="m">{_esc(r.url)} — {_esc(r.review_mode)} review — {r.timestamp.strftime("%Y-%m-%d %H:%M:%S")} — {r.duration_seconds:.1f}s</div>
 <div class="sg">
 <div class="s"><div class="sv2">{len(r.bugs)}</div><div class="sl">Bugs Found</div></div>
-<div class="s"><div class="sv2">{r.actions_taken}</div><div class="sl">Actions Taken</div></div>
+<div class="s"><div class="sv2">{len(r.observations)}</div><div class="sl">Observations</div></div>
+<div class="s"><div class="sv2">{r.tool_calls}</div><div class="sl">Tool Calls</div></div>
+<div class="s"><div class="sv2">{r.actions_taken}</div><div class="sl">Recorded Steps</div></div>
 <div class="s"><div class="sv2">{len(r.pages_visited)}</div><div class="sl">Pages Visited</div></div>
 <div class="s"><div class="sv2">{len(r.screenshots)}</div><div class="sl">Screenshots</div></div>
 </div>
 <h2>Focus Areas</h2><ul>{focus}</ul>
 <h2>Bugs ({len(r.bugs)})</h2><div class="sm">{summary}</div>
 {cards}{no_bugs}
+{observations_html}
 {screenshots_html}
 <h2>Pages Visited</h2><ul>{pages}</ul>
 </div></body></html>"""

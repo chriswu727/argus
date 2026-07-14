@@ -132,15 +132,12 @@ class Bug:
             "url": self.url,
             "description": self.description,
             "steps_to_reproduce": list(self.steps_to_reproduce or []),
+            "screenshot_path": self.screenshot_path,
+            "replay_steps": list(self.replay_steps or []),
             # Trust tier: the reproduction receipt is Argus's differentiator — a
             # consumer should be able to gate on PROVEN, not on say-so.
             "verified": verdict is True,
-            "reproduction": {
-                "reproduced": verdict,
-                "flaky": r.get("flaky"),
-                "runs": r.get("runs"),
-                "mode": r.get("mode"),
-            } if r else None,
+            "reproduction": dict(r) if r else None,
             "console_logs": list(self.console_logs or []),
             "network_logs": list(self.network_logs or []),
             "timestamp": self.timestamp.isoformat() if hasattr(self.timestamp, "isoformat") else self.timestamp,
@@ -155,6 +152,35 @@ class Screenshot:
     url: str
     timestamp: datetime = field(default_factory=datetime.now)
 
+    def to_dict(self) -> Dict:
+        return {
+            "path": self.path,
+            "name": self.name,
+            "step": self.step,
+            "url": self.url,
+            "timestamp": self.timestamp.isoformat(),
+        }
+
+
+@dataclass
+class Observation:
+    title: str
+    evidence: str
+    url: str
+    category: str = "visual"
+    screenshot_path: Optional[str] = None
+    timestamp: datetime = field(default_factory=datetime.now)
+
+    def to_dict(self) -> Dict:
+        return {
+            "title": self.title,
+            "evidence": self.evidence,
+            "url": self.url,
+            "category": self.category,
+            "screenshot_path": self.screenshot_path,
+            "timestamp": self.timestamp.isoformat(),
+        }
+
 
 @dataclass
 class ExplorationResult:
@@ -165,4 +191,7 @@ class ExplorationResult:
     duration_seconds: float
     focus_areas: List[str]
     screenshots: List[Screenshot] = field(default_factory=list)
+    observations: List[Observation] = field(default_factory=list)
+    tool_calls: int = 0
+    review_mode: str = "exploratory"
     timestamp: datetime = field(default_factory=datetime.now)

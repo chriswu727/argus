@@ -133,10 +133,14 @@ def _merge_results(results: list):
             elif _verified(b) and not _verified(by_fp[fp]):
                 by_fp[fp] = b  # upgrade to the proven instance
     pages: list = []
+    screenshots: list = []
+    observations: list = []
     for res in results:
         for p in (res.pages_visited or []):
             if p not in pages:
                 pages.append(p)
+        screenshots.extend(res.screenshots or [])
+        observations.extend(res.observations or [])
     base = results[0]
     return ExplorationResult(
         url=base.url,
@@ -145,7 +149,10 @@ def _merge_results(results: list):
         actions_taken=sum(r.actions_taken for r in results),
         duration_seconds=sum(r.duration_seconds for r in results),
         focus_areas=base.focus_areas,
-        screenshots=base.screenshots,
+        screenshots=screenshots,
+        observations=observations,
+        tool_calls=sum(r.tool_calls for r in results),
+        review_mode=base.review_mode,
         timestamp=base.timestamp,
     )
 

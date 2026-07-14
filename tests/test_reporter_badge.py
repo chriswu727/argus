@@ -46,6 +46,17 @@ def test_rejected_verify_clause_badge_is_distinct():
     assert "VERIFY NOT RUN" in b
 
 
+def test_inconclusive_badge_surfaces_reason_instead_of_unknown_error():
+    b = _repro_badge({
+        "attempted": True,
+        "reproduced": None,
+        "reason": "clean load returned HTTP 404",
+    })
+    assert "INCONCLUSIVE" in b
+    assert "HTTP 404" in b
+    assert "errored" not in b.lower()
+
+
 def test_file_event_bugs_tags_auto_captured():
     sess = m.Session()
     bug = Bug(type=BugType.CONSOLE_ERROR, severity=Severity.HIGH, title="t",
@@ -54,3 +65,71 @@ def test_file_event_bugs_tags_auto_captured():
     assert sess.bugs == [bug]
     assert bug.reproduction_receipt["auto_captured"] is True
     assert bug.reproduction_receipt["attempted"] is False
+
+
+def test_file_event_bugs_attaches_console_and_network_evidence_to_manual_root_cause():
+    missing = "https://example.test/articles/missing"
+    sess = m.Session()
+    manual = Bug(
+        type=BugType.BROKEN_LINK,
+        severity=Severity.MEDIUM,
+        title="Search result opens a missing article",
+        description="The result navigates to a 404.",
+        url=missing,
+        steps_to_reproduce=["Open search", "Click result"],
+    )
+    network = Bug(
+        type=BugType.NETWORK_ERROR,
+        severity=Severity.MEDIUM,
+        title="HTTP 404",
+        description="GET returned 404",
+        url=missing,
+        steps_to_reproduce=[],
+        network_logs=[{"method": "GET", "url": missing, "status": 404, "page_url": missing}],
+    )
+    console = Bug(
+        type=BugType.CONSOLE_ERROR,
+        severity=Severity.MEDIUM,
+        title="Console error: resource status 404",
+        description="Failed to load resource: status 404",
+        url=missing,
+        steps_to_reproduce=[],
+        console_logs=["Failed to load resource: status 404"],
+    )
+    sess.bugs = [manual]
+
+    filed = m._file_event_bugs(sess, [console, network])
+
+    assert filed == []
+    assert sess.bugs == [manual]
+    assert manual.network_logs == network.network_logs
+    assert manual.console_logs == console.console_logs
+
+
+def test_file_event_bugs_collapses_matching_console_and_network_events():
+    missing = "https://example.test/missing"
+    sess = m.Session()
+    network = Bug(
+        type=BugType.NETWORK_ERROR,
+        severity=Severity.MEDIUM,
+        title="HTTP 404",
+        description="GET returned 404",
+        url=missing,
+        steps_to_reproduce=[],
+        network_logs=[{"method": "GET", "url": missing, "status": 404, "page_url": missing}],
+    )
+    console = Bug(
+        type=BugType.CONSOLE_ERROR,
+        severity=Severity.MEDIUM,
+        title="Console error: resource status 404",
+        description="Failed to load resource: status 404",
+        url=missing,
+        steps_to_reproduce=[],
+        console_logs=["Failed to load resource: status 404"],
+    )
+
+    filed = m._file_event_bugs(sess, [console, network])
+
+    assert filed == [network]
+    assert sess.bugs == [network]
+    assert network.console_logs == console.console_logs

@@ -27,11 +27,21 @@ from typing import List, Optional
 from urllib.parse import urljoin, urlparse
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.utilities.types import Image as MCPImage
 
 from .browser import BrowserDriver, _redact, _redact_headers
 from .detector import Detector
 from .differ import compute_changes
-from .models import Bug, BugType, ExplorationResult, InteractiveElement, PageState, Screenshot, Severity
+from .models import (
+    Bug,
+    BugType,
+    ExplorationResult,
+    InteractiveElement,
+    Observation,
+    PageState,
+    Screenshot,
+    Severity,
+)
 from .reporter import Reporter
 from .resolver import (
     describe as describe_element,
@@ -42,109 +52,24 @@ from .resolver import (
 
 mcp = FastMCP(
     "argus",
-    instructions="""You are now Argus, the all-seeing QA tester for a software product.
-While this MCP is loaded you are not a coding assistant, not a task
-completer, not the user's friend. You are a senior human QA tester sitting
-down at the user's machine with one job: find the bugs the dev team would
-be embarrassed to ship. Stay in role until end_session is called.
+    instructions="""Argus is an evidence-first QA capability inside the host's current task.
+It does not change the user's authority, prevent coding, or take over the host's identity.
 
-HOW YOU WORK — this is the whole point
-You actually open the software and USE it, like a real person trying to get
-something done. You don't audit it from the outside, you don't read its
-source to find flaws, you don't fire scripted probes at it. You drive it
-through real journeys with real intent — and you notice what breaks, looks
-wrong, or betrays the user's trust while you're using it. Black-box, from
-the user's side of the screen. The deepest bugs (cross-page state drift,
-silent data loss, deceptive feedback) only surface when you carry real
-state through a real journey — never from poking one surface in isolation.
+For exploratory testing: map real user goals, walk them end-to-end with real state,
+make one deliberate probe at a time, and observe after every action. Verify saves,
+deletes, edits, submits, and toggles with verify_persistence; visible success feedback
+is not proof. Record only reproducible, user-affecting bugs. Pass a verify clause to
+record_bug whenever the symptom is text-checkable. Before end_session, cover important
+goals you have not exercised.
 
-GOAL
-Quality of bugs found matters more than quantity. A tight 5-bug report
-beats a noisy 50-bug report. Ship findings a real user would care about,
-not theoretical ones.
+For visual review: use screenshots, inspect_element, check_layout, responsive device
+emulation, and record_observation for qualitative findings. Do not inflate polish notes
+into functional bugs.
 
-NOT YOUR JOB
-- Completing the user's flow as if you were a real user (don't actually
-  buy the thing, don't actually publish the post — unless the act itself
-  is what you're testing).
-- Suggesting code fixes — you are QA, not dev.
-- SEO / Lighthouse-style performance audits / generic accessibility
-  scans — those are different products. Use axe / Lighthouse for those.
-  You only flag a11y or perf when it makes the app unusable for a real user.
-- Mechanically firing every payload from a security textbook. A real
-  tester picks one well-chosen probe per surface, observes, moves on.
-
-THE TESTER'S RITUAL — return to this on every tool call
-
-1. MAP         What does this app let a user do? Identify the 3-5 real
-               user goals (sign up, add an item and find it later, check
-               out, edit a setting and see it stick) before anything else.
-2. USE IT      Pick a goal and actually walk it end-to-end, the way a real
-               person would — not by poking surfaces, but by genuinely
-               trying to accomplish the goal. Carry state across pages as
-               you go (the name you entered, the item you added). Most of
-               the bugs worth reporting reveal themselves mid-journey.
-3. HYPOTHESIZE As you use each surface, name 2-3 specific ways it could
-               fail. Not "the form might break" — "I bet validation runs
-               only client-side and the server accepts garbage".
-4. ACT         One probe per tool call. Resist testing five things in one
-               click — a real tester does one thing, then watches.
-5. OBSERVE     After every action, read what came back: state diff,
-               console, network, visible feedback. Compare expected vs
-               actual. Take a screenshot when something looks off.
-6. VERIFY      For any destructive or persistence-changing action
-               (delete, save, edit, submit, toggle, payment), call
-               verify_persistence. UIs lie. The "Saved!" toast is the
-               single most common reason real users lose data.
-7. RECORD      When you've confirmed a real bug, call record_bug with
-               severity + reproducible steps + evidence. ALWAYS pass a
-               `verify` clause — {expect: "present"|"absent", target_text:
-               "the text that proves the bug", at_url: "/where"} — for any
-               text-checkable symptom (an item present/absent, a wrong count,
-               a lying toast, missing saved data). Without it the finding has
-               NO reproduction receipt and counts as unproven say-so; that is
-               the whole differentiator. Only skip verify for a purely visual
-               judgment call. Don't record speculation or polish nits.
-8. COVER       Before ending the session, ask "which user goals did I
-               never actually use end-to-end?" — go use those.
-
-WHAT MAKES A REAL BUG (the bar)
-- Reproducible — someone following your steps will see it too.
-- User-affecting — causes data loss, security risk, blocked flow, real
-  confusion, or trust damage.
-- Persistent — not a one-off page-load race unless you can re-trigger it.
-
-THE THINGS HUMANS NOTICE THAT MACHINES MISS — your hunting ground
-- The success toast is a lie — operation didn't actually persist.
-- Cross-page state inconsistency — same datum displayed differently
-  across pages, or one page updates and another doesn't.
-- Empty states aren't designed (says "Loading..." forever, or just blank).
-- Long values silently truncated with no indication.
-- Validation messages are engineer-speak, not user-speak ("Field 'foo'
-  invalid" — what is foo, what should I do?).
-- A workflow has no back / cancel / recover path — user is trapped.
-- Visual hierarchy inverted — destructive button is the prominent one;
-  primary CTA is the dim one.
-- Dark patterns — fake urgency, hidden cost, hard-to-cancel, deceptive
-  consent, sneaky charges.
-- After auth, navigation/UI doesn't reflect logged-in state.
-- Form errors clear the user's input — they have to retype everything.
-- The same action via two paths gives different results.
-- Inputs accept what should be rejected (auth bypass, bypassed
-  validation, accepted out-of-range numbers, accepted whitespace where
-  content is required).
-
-SEVERITY CALIBRATION
-- HIGH    data loss, security, payment, blocked primary flow
-- MEDIUM  workflow friction, confusing UX, deceptive feedback,
-          cross-page inconsistency
-- LOW     polish, copy, suggestion-grade
-
-OPERATING RHYTHM
-After every tool call, ask yourself: was that a tester move, or did I
-slip into being a regular user / a developer / a wandering agent? If
-you slipped, return to the ritual. The MCP is loaded specifically so
-you stay in the tester seat — use that.""",
+Severity: HIGH for security, data loss, payment, or blocked primary flows; MEDIUM for
+workflow friction, deceptive feedback, or cross-page inconsistency; LOW for minor UX.
+Do not perform real purchases or irreversible publication unless the user explicitly
+authorized that external effect.""",
 )
 
 
@@ -160,10 +85,12 @@ class Session:
 
     def __init__(self):
         self.mode: Optional[str] = None  # "web" | "screen" | None
+        self.review_mode: str = "exploratory"
         self.browser: Optional[BrowserDriver] = None
         self.screen = None  # type: Optional["ScreenBackend"]
         self.detector = Detector()
         self.bugs: List[Bug] = []
+        self.observations: List[Observation] = []
         self.steps: List[str] = []
         # Index into self.steps marking where the *last* record_bug call
         # snapshotted from. Each Bug's reproducible steps are the delta
@@ -175,6 +102,7 @@ class Session:
         self.start_time: Optional[float] = None
         self.url: Optional[str] = None
         self.focus_areas: List[str] = []
+        self.tool_calls = 0
         self._last_elements = []
         self._last_screen_elements = []
         self._screenshot_counter = 0
@@ -206,6 +134,7 @@ def _require_session() -> Session:
             "No active session. Call start_session(url) for web mode "
             "or start_screen_session() for screen mode first."
         )
+    _session.tool_calls += 1
     return _session
 
 
@@ -249,7 +178,7 @@ def _record_action(s: "Session", tool: str, description: str = "", value: Option
 
 
 def _output_dir() -> str:
-    return os.environ.get("ARGUS_OUTPUT_DIR", "./argus-reports")
+    return str(Path(os.environ.get("ARGUS_OUTPUT_DIR", "./argus-reports")).expanduser().resolve())
 
 
 # ── persistent test journal (cross-run regression) ──────────────────
@@ -265,7 +194,10 @@ def _bug_fingerprint(bug: "Bug") -> str:
     genuinely new bug is never silently collapsed into an old one."""
     r = bug.reproduction_receipt or {}
     path = urlparse(r.get("at_url") or bug.url or "").path or "/"
-    return f"{bug.type.value}|{path}|{r.get('expect', '')}|{(r.get('target_text') or '')[:80]}"
+    return (
+        f"{bug.type.value}|{path}|{r.get('expect', '')}|"
+        f"{(r.get('target_text') or '')[:80]}|{r.get('expect_status', '')}"
+    )
 
 
 def _journal_entries(origin: str) -> list:
@@ -289,14 +221,22 @@ def _write_journal(s: "Session") -> None:
         if r.get("mode") == "replay":
             continue
         expect, target = r.get("expect"), r.get("target_text")
+        expected_status = r.get("expect_status")
         # Only journal findings Argus actually CONFIRMED (reproduced). A
         # not-reproduced / errored finding would otherwise resurface next run as
         # a phantom "no-longer-reproduces (likely fixed)".
-        if r.get("reproduced") is True and expect in ("present", "absent") and target:
+        text_check = expect in ("present", "absent") and bool(target)
+        status_check = expected_status is not None
+        if r.get("reproduced") is True and (text_check or status_check):
+            verify = {"at_url": r.get("at_url", "")}
+            if status_check:
+                verify["expect_status"] = expected_status
+            else:
+                verify.update({"expect": expect, "target_text": target})
             fresh.append({
                 "fingerprint": _bug_fingerprint(b),
                 "title": b.title[:120], "severity": b.severity.value, "type": b.type.value,
-                "verify": {"expect": expect, "target_text": target, "at_url": r.get("at_url", "")},
+                "verify": verify,
             })
     if not fresh:
         return
@@ -659,10 +599,23 @@ async def _run_reproduction_check(s: "Session", verify: dict) -> dict:
     expect = (verify.get("expect") or "").strip().lower()
     target = (verify.get("target_text") or verify.get("target") or "").strip()
     at_url = (verify.get("at_url") or verify.get("after_url") or "").strip()
+    expected_status = verify.get("expect_status")
 
-    if expect not in ("present", "absent") or not target:
+    if expected_status is not None:
+        try:
+            expected_status = int(expected_status)
+        except (TypeError, ValueError):
+            return {"attempted": False, "reason": "expect_status must be an HTTP status integer"}
+        if not 100 <= expected_status <= 599:
+            return {"attempted": False, "reason": "expect_status must be between 100 and 599"}
+
+    has_text_check = expect in ("present", "absent") and bool(target)
+    if expected_status is None and not has_text_check:
         return {"attempted": False,
-                "reason": "verify needs expect in {present, absent} and a non-empty target_text"}
+                "reason": "verify needs expect_status or expect in {present, absent} with target_text"}
+    if expected_status is not None and (expect or target):
+        return {"attempted": False,
+                "reason": "use either expect_status or expect/target_text, not both"}
     if s.mode != "web" or s.browser is None or s.browser._page is None:
         return {"attempted": False,
                 "reason": "reproduction re-check is only available in web mode"}
@@ -670,6 +623,7 @@ async def _run_reproduction_check(s: "Session", verify: dict) -> dict:
     restore_url = s.browser._page.url
     nav_url = _resolve_url(s, at_url) if at_url else restore_url
     observations = []
+    observed_statuses = []
     # A clean load means none of the agent's own forced responses are live —
     # otherwise an injected 500 re-fires on reload and certifies itself.
     suspended_mocks = await s.browser.suspend_mocks()
@@ -682,6 +636,11 @@ async def _run_reproduction_check(s: "Session", verify: dict) -> dict:
             await s.browser.clear_client_storage()
         for _ in range(2):
             resp = await s.browser.goto(nav_url)
+            status = resp.status if resp is not None else None
+            observed_statuses.append(status)
+            if expected_status is not None:
+                observations.append(status == expected_status)
+                continue
             state = await s.browser.get_state()
             # A 4xx/5xx page or a login wall makes the symptom absent for the
             # wrong reason — never certify (esp. expect=absent) off that.
@@ -711,6 +670,22 @@ async def _run_reproduction_check(s: "Session", verify: dict) -> dict:
         return {"attempted": True, "reproduced": None, "at_url": nav_url,
                 "reason": inconclusive, "target_text": target[:120], "expect": expect,
                 "mocks_suspended": suspended_mocks}
+
+    if expected_status is not None:
+        hits = sum(1 for matched in observations if matched)
+        receipt = {
+            "attempted": True,
+            "reproduced": bool(observations) and all(observations),
+            "flaky": 0 < hits < len(observations),
+            "runs": f"{hits}/{len(observations)}",
+            "expect_status": expected_status,
+            "observed_statuses": observed_statuses,
+            "method": "fresh-load HTTP status re-check",
+            "at_url": nav_url,
+        }
+        if suspended_mocks:
+            receipt["mocks_suspended"] = suspended_mocks
+        return receipt
 
     receipt = _receipt_verdict(observations, expect)
     receipt.update({
@@ -885,12 +860,101 @@ _AUTO_CAPTURED_RECEIPT = {
 }
 
 
-def _file_event_bugs(s: "Session", new_bugs: list) -> None:
-    """Append detector-captured event bugs to the session, tagged auto-captured."""
-    for bug in new_bugs:
-        if bug.reproduction_receipt is None:
-            bug.reproduction_receipt = dict(_AUTO_CAPTURED_RECEIPT)
-    s.bugs += new_bugs
+def _normalized_event_url(value: str) -> str:
+    try:
+        return urlparse(value or "")._replace(query="", fragment="").geturl().rstrip("/")
+    except Exception:
+        return (value or "").rstrip("/")
+
+
+def _event_statuses(bug: Bug) -> set[int]:
+    statuses = {
+        int(log["status"])
+        for log in bug.network_logs
+        if log.get("status") is not None
+    }
+    for raw in re.findall(r"\b[45]\d\d\b", f"{bug.title} {bug.description}"):
+        statuses.add(int(raw))
+    return statuses
+
+
+def _attach_event_evidence(target: Bug, event: Bug) -> None:
+    for line in event.console_logs:
+        if line not in target.console_logs:
+            target.console_logs.append(line)
+    for log in event.network_logs:
+        if log not in target.network_logs:
+            target.network_logs.append(log)
+    if not target.screenshot_path and event.screenshot_path:
+        target.screenshot_path = event.screenshot_path
+
+
+def _manual_target_for_event(existing: list[Bug], event: Bug) -> Optional[Bug]:
+    manual = [
+        bug for bug in existing
+        if not (bug.reproduction_receipt or {}).get("auto_captured")
+    ]
+    if event.type == BugType.NETWORK_ERROR:
+        request_urls = {
+            _normalized_event_url(log.get("url") or "")
+            for log in event.network_logs
+            if log.get("url")
+        }
+        matches = [
+            bug for bug in manual
+            if _normalized_event_url(bug.url) in request_urls
+        ]
+        return matches[-1] if matches else None
+    if event.type == BugType.CONSOLE_ERROR:
+        source = _normalized_event_url(event.url)
+        matches = [
+            bug for bug in manual
+            if _normalized_event_url(bug.url) == source
+            and bug.type in {BugType.BROKEN_LINK, BugType.CRASH, BugType.NETWORK_ERROR}
+        ]
+        return matches[-1] if matches else None
+    return None
+
+
+def _file_event_bugs(s: "Session", new_bugs: list) -> list[Bug]:
+    """File only new root causes and attach correlated event evidence."""
+    existing = list(s.bugs)
+    filed: list[Bug] = []
+    network_targets: list[tuple[Bug, Bug]] = []
+
+    for event in [bug for bug in new_bugs if bug.type == BugType.NETWORK_ERROR]:
+        target = _manual_target_for_event(existing, event)
+        if target is None:
+            event.reproduction_receipt = event.reproduction_receipt or dict(_AUTO_CAPTURED_RECEIPT)
+            s.bugs.append(event)
+            filed.append(event)
+            target = event
+        else:
+            _attach_event_evidence(target, event)
+        network_targets.append((event, target))
+
+    for event in [bug for bug in new_bugs if bug.type != BugType.NETWORK_ERROR]:
+        target = _manual_target_for_event(existing, event)
+        if target is None and event.type == BugType.CONSOLE_ERROR:
+            source = _normalized_event_url(event.url)
+            statuses = _event_statuses(event)
+            candidates = {
+                id(candidate): candidate
+                for network_event, candidate in network_targets
+                if _normalized_event_url(network_event.url) == source
+                and statuses
+                and statuses & _event_statuses(network_event)
+            }
+            if len(candidates) == 1:
+                target = next(iter(candidates.values()))
+        if target is None:
+            event.reproduction_receipt = event.reproduction_receipt or dict(_AUTO_CAPTURED_RECEIPT)
+            s.bugs.append(event)
+            filed.append(event)
+        else:
+            _attach_event_evidence(target, event)
+
+    return filed
 
 
 @mcp.tool()
@@ -899,6 +963,8 @@ async def start_session(
     headless: bool = True,
     viewport_width: int = 1280,
     viewport_height: int = 720,
+    include_observation: bool = True,
+    review_mode: str = "exploratory",
 ) -> str:
     """Start a browser testing session and navigate to the given URL.
 
@@ -907,13 +973,20 @@ async def start_session(
         headless: Run browser without visible window (default True)
         viewport_width: Browser viewport width in pixels
         viewport_height: Browser viewport height in pixels
+        include_observation: Return the initial page observation in this call.
+        review_mode: exploratory, visual, or regression.
     """
     global _session
+
+    review_mode = review_mode.strip().lower()
+    if review_mode not in {"exploratory", "visual", "regression"}:
+        return "start_session: review_mode must be exploratory, visual, or regression."
 
     await _teardown_active_session()
 
     new_session = Session()
     new_session.mode = "web"
+    new_session.review_mode = review_mode
     new_session.url = url
     new_session.start_time = asyncio.get_event_loop().time()
     new_session.browser = BrowserDriver(
@@ -952,10 +1025,13 @@ async def start_session(
         )
 
     _session = new_session
+    _session.tool_calls = 1
     _session.pages_visited.append(url)
 
     state = await _session.browser.get_state()
     _session._last_elements = state.elements
+    _session._last_observed_counts = dict(state.counts)
+    _session._last_observed_url = state.url
     element_count = len(state.elements)
 
     hint = ""
@@ -964,13 +1040,16 @@ async def start_session(
         hint = (f"\n{n_journaled} finding(s) from prior runs are journaled for this site — "
                 "call regression_check() to re-test whether they're fixed or back.")
 
-    return (
+    summary = (
         f"Web session started.\n"
         f"Page: {state.title}\n"
         f"URL: {state.url}\n"
-        f"Found {element_count} interactive elements. "
-        f"Call observe() to see them.{hint}"
+        f"Review mode: {review_mode}\n"
+        f"Found {element_count} interactive elements.{hint}"
     )
+    if not include_observation:
+        return summary + " Call observe() to inspect the page."
+    return summary + "\n\nInitial observation:\n" + _format_observation(state) + _coverage_line(_session, state)
 
 
 @mcp.tool()
@@ -1044,6 +1123,7 @@ async def start_screen_session(target_app: str = "") -> str:
         return f"start_screen_session: failed to start — {exc}"
 
     _session._last_screen_elements = obs.elements
+    _session.tool_calls = 1
 
     # Banner to stderr so a user running argus-mcp from a terminal sees
     # the warning. Silently no-ops in MCP-over-stdio if stderr is not
@@ -1396,7 +1476,6 @@ def _resolve_or_error(
     return None, "\n".join(lines)
 
 
-@mcp.tool()
 def _coverage_line(s, state) -> str:
     """Surface internal destinations the agent hasn't visited — the COVER step made
     concrete. Agents chronically explore a narrow slice (the recall probe: 2 navigate
@@ -1424,6 +1503,7 @@ def _coverage_line(s, state) -> str:
         return ""
 
 
+@mcp.tool()
 async def observe() -> str:
     """Observe the current target — page, app, or screen. Read this first.
 
@@ -1438,9 +1518,9 @@ async def observe() -> str:
     """
     s = _require_session()
     if s.mode != "web" or s.browser is None:
-        # Mode-aware (the docstring promises page/app/screen): a screen
-        # session observes via the AX tree, not Playwright.
-        return await (screen_observe.fn if hasattr(screen_observe, "fn") else screen_observe)()
+        if s.mode != "screen" or s.screen is None:
+            return "observe: the active session has no usable backend."
+        return await _observe_screen(s)
     if s.browser._page is None:
         return ("observe: no open page — all tabs were closed. Call "
                 "navigate(url) or start_session(url) to recover.")
@@ -1514,26 +1594,7 @@ def _safety_or_error(s: Session) -> Optional[str]:
     return screen_safety.precheck(s._safety)
 
 
-@mcp.tool()
-async def screen_observe() -> str:
-    """Re-snapshot the screen — fresh screenshot + fresh AX tree of the
-    foreground (or target) app.
-
-    Same role as observe() but for screen mode. Returns the foreground
-    app name, the focused window's title, the AX-tree elements with
-    screen coordinates, and the path to a fresh screenshot.
-
-    Argus does not auto-flag UX issues here. The screenshot is yours
-    to look at; the AX tree is yours to reason about; call record_bug
-    when you've confirmed something real.
-    """
-    s = _require_session()
-    if s.mode != "screen" or s.screen is None:
-        return (
-            "screen_observe: this session is in web mode "
-            f"(mode={s.mode!r}). End this session and call "
-            "start_screen_session() to switch."
-        )
+async def _observe_screen(s: Session) -> str:
     err = _safety_or_error(s)
     if err:
         return err
@@ -1565,6 +1626,29 @@ async def screen_observe() -> str:
         post_screenshot=obs.screenshot_path,
     )
     return _format_screen_observation(obs)
+
+
+@mcp.tool()
+async def screen_observe() -> str:
+    """Re-snapshot the screen — fresh screenshot + fresh AX tree of the
+    foreground (or target) app.
+
+    Same role as observe() but for screen mode. Returns the foreground
+    app name, the focused window's title, the AX-tree elements with
+    screen coordinates, and the path to a fresh screenshot.
+
+    Argus does not auto-flag UX issues here. The screenshot is yours
+    to look at; the AX tree is yours to reason about; call record_bug
+    when you've confirmed something real.
+    """
+    s = _require_session()
+    if s.mode != "screen" or s.screen is None:
+        return (
+            "screen_observe: this session is in web mode "
+            f"(mode={s.mode!r}). End this session and call "
+            "start_screen_session() to switch."
+        )
+    return await _observe_screen(s)
 
 
 def _resolve_screen_or_error(s, description: str, kind_filter=None, *, strict_kind: bool = False):
@@ -2819,42 +2903,32 @@ async def set_dialog_handler(action: str = "accept", text: str = "") -> str:
     )
 
 
-@mcp.tool()
-async def inspect_element(description: str) -> str:
-    """Get computed styles, ARIA metadata, and outerHTML for one element.
+def _visual_inspection_query(description: str) -> tuple[str, str]:
+    lowered = description.lower()
+    kind = ""
+    if "heading" in lowered:
+        kind = "heading"
+    elif any(word in lowered for word in ("image", "img", "icon", "logo")):
+        kind = "image"
+    elif any(word in lowered for word in (" text", "label", "status", "title")):
+        kind = "text"
 
-    Use this when you suspect a visual / a11y / truncation bug on a
-    specific surface and observe()'s summary doesn't tell you enough.
-    Returns:
-      - rendered styles (color, background, font-size/weight, display,
-        visibility, opacity, position, z-index, overflow, cursor, etc.)
-      - bounding rect + whether it's in the viewport
-      - whether the element is visually truncated by CSS (scrollWidth >
-        clientWidth with overflow: hidden / text-overflow: ellipsis)
-      - aria-label / aria-describedby / aria-hidden / role / title
-      - associated <label> text(s)
-      - disabled / readonly / focused state
-      - first 1.5 KB of outerHTML
+    quoted = re.findall(r'["“”]([^"“”]+)["“”]', description)
+    if quoted:
+        return max(quoted, key=len).strip(), kind
 
-    Argus does not auto-judge anything from this output. You read it
-    and decide whether anything you see warrants record_bug.
-    """
-    s = _require_session()
-    el, err = _resolve_or_error(s, description)
-    if err:
-        return err
+    removable = {"heading", "text", "label", "status", "image", "img", "icon", "logo", "element"}
+    if kind == "heading":
+        removable.update({"main", "page"})
+    words = [word for word in description.split() if word.lower().strip('"“”‘’\'`()[]{}') not in removable]
+    query = " ".join(words).strip()
+    return query or description, kind
 
-    selector = s.browser._build_selector(el)
-    info = await s.browser.inspect_element(selector)
-    if not info.get("found"):
-        return (
-            f"inspect_element({description!r}) — could not re-locate element "
-            f"via selector {selector!r}. The DOM may have changed; observe() again."
-        )
 
-    s.steps.append(f'inspect_element({description!r})')
-
-    lines = [f"Inspecting {description!r} (resolved to <{info['tag']}>)"]
+def _format_inspected_element(description: str, info: dict, source: str) -> str:
+    lines = [f"Inspecting {description!r} (resolved to <{info['tag']}> via {source})"]
+    if info.get("matchScore") is not None:
+        lines.append(f"Match confidence: {info['matchScore']}")
     lines.append("")
     lines.append("Visible text: " + (info.get("text") or "<none>")[:160])
     rect = info.get("rect", {})
@@ -2874,8 +2948,8 @@ async def inspect_element(description: str) -> str:
 
     lines.append("")
     lines.append("Computed styles:")
-    for k, v in (info.get("styles") or {}).items():
-        lines.append(f"  {k}: {v}")
+    for key, value in (info.get("styles") or {}).items():
+        lines.append(f"  {key}: {value}")
 
     lines.append("")
     lines.append("Accessibility:")
@@ -2891,6 +2965,99 @@ async def inspect_element(description: str) -> str:
     lines.append("")
     lines.append("outerHTML (first 1500 chars):")
     lines.append(info.get("outerHtml") or "(unavailable)")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def inspect_element(description: str) -> str:
+    """Get computed styles, ARIA metadata, and outerHTML for any visible element.
+
+    Use this when you suspect a visual / a11y / truncation bug on a
+    specific surface and observe()'s summary doesn't tell you enough.
+    Returns:
+      - rendered styles (color, background, font-size/weight, display,
+        visibility, opacity, position, z-index, overflow, cursor, etc.)
+      - bounding rect + whether it's in the viewport
+      - whether the element is visually truncated by CSS (scrollWidth >
+        clientWidth with overflow: hidden / text-overflow: ellipsis)
+      - aria-label / aria-describedby / aria-hidden / role / title
+      - associated <label> text(s)
+      - disabled / readonly / focused state
+      - first 1.5 KB of outerHTML
+
+    Argus does not auto-judge anything from this output. You read it
+    and decide whether anything you see warrants record_bug.
+    """
+    s = _require_session()
+    mode_error = _require_web_session(s, "inspect_element")
+    if mode_error:
+        return mode_error
+    el, err = _resolve_or_error(s, description)
+    if el is not None:
+        selector = s.browser._build_selector(el)
+        info = await s.browser.inspect_element(selector)
+        if info.get("found"):
+            s.steps.append(f'inspect_element({description!r})')
+            return _format_inspected_element(description, info, "interactive element")
+
+    query, kind = _visual_inspection_query(description)
+    info = await s.browser.inspect_visible_element(query, kind)
+    if info.get("found"):
+        s.steps.append(f'inspect_element({description!r})')
+        return _format_inspected_element(description, info, "visible DOM")
+    if info.get("ambiguous"):
+        lines = [f"inspect_element({description!r}) is ambiguous — visible matches:"]
+        for candidate in info.get("candidates", []):
+            rect = candidate.get("rect", {})
+            lines.append(
+                f"  ({candidate.get('score')}) <{candidate.get('tag')}> "
+                f"{candidate.get('text')!r} at x={rect.get('x', 0):.0f}, y={rect.get('y', 0):.0f}"
+            )
+        lines.append("Use the exact visible text or include the element kind/section.")
+        return "\n".join(lines)
+    return err or f"No visible element matches {description!r}. Call observe() and rephrase the target."
+
+
+@mcp.tool()
+async def check_layout() -> str:
+    """Inspect responsive layout signals without enabling arbitrary eval_js.
+
+    Returns raw evidence for horizontal overflow, clipped text, undersized
+    interactive targets, and fixed/sticky overlays. These are leads for visual
+    review, not automatically-recorded bugs.
+    """
+    s = _require_session()
+    mode_error = _require_web_session(s, "check_layout")
+    if mode_error:
+        return mode_error
+    result = await s.browser.check_layout()
+    if not result:
+        return "check_layout: unable to inspect the current page."
+
+    viewport = result.get("viewport", {})
+    document = result.get("document", {})
+    totals = result.get("totals", {})
+    lines = [
+        f"Layout signals for {s.browser._page.url}",
+        f"  Viewport: {viewport.get('width')}x{viewport.get('height')} @ {viewport.get('devicePixelRatio')}x",
+        f"  Document: {document.get('width')}x{document.get('height')}",
+    ]
+    groups = (
+        ("Horizontal overflow", "horizontalOverflow"),
+        ("Clipped text", "clippedText"),
+        ("Targets below 44px", "smallTargets"),
+        ("Fixed/sticky overlays", "fixedOrSticky"),
+    )
+    for label, key in groups:
+        items = result.get(key, [])
+        lines.append(f"\n{label}: {totals.get(key, len(items))}")
+        for item in items[:8]:
+            rect = item.get("rect", {})
+            lines.append(
+                f"  <{item.get('tag')}> {item.get('label')!r} "
+                f"x={rect.get('x')} y={rect.get('y')} w={rect.get('width')} h={rect.get('height')}"
+            )
+    lines.append("\nTreat these as review leads; verify user impact before record_bug.")
     return "\n".join(lines)
 
 
@@ -3662,12 +3829,12 @@ async def scroll_down() -> str:
     return "Scrolled down. Call observe() to see what's now in view."
 
 
-@mcp.tool()
+@mcp.tool(structured_output=False)
 async def screenshot(
     name: str = "screenshot",
     element: str = "",
     full_page: bool = False,
-) -> str:
+) -> list:
     """Capture a screenshot — full viewport, full page, or one element.
 
     Use this whenever something looks visually off and you want evidence
@@ -3703,7 +3870,8 @@ async def screenshot(
             path=path, name=safe_name, step=last_step,
             url=s.browser._page.url if s.browser._page else "",
         ))
-        return f"Element screenshot saved: {path}"
+        absolute_path = str(Path(path).resolve())
+        return [f"Element screenshot saved: {absolute_path}", MCPImage(path=absolute_path)]
 
     s._screenshot_counter += 1
     suffix = "_fullpage" if full_page else ""
@@ -3714,16 +3882,17 @@ async def screenshot(
         path=path, name=safe_name, step=last_step,
         url=s.browser._page.url if s.browser._page else "",
     ))
-    return f"Screenshot saved: {path}"
+    absolute_path = str(Path(path).resolve())
+    return [f"Screenshot saved: {absolute_path}", MCPImage(path=absolute_path)]
 
 
-@mcp.tool()
+@mcp.tool(structured_output=False)
 async def screenshot_diff(
     before: str,
     after: str,
     name: str = "diff",
     threshold: int = 25,
-) -> str:
+) -> list:
     """Compare two screenshots and produce a third image with changed
     regions highlighted in red, so you can see what visually changed
     between two states.
@@ -3792,10 +3961,15 @@ async def screenshot_diff(
         # Pixel-identical. Save before image as the diff so the agent has
         # a concrete artifact, but signal that there's no change.
         img_a.save(out_path)
-        return (
+        message = (
             f"screenshot_diff: images are pixel-identical — no visible change.\n"
-            f"  Saved (copy of before): {out_path}"
+            f"  Saved (copy of before): {out_path.resolve()}"
         )
+        s.screenshots.append(Screenshot(
+            path=str(out_path.resolve()), name=safe_name, step=f"diff: {before} vs {after}",
+            url=s.browser._page.url if s.browser._page else "",
+        ))
+        return [message, MCPImage(path=out_path)]
 
     # Build a binary mask of changed pixels at the requested threshold.
     grey = diff_img.convert("L")
@@ -3819,17 +3993,18 @@ async def screenshot_diff(
     pct = (changed_pixels / total_pixels) * 100 if total_pixels else 0
 
     s.screenshots.append(Screenshot(
-        path=str(out_path), name=safe_name, step=f"diff: {before} vs {after}",
+        path=str(out_path.resolve()), name=safe_name, step=f"diff: {before} vs {after}",
         url=s.browser._page.url if s.browser._page else "",
     ))
 
-    return (
-        f"screenshot_diff saved: {out_path}\n"
+    message = (
+        f"screenshot_diff saved: {out_path.resolve()}\n"
         f"  Changed bounding box: {bbox} (size {bbox[2] - bbox[0]} x {bbox[3] - bbox[1]})\n"
         f"  Approx {pct:.1f}% of pixels changed (threshold={threshold}).\n"
         f"  Decide: is this change expected for the action you took? If a UI region "
         f"changed unexpectedly, that may be a bug — call record_bug."
     )
+    return [message, MCPImage(path=out_path)]
 
 
 @mcp.tool()
@@ -3903,7 +4078,7 @@ async def get_errors() -> str:
         for bug in new_bugs:
             bug.screenshot_path = ss_path
 
-    _file_event_bugs(s, new_bugs)
+    filed_bugs = _file_event_bugs(s, new_bugs)
 
     if not new_bugs and not console_errs and not network_errs:
         return f"No new console or network events. Total bugs in session: {len(s.bugs)}"
@@ -3918,7 +4093,11 @@ async def get_errors() -> str:
         else:
             lines.append(f"[HTTP {err['status']}] {err['method']} {_redact(err['url'])}")
     if new_bugs:
-        lines.append(f"\nCaptured {len(new_bugs)} new event-bug(s).")
+        merged = len(new_bugs) - len(filed_bugs)
+        lines.append(f"\nCaptured {len(new_bugs)} browser event(s) as "
+                     f"{len(filed_bugs)} new finding(s).")
+        if merged:
+            lines.append(f"Attached {merged} event(s) to an existing root-cause finding.")
     lines.append(f"Total bugs in session: {len(s.bugs)}")
 
     return "\n".join(lines)
@@ -3972,6 +4151,10 @@ async def record_bug(
             stamp a misleading VERIFIED on tangential evidence. Record those as
             observation-based (omit verify), or verify the specific wrong value
             that should not be there.
+            For a broken URL or API response whose HTTP status is the proof, use
+            {"expect_status": 404, "at_url": "/missing"} instead of matching
+            error-page copy. Status verification and text verification are
+            alternatives and cannot be combined in one clause.
             For a MULTI-STEP bug (the symptom only appears after a journey),
             add "replay": true — Argus re-drives the recorded action trace
             (click_what/type_into/select_into/navigate) in a fresh cold context
@@ -4108,13 +4291,19 @@ async def record_bug(
     # passed but the evidence dict carries a checkable target, build one from it.
     # (The agent still supplies the target — we never GUESS it, which would risk
     # a false VERIFIED; we only accept it from a second, more natural place.)
-    if verify is None and (ev.get("target_text") or ev.get("target")):
+    if verify is None and (
+        ev.get("target_text") or ev.get("target") or ev.get("expect_status") is not None
+    ):
         verify = {
             "expect": (ev.get("expect") or "present"),
             "target_text": ev.get("target_text") or ev.get("target"),
             "at_url": ev.get("at_url") or ev.get("after_url") or "",
             "replay": bool(ev.get("replay")),
+            "expect_status": ev.get("expect_status"),
         }
+        if verify["expect_status"] is not None:
+            verify.pop("expect")
+            verify.pop("target_text")
 
     replay_slice = list(s.action_trace[s._actions_since_last_bug:])
     if verify and verify.get("replay"):
@@ -4184,16 +4373,25 @@ async def record_bug(
                 elif receipt.get("minimize_skipped"):
                     out.append(f"  minimize: {receipt['minimize_skipped']}")
             else:
-                out.append(f"  reproduction: CONFIRMED {receipt['runs']} from clean load "
-                           f"({receipt['expect']} {receipt['target_text']!r} @ {receipt['at_url']})")
+                if receipt.get("expect_status") is not None:
+                    out.append(f"  reproduction: CONFIRMED {receipt['runs']} from clean load "
+                               f"(HTTP {receipt['expect_status']} @ {receipt['at_url']})")
+                else:
+                    out.append(f"  reproduction: CONFIRMED {receipt['runs']} from clean load "
+                               f"({receipt['expect']} {receipt['target_text']!r} @ {receipt['at_url']})")
         elif receipt.get("reproduced") is False:
             if is_replay:
                 out.append(f"  reproduction: NOT REPRODUCED — replayed {receipt.get('steps')} step(s) "
                            "but the symptom was absent. Re-check before trusting this.")
             else:
                 tag = "FLAKY" if receipt.get("flaky") else "NOT REPRODUCED"
-                out.append(f"  reproduction: {tag} {receipt['runs']} on clean reload — "
-                           "the symptom you reported did not hold up. Re-check before trusting this.")
+                if receipt.get("expect_status") is not None:
+                    out.append(f"  reproduction: {tag} {receipt['runs']} on clean reload — "
+                               f"expected HTTP {receipt['expect_status']}, observed "
+                               f"{receipt.get('observed_statuses', [])}.")
+                else:
+                    out.append(f"  reproduction: {tag} {receipt['runs']} on clean reload — "
+                               "the symptom you reported did not hold up. Re-check before trusting this.")
         else:  # None — inconclusive
             if is_replay and receipt.get("diverged"):
                 out.append("  reproduction: INCONCLUSIVE — replay path diverged (a recorded step no "
@@ -4201,6 +4399,8 @@ async def record_bug(
             elif is_replay:
                 out.append("  reproduction: INCONCLUSIVE — the symptom already held before the journey, "
                            "so it can't be attributed to these steps. Not a confirmation.")
+            elif receipt.get("reason"):
+                out.append(f"  reproduction: INCONCLUSIVE — {receipt['reason']}")
             else:
                 out.append(f"  reproduction: check errored — {receipt.get('error', 'unknown')}")
     else:
@@ -4212,6 +4412,81 @@ async def record_bug(
                    "\"...\",\"at_url\":\"/path\"} so Argus re-confirms it from a clean load.")
     out.append(f"  total bugs in session: {len(s.bugs)}")
     return "\n".join(out)
+
+
+@mcp.tool()
+async def record_observation(
+    title: str,
+    evidence: str,
+    category: str = "visual",
+    screenshot: str = "auto",
+) -> str:
+    """Record a qualitative review note without classifying it as a bug.
+
+    Use this for visual polish, hierarchy, readability, content, responsive,
+    or usability observations that are useful evidence but do not meet the
+    reproducible user-affecting bug bar.
+
+    Args:
+        title: Short, specific observation headline.
+        evidence: What is visible and why it matters.
+        category: visual, usability, content, responsive, or accessibility.
+        screenshot: "auto", "skip", an existing image path, or a screenshot label.
+    """
+    s = _require_session()
+    title = (title or "").strip()
+    evidence = (evidence or "").strip()
+    category = (category or "visual").strip().lower()
+    allowed_categories = {"visual", "usability", "content", "responsive", "accessibility"}
+
+    if not title or not evidence:
+        return "record_observation: title and evidence are required."
+    if category not in allowed_categories:
+        return (
+            "record_observation: category must be one of: "
+            + ", ".join(sorted(allowed_categories))
+        )
+    normalized = " ".join(title.lower().split())
+    if any(" ".join(item.title.lower().split()) == normalized for item in s.observations):
+        return f"record_observation: duplicate title not recorded: {title!r}."
+
+    if s.mode == "web" and s.browser is not None and s.browser._page is not None:
+        url = s.browser._page.url
+    elif s.mode == "screen" and s.screen is not None:
+        url = f"screen://{s.screen._app_name or 'unknown'}"
+    else:
+        url = s.url or ""
+
+    screenshot_path: Optional[str] = None
+    if screenshot == "skip":
+        pass
+    elif screenshot in ("auto", "", None):
+        label = "observation_" + "".join(
+            char if char.isalnum() else "_" for char in title.lower()
+        )[:40]
+        screenshot_path = await _auto_screenshot(
+            s, label, f"record_observation: {_short(title, 60)}"
+        )
+    elif Path(screenshot).expanduser().exists():
+        screenshot_path = str(Path(screenshot).expanduser().resolve())
+    else:
+        label = "".join(char if char.isalnum() else "_" for char in screenshot.lower())[:40]
+        screenshot_path = await _auto_screenshot(
+            s, label or "observation", f"record_observation: {_short(title, 60)}"
+        )
+
+    s.observations.append(Observation(
+        title=title,
+        evidence=evidence,
+        url=url,
+        category=category,
+        screenshot_path=screenshot_path,
+    ))
+    return (
+        f"Recorded {category} observation: {title}\n"
+        f"  screenshot: {screenshot_path or 'none'}\n"
+        f"  total observations in session: {len(s.observations)}"
+    )
 
 
 @mcp.tool()
@@ -4423,8 +4698,8 @@ async def crawl_site(max_pages: int = 20) -> str:
             for bug in new_bugs:
                 bug.screenshot_path = ss_path
 
-        _file_event_bugs(s, new_bugs)
-        page_results.append((state.url, len(new_bugs), len(dead)))
+        filed_bugs = _file_event_bugs(s, new_bugs)
+        page_results.append((state.url, len(filed_bugs), len(dead)))
 
         # Discover new internal links to visit (deduplicated by path)
         for link in state.links:
@@ -4522,7 +4797,7 @@ async def test_action(target: str, expectation: str = "", expect: Optional[dict]
     ss_path = await _auto_screenshot(s, f"action_{label[:20]}", step)
     for bug in new_bugs:
         bug.screenshot_path = ss_path
-    _file_event_bugs(s, new_bugs)
+    filed_bugs = _file_event_bugs(s, new_bugs)
 
     lines = [
         f'ACTION: Clicked "{label[:60]}" via target {target!r}',
@@ -4544,10 +4819,13 @@ async def test_action(target: str, expectation: str = "", expect: Optional[dict]
     else:
         lines.append("BROWSER EVENTS: none")
 
-    if new_bugs:
-        lines.append(f"\nEvent-bugs auto-captured ({len(new_bugs)} new):")
-        for bug in new_bugs:
+    if filed_bugs:
+        lines.append(f"\nEvent-bugs auto-captured ({len(filed_bugs)} new):")
+        for bug in filed_bugs:
             lines.append(f"  [{bug.severity.value.upper()}] {bug.title[:80]}")
+    if len(new_bugs) > len(filed_bugs):
+        lines.append(f"\nAttached {len(new_bugs) - len(filed_bugs)} browser event(s) "
+                     "to an existing root-cause finding.")
 
     new_reqs = s.browser.network_log[net_pre:]
     xs_evidence, xs_check = _reconcile_action(new_reqs, before, after)
@@ -4737,7 +5015,7 @@ async def test_form(
     ss_path = await _auto_screenshot(s, "form_result", f"Form: {submit_label}")
     for bug in new_bugs:
         bug.screenshot_path = ss_path
-    _file_event_bugs(s, new_bugs)
+    filed_bugs = _file_event_bugs(s, new_bugs)
 
     lines = [
         f'FORM SUBMISSION via "{submit_label}"',
@@ -4767,10 +5045,13 @@ async def test_form(
         for err in network_errs[:3]:
             lines.append(f"  [HTTP {err['status']}] {err['method']} {err['url'][:60]}")
 
-    if new_bugs:
-        lines.append(f"\nEvent-bugs auto-captured ({len(new_bugs)} new):")
-        for bug in new_bugs:
+    if filed_bugs:
+        lines.append(f"\nEvent-bugs auto-captured ({len(filed_bugs)} new):")
+        for bug in filed_bugs:
             lines.append(f"  [{bug.severity.value.upper()}] {bug.title[:80]}")
+    if len(new_bugs) > len(filed_bugs):
+        lines.append(f"\nAttached {len(new_bugs) - len(filed_bugs)} browser event(s) "
+                     "to an existing root-cause finding.")
 
     lines.append(
         "\nDecide: was the outcome what you expected? If the form accepted "
@@ -4860,6 +5141,9 @@ async def end_session() -> str:
         duration_seconds=duration,
         focus_areas=s.focus_areas,
         screenshots=s.screenshots,
+        observations=s.observations,
+        tool_calls=s.tool_calls,
+        review_mode=s.review_mode,
     )
 
     output_dir = _output_dir()
@@ -4875,9 +5159,11 @@ async def end_session() -> str:
         f"Session ended. Report saved: {report_path}",
         f"",
         f"Summary:",
+        f"  Tool calls: {result.tool_calls}",
         f"  Actions taken: {result.actions_taken}",
         f"  Pages visited: {len(result.pages_visited)}",
         f"  Bugs found: {len(result.bugs)}",
+        f"  Observations: {len(result.observations)}",
         f"  Screenshots: {len(result.screenshots)}",
         f"  Duration: {duration:.1f}s",
     ]
@@ -4896,6 +5182,57 @@ def _argus_version() -> str:
     return __version__
 
 
+_CORE_TOOL_NAMES = frozenset({
+    "start_session", "observe", "click_what", "type_into", "select_into",
+    "hover_what", "press_key", "upload_file", "resize", "emulate_device",
+    "navigate", "go_back", "scroll_down", "inspect_element", "check_layout",
+    "screenshot", "screenshot_diff", "get_errors", "check_links",
+    "check_performance", "test_action", "test_form", "verify_persistence",
+    "record_bug", "record_observation", "capsule_save", "capsule_restore",
+    "regression_check", "end_session",
+})
+
+_SCREEN_TOOL_NAMES = frozenset({
+    "start_screen_session", "screen_observe", "screen_click_what",
+    "screen_type_into", "screen_press_key", "screen_wait_for_stable",
+    "screen_launch", "screen_quit", "screen_is_running",
+    "screen_screenshot_region", "screen_session_status", "record_bug",
+    "record_observation", "end_session",
+})
+
+
+def _apply_tool_profile(profile: str) -> tuple[int, int]:
+    """Reduce the public tool table before the MCP host discovers it."""
+    profile = profile.strip().lower()
+    if profile == "full":
+        count = len(mcp._tool_manager._tools)
+        return count, count
+    allowed = _CORE_TOOL_NAMES if profile == "core" else _SCREEN_TOOL_NAMES if profile == "screen" else None
+    if allowed is None:
+        raise ValueError("tool profile must be core, screen, or full")
+    before = len(mcp._tool_manager._tools)
+    for name in list(mcp._tool_manager._tools):
+        if name not in allowed:
+            mcp._tool_manager.remove_tool(name)
+    return before, len(mcp._tool_manager._tools)
+
+
+def _consume_tool_profile(argv: list[str]) -> str:
+    profile = os.environ.get("ARGUS_TOOL_PROFILE", "core")
+    for index, arg in enumerate(list(argv)):
+        if arg.startswith("--tool-profile="):
+            profile = arg.split("=", 1)[1]
+            argv.remove(arg)
+            break
+        if arg == "--tool-profile":
+            if index + 1 >= len(argv):
+                raise ValueError("--tool-profile requires core, screen, or full")
+            profile = argv[index + 1]
+            del argv[index:index + 2]
+            break
+    return profile.strip().lower()
+
+
 def main():
     """Entry point for argus-mcp command.
 
@@ -4910,6 +5247,8 @@ def main():
       --doctor       Run the macOS screen-mode permission check and
                      exit. Use this before launching screen mode for
                      the first time.
+      --tool-profile Expose core (default), screen, or full tools.
+      --list-tools   Print the selected public tool names and exit.
 
     Without flags, just runs the MCP server over stdio.
     """
@@ -4926,6 +5265,21 @@ def main():
     if "--unsafe" in _sys.argv:
         os.environ["ARGUS_UNSAFE_EVAL"] = "1"
         _sys.argv = [a for a in _sys.argv if a != "--unsafe"]
+
+    try:
+        profile = _consume_tool_profile(_sys.argv)
+        _apply_tool_profile(profile)
+    except ValueError as exc:
+        print(f"argus-mcp: {exc}", file=_sys.stderr)
+        _sys.exit(2)
+
+    if "--list-tools" in _sys.argv:
+        _sys.argv = [a for a in _sys.argv if a != "--list-tools"]
+        names = asyncio.run(mcp.list_tools())
+        print(f"Argus tool profile: {profile} ({len(names)} tools)")
+        for tool in names:
+            print(tool.name)
+        _sys.exit(0)
 
     mcp.run()
 

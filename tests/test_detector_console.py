@@ -24,6 +24,15 @@ def test_console_error_medium_severity(detector, empty_steps):
     assert bugs[0].severity.value == "medium"
 
 
+def test_console_error_keeps_event_page_instead_of_drain_page(detector, empty_steps):
+    bugs = detector.process_console_errors(
+        [{"type": "error", "text": "boom", "url": "http://example.test/origin"}],
+        url="http://example.test/later",
+        steps=empty_steps,
+    )
+    assert bugs[0].url == "http://example.test/origin"
+
+
 def test_console_dedup_same_text_in_same_session(detector, empty_steps):
     payload = [{"type": "error", "text": "X is undefined"}]
     bugs1 = detector.process_console_errors(payload, "http://a/", empty_steps)
