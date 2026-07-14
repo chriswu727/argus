@@ -10,6 +10,7 @@ import threading
 import pytest
 
 import argus.mcp_server as m
+from argus.models import Bug, BugType, Severity
 
 
 class _H(http.server.BaseHTTPRequestHandler):
@@ -71,3 +72,31 @@ async def test_journal_and_regression_roundtrip():
         except Exception:
             pass
         srv.shutdown()
+
+
+def test_status_receipt_is_journaled_for_regression(monkeypatch, tmp_path):
+    monkeypatch.setenv("ARGUS_OUTPUT_DIR", str(tmp_path))
+    session = m.Session()
+    session.url = "https://example.test/"
+    session.bugs = [Bug(
+        type=BugType.BROKEN_LINK,
+        severity=Severity.MEDIUM,
+        title="Missing route",
+        description="Returns 404",
+        url="https://example.test/missing",
+        steps_to_reproduce=[],
+        reproduction_receipt={
+            "attempted": True,
+            "reproduced": True,
+            "expect_status": 404,
+            "at_url": "https://example.test/missing",
+        },
+    )]
+
+    m._write_journal(session)
+
+    entries = m._journal_entries("example.test")
+    assert entries[0]["verify"] == {
+        "at_url": "https://example.test/missing",
+        "expect_status": 404,
+    }

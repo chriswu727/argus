@@ -3,8 +3,10 @@ and the login-wall heuristic (guards the clean-load receipt from certifying off
 an error/logged-out page)."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import argus.mcp_server as m
-from argus.models import Bug, BugType, ExplorationResult, Severity
+from argus.models import Bug, BugType, ExplorationResult, Observation, Screenshot, Severity
 from argus.reporter import Reporter
 from tests.conftest import make_page_state
 
@@ -303,8 +305,18 @@ def test_machine_readable_export_json_and_junit():
         Bug(type=BugType.UX_ISSUE, severity=Severity.LOW, title="Nit <script>&",
             description="", url="/z", steps_to_reproduce=[], reproduction_receipt=None),
     ]
-    res = ExplorationResult(url="http://x", bugs=bugs, pages_visited=["/e"],
-                            actions_taken=3, duration_seconds=1.0, focus_areas=[], screenshots=[])
+    res = ExplorationResult(
+        url="http://x",
+        bugs=bugs,
+        pages_visited=["/e"],
+        actions_taken=3,
+        duration_seconds=1.0,
+        focus_areas=["checkout"],
+        screenshots=[Screenshot(path="/tmp/evidence.png", name="evidence", step="review", url="/e")],
+        observations=[Observation(title="Dense header", evidence="Crowded at mobile width", url="/e")],
+        tool_calls=9,
+        review_mode="visual",
+    )
     d = tempfile.mkdtemp()
     Reporter().generate(res, d)
     jf = [f for f in os.listdir(d) if f.endswith(".json")][0]
@@ -313,14 +325,66 @@ def test_machine_readable_export_json_and_junit():
     doc = json.load(open(os.path.join(d, jf)))
     assert doc["summary"] == {"total": 3, "verified": 1, "by_severity": {"high": 1, "medium": 1, "low": 1}}
     assert [f["verified"] for f in doc["findings"]] == [True, False, False]
+    assert doc["findings"][0]["reproduction"]["runs"] == "2/2"
+    assert doc["tool_calls"] == 9 and doc["actions_taken"] == 3
+    assert doc["review_mode"] == "visual" and doc["focus_areas"] == ["checkout"]
+    assert doc["screenshots"][0]["name"] == "evidence"
+    assert doc["observations"][0]["title"] == "Dense header"
 
     root = ET.parse(os.path.join(d, xf)).getroot()  # parses => XML escaping is valid
-    assert root.get("tests") == "3" and root.get("failures") == "1"
+    assert root.get("tests") == "3" and root.get("failures") == "2"
+    assert int(root.get("failures")) == len(root.findall("testcase/failure"))
     cases = {tc.get("name"): tc for tc in root.findall("testcase")}
     proven = next(tc for n, tc in cases.items() if n.startswith("[PROVEN]"))
     refuted = next(tc for n, tc in cases.items() if n.startswith("[REFUTED]"))
     assert proven.find("failure") is not None          # proven bug fails the build
     assert refuted.find("skipped") is not None          # refuted is not a build failure
+
+
+def test_generated_report_uses_lightweight_preview_assets(tmp_path):
+    from PIL import Image
+
+    screenshot = tmp_path / "large screenshot.png"
+    Image.effect_noise((1200, 900), 100).convert("RGB").save(screenshot)
+    result = ExplorationResult(
+        url="http://x",
+        bugs=[],
+        pages_visited=["http://x"],
+        actions_taken=2,
+        duration_seconds=1.0,
+        focus_areas=[],
+        screenshots=[Screenshot(
+            path=str(screenshot), name="large", step="visual review", url="http://x"
+        )],
+    )
+
+    report = Path(Reporter().generate(result, str(tmp_path / "reports")))
+    html = report.read_text()
+    previews = list((report.parent / "report-assets").rglob("*.webp"))
+
+    assert "data:image" not in html
+    assert "report-assets/" in html
+    assert previews
+    assert report.stat().st_size < 100_000
+
+
+def test_portable_report_still_supports_single_file_images(tmp_path):
+    from PIL import Image
+
+    screenshot = tmp_path / "portable.png"
+    Image.new("RGB", (40, 40), "red").save(screenshot)
+    result = ExplorationResult(
+        url="http://x",
+        bugs=[],
+        pages_visited=[],
+        actions_taken=0,
+        duration_seconds=0.0,
+        focus_areas=[],
+        screenshots=[Screenshot(path=str(screenshot), name="portable", step="capture", url="http://x")],
+    )
+
+    report = Reporter().generate(result, str(tmp_path / "reports"), portable=True)
+    assert "data:image/png;base64," in Path(report).read_text()
 
 
 def test_edge_case_hint_once_per_field_type():

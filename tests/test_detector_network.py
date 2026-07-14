@@ -23,6 +23,20 @@ def test_4xx_is_medium_severity(detector, empty_steps):
     assert bugs[0].severity.value == "medium"
 
 
+def test_network_error_keeps_event_page_instead_of_drain_page(detector, empty_steps):
+    bugs = detector.process_network_errors(
+        [{
+            "method": "GET",
+            "url": "http://example.test/missing",
+            "page_url": "http://example.test/search-result",
+            "status": 404,
+        }],
+        url="http://example.test/later",
+        steps=empty_steps,
+    )
+    assert bugs[0].url == "http://example.test/search-result"
+
+
 def test_network_errors_dedup(detector, empty_steps):
     err = {"method": "GET", "url": "http://example.test/x", "status": 404}
     bugs1 = detector.process_network_errors([err], "http://example.test/", empty_steps)

@@ -161,7 +161,12 @@ class _StatefulHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body.encode())
 
     def do_GET(self):
-        if self.path.startswith("/flaky"):
+        if self.path.startswith("/missing"):
+            self.send_response(404)
+            self.send_header("Content-Type", "text/html")
+            self.end_headers()
+            self.wfile.write(b"<html><body><h1>Not found</h1></body></html>")
+        elif self.path.startswith("/flaky"):
             # Toggle FlakyText on every GET, so two consecutive re-check loads
             # always disagree -> flaky.
             type(self).flaky_hits += 1
@@ -232,6 +237,30 @@ async def test_receipt_flags_intermittent_symptom_as_flaky():
         assert receipt["flaky"] is True
         assert receipt["reproduced"] is False
         assert receipt["runs"] == "1/2"
+    finally:
+        await _end()
+        srv.shutdown()
+
+
+async def test_receipt_can_verify_http_status_without_matching_error_copy():
+    srv, base = _start_server()
+    await _start_session_url(base + "/")
+    try:
+        out = await _record(
+            title="missing route",
+            severity="medium",
+            evidence={"screenshot": "skip", "url": base + "/missing"},
+            verify={"expect_status": 404, "at_url": "/missing"},
+        )
+        receipt = m._session.bugs[-1].reproduction_receipt
+        assert receipt["reproduced"] is True
+        assert receipt["expect_status"] == 404
+        assert receipt["observed_statuses"] == [404, 404]
+        assert "HTTP 404" in out and "unknown" not in out
+        errors = await (getattr(m.get_errors, "fn", m.get_errors))()
+        assert "0 new finding(s)" in errors
+        assert len(m._session.bugs) == 1
+        assert m._session.bugs[0].network_logs
     finally:
         await _end()
         srv.shutdown()
@@ -877,6 +906,49 @@ async def test_observe_excludes_opacity0_ancestor_subtree():
         labels = " ".join((e.text or "") for e in st.elements)
         assert "VisibleBtn2" in labels
         assert "HiddenInFade" not in labels  # hidden by an ancestor's opacity:0
+    finally:
+        await _end()
+
+
+async def test_observe_excludes_center_occluded_duplicate_before_resolving_click():
+    page = (
+        '<html><body>'
+        '<div style="position:relative;width:220px;height:40px">'
+        '<a id="covered" href="#covered" style="display:block;width:220px;height:40px">Duplicate result</a>'
+        '<div style="position:absolute;inset:0;background:white">Overlay</div>'
+        '</div>'
+        '<a id="usable" href="#usable">Duplicate result</a>'
+        '</body></html>'
+    )
+    await _session_on_page(page)
+    try:
+        state = await m._session.browser.get_state()
+        matches = [element for element in state.elements if element.text == "Duplicate result"]
+        assert len(matches) == 1 and matches[0].id == "usable"
+        await (getattr(m.click_what, "fn", m.click_what))(description="Duplicate result")
+        assert m._session.browser._page.url.endswith("#usable")
+    finally:
+        await _end()
+
+
+async def test_screenshot_waits_for_finite_css_transition():
+    page = (
+        '<html><head><style>'
+        'body{background-color:rgb(255,255,255);transition:background-color 800ms linear}'
+        'body.dark{background-color:rgb(0,0,0)}'
+        '</style></head><body>'
+        '<button onclick="document.body.classList.add(\'dark\')">Dark mode</button>'
+        '</body></html>'
+    )
+    await _session_on_page(page)
+    try:
+        await (getattr(m.click_what, "fn", m.click_what))(description="Dark mode")
+        target = tempfile.NamedTemporaryFile(suffix=".png", delete=False).name
+        await m._session.browser.screenshot(target)
+        color = await m._session.browser._page.evaluate(
+            "getComputedStyle(document.body).backgroundColor"
+        )
+        assert color == "rgb(0, 0, 0)"
     finally:
         await _end()
 

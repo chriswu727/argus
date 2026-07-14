@@ -1,9 +1,8 @@
 # Argus — Agent Guide
 
-This file is the short version of the README, aimed at the agent that
-loads Argus via MCP. The MCP server's instruction block already
-puts you in role; this file gives you the tool surface and the rituals
-in one scroll.
+This file is the short version of the README, aimed at an agent using
+Argus through MCP. Argus is a QA capability inside the host's current
+task; it does not replace the host agent's identity or authority.
 
 ## Setup
 
@@ -19,23 +18,28 @@ brew install cliclick
 # Wire it into the MCP host
 claude mcp add argus -- argus-mcp
 argus-mcp --version       # confirm host loaded the version you expect
+argus-mcp --list-tools    # show the selected profile and public tools
 argus-mcp --doctor        # macOS Screen Recording + Accessibility check
 ```
+
+The default profile is `core`. Use `--tool-profile screen` for native
+macOS review and `--tool-profile full` only when the broader network,
+storage, tabs, crawl, and coordinate surface is needed. The
+`ARGUS_TOOL_PROFILE` environment variable provides the same setting.
 
 After `pip install -U argus-testing`, restart your MCP host so it picks
 up the new tool table.
 
-## Your role while Argus is loaded
+## Using Argus within the host task
 
-You are a senior human QA tester. Stay in role until `end_session` is
-called. The full instructions block is bundled with the MCP server —
-read it on initialize. The short version:
+Use an evidence-first QA mindset while reviewing, but continue to follow
+the user's broader task. The short version:
 
 - **GOAL**: Find bugs the dev team would be embarrassed to ship. Tight
   five-bug reports beat noisy fifty-bug ones.
-- **NOT YOUR JOB**: Completing the user's flow as if you were a real
-  user. Suggesting code fixes. Generic SEO / a11y / Lighthouse scans.
-  Mechanically firing every payload from a security textbook.
+- **BOUNDARY**: Do not infer permission for purchases, publication, or
+  other irreversible external effects. Argus does not prevent in-scope
+  diagnosis or implementation work the user requested.
 - **THE RITUAL** (return to it on every tool call):
   Map → **Use it** (walk each goal end-to-end, carrying real state) →
   Hypothesize → Act → Observe → Verify → Record → Cover.
@@ -46,7 +50,7 @@ read it on initialize. The short version:
 
 | Tool | Purpose |
 |------|---------|
-| `start_session(url)` | Launch Playwright at `url`. |
+| `start_session(url, review_mode=...)` | Launch Playwright in `exploratory`, `visual`, or `regression` mode and return the initial observation. |
 | `observe()` | URL + interactive elements (description-keyed) + visible feedback + counts + ARIA + viewport state. Read this first, after every action. |
 | `click_what(description)` | Click the element matching `description`. Returns the top candidates if ambiguous — rephrase rather than guess. |
 | `type_into(description, text)` / `select_into(description, value)` | Inputs and dropdowns by description. |
@@ -54,15 +58,17 @@ read it on initialize. The short version:
 | `verify_persistence(expect, target_text, after_url)` | Forces a fresh GET; reports whether `target_text` is `present` / `absent`. The "Saved!" toast is not proof — this is. |
 | `capsule_save(name, liveness_marker)` / `capsule_restore(name)` | Snapshot the logged-in/seeded state (cookies+storage) after minting it through the UI, then restore it later (with a mandatory live/stale re-check). Restore is a CLEAN replace, so save→branch A→restore→branch B runs two journeys from a byte-identical state for differential testing. |
 | `regression_check()` | Re-test the findings journaled in prior runs against the CURRENT build: STILL-PRESENT / NO-LONGER-REPRODUCES / INCONCLUSIVE. "Did my fix land, did anything come back?" |
-| `inspect_element(description)` | Computed styles + ARIA + outerHTML + truncation flag for one element. |
-| `screenshot(name, element="", full_page=False)` | Full viewport, full page, or a tight crop of one element. |
-| `screenshot_diff(before, after)` | Pillow diff with red-tint overlay. |
+| `inspect_element(description)` | Computed styles + ARIA + outerHTML + truncation flag for interactive or visible non-interactive content. |
+| `check_layout()` | Bounded viewport signals for horizontal overflow, clipped text, small targets, and fixed/sticky overlays. |
+| `screenshot(name, element="", full_page=False)` | Full viewport, full page, or a tight crop; waits for finite CSS transitions, then returns the image plus its absolute evidence path. |
+| `screenshot_diff(before, after)` | Pillow diff with red-tint overlay; returns the image plus its absolute evidence path. |
 | `eval_js(code)` | Arbitrary JS in the page context. Off by default (`argus-mcp --unsafe` to enable). |
-| `record_bug(title, severity, evidence, verify=...)` | Call this once you've **confirmed** a real bug. Pass a `verify` clause (`expect`, `target_text`, `at_url`) to attach a reproduction receipt — `absent` checks need the `at_url` where the item should be. For a MULTI-STEP bug add `"replay": true` to re-drive the recorded journey from a cold start (reproduced / not / inconclusive). Severity: `critical / high / medium / low / info`. |
-| `get_errors()` | Drain captured console + network events. These are auto-filed as bugs, tagged "auto-captured / not independently verified" (they don't pass the receipt). |
+| `record_bug(title, severity, evidence, verify=...)` | Call this once you've **confirmed** a real bug. Verify text with (`expect`, `target_text`, `at_url`), or an HTTP failure with (`expect_status`, `at_url`); `absent` checks need the URL where the item should be. For a MULTI-STEP text bug add `"replay": true` to re-drive the recorded journey from a cold start. Severity: `critical / high / medium / low / info`. |
+| `record_observation(title, evidence, category)` | Preserve qualitative visual, usability, content, responsive, or accessibility evidence without inflating it into a bug. |
+| `get_errors()` | Drain captured console + network events. Events retain the page where they occurred; matching console/network symptoms attach to an existing root cause, while new causes are tagged "auto-captured / not independently verified". |
 | `check_links()` / `check_performance()` | Probe-style helpers — return raw data, no auto-bug. |
 | `crawl_site()` | Page discovery: crawls internal links, auto-capturing only console/network events (tagged). Walk the surfaced pages and record_bug what you confirm. |
-| `end_session()` | Close session, write the HTML report. |
+| `end_session()` | Close session; write HTML, JSON, JUnit, and SARIF reports with separate tool-call and recorded-step counts. |
 
 ### Screen mode (macOS)
 
@@ -79,7 +85,7 @@ read it on initialize. The short version:
 
 ```
 start_session(url)
-observe()                              # MAP — what's on this page
+                                       # initial result already MAPS the page
                                        # USE IT — pick a real goal, walk it
                                        #   end-to-end, carrying state across pages
                                        # HYPOTHESIZE — what could go wrong
@@ -91,6 +97,12 @@ record_bug(..., verify={...})          # RECORD — verify clause attaches a rec
 ... repeat ...
 end_session()                          # writes the HTML report
 ```
+
+Reports preserve original screenshot evidence and normally reference
+compact WebP previews under `report-assets/`. Set
+`ARGUS_PORTABLE_REPORT=1` only when a single base64-embedded HTML file is
+needed. Machine-readable JSON also contains complete reproduction receipts,
+review mode, observations, tool-call counts, step counts, and screenshot metadata.
 
 ## When `record_bug` is appropriate
 
@@ -135,6 +147,8 @@ Don't record speculation, polish nits, or static a11y / SEO that
 
 - `argus-mcp --version` — what version your MCP host actually loaded.
 - `argus-mcp --doctor` — macOS permission probes for screen mode.
+- `argus-mcp --list-tools` — selected tool profile and exported names.
+- `argus-mcp --tool-profile core|screen|full` — control discovery size.
 - `argus-mcp --unsafe` — turn on `eval_js` (off by default).
 - `python -m argus.bench --target all` — reproduce the 34 / 34 matrix.
 - `python -m argus.screen.validate <app names...>` — read-only AX walk

@@ -62,12 +62,13 @@ class Detector:
                 continue
             self._seen.add(key)
             severity = Severity.HIGH if err["type"] == "exception" else Severity.MEDIUM
+            event_url = err.get("page_url") or err.get("url") or url
             bugs.append(Bug(
                 type=BugType.CONSOLE_ERROR,
                 severity=severity,
                 title=f"Console {err['type']}: {err['text'][:80]}",
                 description=err["text"],
-                url=url,
+                url=event_url,
                 steps_to_reproduce=list(steps),
                 console_logs=[err["text"]],
                 raw_error=err["text"],
@@ -89,6 +90,11 @@ class Detector:
                     continue
                 self._seen.add(key)
                 example = pattern_example[pattern]
+                source = next(
+                    (item for item in warnings if url_re.sub("[URL]", item["text"])[:80] == pattern),
+                    {},
+                )
+                event_url = source.get("page_url") or source.get("url") or url
                 title = (
                     f"Console warning: {example[:80]}"
                     if count == 1
@@ -99,7 +105,7 @@ class Detector:
                     severity=Severity.LOW,
                     title=title,
                     description=f"{count} warning(s). Example: {example[:200]}",
-                    url=url,
+                    url=event_url,
                     steps_to_reproduce=list(steps),
                     console_logs=[example],
                 ))
@@ -124,12 +130,13 @@ class Detector:
                 if key in self._seen:
                     continue
                 self._seen.add(key)
+                event_url = err.get("page_url") or url
                 bugs.append(Bug(
                     type=BugType.NETWORK_ERROR,
                     severity=Severity.MEDIUM,
                     title=f"Resource failed to load — {err['method']} {err['url'][:60]}",
                     description=f"{err['method']} {err['url']} failed: {failure} (no HTTP response reached)",
-                    url=url,
+                    url=event_url,
                     steps_to_reproduce=list(steps),
                     network_logs=[err],
                 ))
@@ -139,12 +146,13 @@ class Detector:
                 continue
             self._seen.add(key)
             severity = Severity.HIGH if status >= 500 else Severity.MEDIUM
+            event_url = err.get("page_url") or url
             bugs.append(Bug(
                 type=BugType.NETWORK_ERROR,
                 severity=severity,
                 title=f"HTTP {status} — {err['method']} {err['url'][:60]}",
                 description=f"{err['method']} {err['url']} returned {status}",
-                url=url,
+                url=event_url,
                 steps_to_reproduce=list(steps),
                 network_logs=[err],
             ))

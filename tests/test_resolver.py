@@ -62,6 +62,16 @@ def test_no_match_returns_no_match():
     assert r.found is None
 
 
+def test_parent_context_only_match_is_not_safe_to_act_on():
+    link = make_element(0, tag="a", text="LinkedIn")
+    link.parent_context = "© 2026 Yichen Wu LinkedIn GitHub"
+
+    result = resolve_element("Yichen Wu", [link])
+
+    assert result.reason == "no_match"
+    assert result.found is None
+
+
 def test_placeholder_substring_match():
     els = [
         make_element(0, tag="input", type="text", placeholder="Search tasks..."),

@@ -4,7 +4,7 @@
 
 **Point your coding agent at a web app. It explores like a QA tester and reports the bugs it can prove.**
 
-Argus is an [MCP](https://modelcontextprotocol.io/) server. When Claude Code (or any MCP host) loads it, the agent stops being "an assistant with browser tools" and starts behaving like a senior tester — hypothesizing, clicking, verifying persistence, and recording reproducible bugs. Every certified finding is **independently re-confirmed from a clean page load** before it's reported.
+Argus is an [MCP](https://modelcontextprotocol.io/) server. It adds evidence-first browser QA to Claude Code or any MCP host without taking over the host agent's identity or broader coding task. The agent explores, inspects, verifies persistence, and records reproducible bugs. Every certified finding is **independently re-confirmed from a clean page load** before it's reported.
 
 [![PyPI](https://img.shields.io/pypi/v/argus-testing?color=1a7f37)](https://pypi.org/project/argus-testing/)
 [![Python](https://img.shields.io/pypi/pyversions/argus-testing)](https://pypi.org/project/argus-testing/)
@@ -20,7 +20,7 @@ Argus is an [MCP](https://modelcontextprotocol.io/) server. When Claude Code (or
 
 ## The output
 
-Give it a URL; get a self-contained report of bugs — each tagged with whether Argus **independently reproduced it** or only observed it:
+Give it a URL; get a report of bugs — each tagged with whether Argus **independently reproduced it** or only observed it:
 
 <div align="center">
 <img src="assets/report.png" alt="Argus bug report — verified findings with reproduction receipts" width="800">
@@ -43,7 +43,7 @@ flowchart LR
     E --> G[["report: HTML · JSON · JUnit · SARIF"]]
 ```
 
-The agent is the intelligence. Argus is the seat you put it in: a role-binding prompt that keeps it in tester mode, a description-keyed tool surface (`click_what("Login button")`, not `click(7)`), and a **reproduction-receipt engine** that turns "the model thinks this is a bug" into "this bug is real, here's the proof."
+The agent is the intelligence. Argus supplies concise QA guidance, a description-keyed tool surface (`click_what("Login button")`, not `click(7)`), and a **reproduction-receipt engine** that turns "the model thinks this is a bug" into "this bug is real, here's the proof."
 
 ---
 
@@ -56,6 +56,8 @@ playwright install chromium
 # Wire it into Claude Code (or Cursor, or any MCP host)
 claude mcp add argus -- argus-mcp
 ```
+
+The default `core` profile exposes the primary web-testing workflow without flooding the host with every specialist tool. Use `argus-mcp --list-tools` to inspect the selected profile, `--tool-profile screen` for native macOS testing, or `--tool-profile full` for the entire advanced surface. `ARGUS_TOOL_PROFILE` provides the same setting through the environment.
 
 Then just ask, in your agent session:
 
@@ -83,6 +85,7 @@ argus http://localhost:3000 --passes 3
 pip install 'argus-testing[mac]'
 brew install cliclick          # keystroke / coordinate fallback
 argus-mcp --doctor             # check Screen Recording + Accessibility grants
+claude mcp add argus-screen -- argus-mcp --tool-profile screen
 ```
 
 Same description-keyed tools, but the target is whatever app is foreground on macOS — Notes, Cursor, Safari, your in-progress feature. No headless Chrome, no scripted Playwright. Argus sees what you see, via the Accessibility tree.
@@ -113,7 +116,7 @@ On the axis that matters for finding bugs — *autonomously discover, independen
 |---|:---:|:---:|:---:|:---:|
 | Autonomously finds unknown bugs | Yes | No *(driver)* | No *(debugger)* | Partial *(task-scoped)* |
 | Independently verifies each finding | Yes *(receipt)* | No | No | No *(LLM score)* |
-| Self-contained bug report | Yes | No | No | Partial |
+| Evidence-rich bug report | Yes | No | No | Partial |
 | Black-box (no repo / source access) | Yes | Yes | Yes | Yes |
 | Zero-LLM CI regression gate | Yes | Partial | No | Partial |
 
@@ -165,25 +168,33 @@ python -m argus.bench --target all
 
 ## Tool surface
 
+`argus-mcp` starts with the focused `core` web profile. The tables below describe the wider surface; start with `--tool-profile full` only when you need specialist network, storage, tab, coordinate, or crawl controls. Screen mode has its own focused profile.
+
 <details>
 <summary><b>Web mode</b> — the description-keyed toolset the agent drives</summary>
 
 | Tool | Purpose |
 |------|---------|
+| `start_session(url, review_mode=...)` | Start `exploratory`, `visual`, or `regression` review and return the initial observation immediately. |
 | `observe()` | URL + title + interactive elements (keyed by description, not indices) + counts + visible feedback + ARIA tree + viewport state. |
 | `click_what(description)` | Click the element best matching `description`. Returns candidates if ambiguous, rather than guessing. |
 | `type_into` / `select_into` / `paste_into` | Resolve an input by description, then type / choose / paste (paste fires a real `ClipboardEvent`). |
 | `verify_persistence(expect, target_text, after_url)` | Force a fresh GET and report whether `target_text` is present or absent. **The "Saved!" toast is not proof; this is.** |
-| `record_bug(title, severity, evidence)` | Called once the agent confirms a real bug. A `verify` clause triggers the reproduction receipt. |
+| `record_bug(title, severity, evidence, verify=...)` | Called once the agent confirms a real bug. Verify text with `{expect, target_text, at_url}`, or a broken response with `{expect_status: 404, at_url}`. |
+| `record_observation(title, evidence, category)` | Keep qualitative visual, usability, content, responsive, or accessibility evidence separate from reproducible bugs. |
 | `press_key` · `click_at` / `type_at` / `hover_at` / `drag_at` | Keyboard chords; and coordinate actions — the escape hatch for canvas/WebGL and mouse-drag lists with no DOM marker. |
 | `resize(w,h)` · `emulate_device(name)` · `emulate_media(scheme)` | Responsive breakpoints; true device emulation (touch, mobile UA, DPR, state carried over); dark mode / reduced motion. |
 | `upload_file` / `drop_file` · `get_downloads()` | Upload via a real `<input>` or a dropzone; inspect downloaded bytes — catch a broken CSV/PDF/XLSX export. |
 | `tabs_list` / `tabs_switch` / `tabs_close` | Multi-tab flows — OAuth, payment popups, open-in-new-tab. |
 | `network_mock(pattern, …)` | Return 5xx/401/malformed for a URL pattern — fault injection with no backend. |
-| `inspect_element` · `screenshot` · `screenshot_diff` · `eval_js` · `get_errors` | Element internals; pixels; pixel diff; JS (opt-in); drained console + network events. |
+| `inspect_element` · `check_layout` | Inspect interactive or visible non-interactive content; return bounded overflow, clipping, small-target, and overlay signals. |
+| `screenshot` · `screenshot_diff` | Wait for finite CSS transitions, then return an MCP image plus its absolute evidence path; pixel diff includes a red-tint overlay. |
+| `eval_js` · `get_errors` | JS (opt-in) and drained console + network events. Events keep their originating page and correlated console/network symptoms attach to one root-cause finding. |
 | `end_session()` | Close the session, write the report (HTML + JSON + JUnit + SARIF). |
 
 </details>
+
+Reports keep original screenshots as evidence and, by default, write compact WebP previews under `report-assets/` instead of base64-embedding every full-size PNG into the HTML. Set `ARGUS_PORTABLE_REPORT=1` when a single self-contained HTML file is more important than size. JSON output includes complete reproduction receipts, review mode, tool-call and recorded-step counts, screenshot metadata, and qualitative observations. JUnit suite failure totals match the emitted `<failure>` nodes.
 
 <details>
 <summary><b>Screen mode (macOS)</b> — same idea, against native apps</summary>
@@ -210,9 +221,9 @@ Argus assumes an Opus-class driver. Static rules that pretend to *be* the smart 
 </details>
 
 <details>
-<summary><b>Lock the role; don't bake a checklist</b></summary>
+<summary><b>Guide the review; don't hijack the host task</b></summary>
 
-The instructions block doesn't tell the agent to fire every XSS payload from a textbook. It defines a senior-tester worldview (Map → Hypothesize → Act → Observe → Verify → Record → Cover), a bug bar (reproducible, user-affecting, persistent), and a hunting list of "things humans notice that machines miss" — then gets out of the way.
+The instruction block gives the agent a compact evidence-first ritual and a bug bar, then gets out of the way. Argus remains a capability inside the user's current task: it does not prevent implementation work, replace the host's identity, or imply authority for irreversible external actions.
 
 </details>
 
