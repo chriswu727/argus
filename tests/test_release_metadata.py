@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 try:
@@ -23,3 +24,17 @@ def test_release_metadata_stays_in_sync():
     assert project["project"]["scripts"]["argus-testing"] == "argus.mcp_server:main"
     assert f"mcp-name: {server['name']}" in (ROOT / "README.md").read_text()
     assert "chriswu727" in glama["maintainers"]
+
+
+def test_readme_covers_every_public_tool_profile():
+    from argus.mcp_server import _CORE_TOOL_NAMES, _SCREEN_TOOL_NAMES, mcp
+
+    readme = (ROOT / "README.md").read_text()
+    documented_tools = set(re.findall(r"`([a-z][a-z0-9_]*)`", readme))
+    full_tools = set(mcp._tool_manager._tools)
+
+    assert full_tools <= documented_tools
+    assert re.search(rf"\| `core` \| {len(_CORE_TOOL_NAMES)} \|", readme)
+    assert re.search(rf"\| `screen` \| {len(_SCREEN_TOOL_NAMES)} \|", readme)
+    assert re.search(rf"\| `full` \| {len(full_tools)} \|", readme)
+    assert "uvx --from argus-testing argus-mcp" in readme
