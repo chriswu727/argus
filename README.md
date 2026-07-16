@@ -4,7 +4,7 @@
 
 # Argus
 
-**Point your coding agent at a web app. It explores like a QA tester and reports the bugs it can prove.**
+**An MCP server that tests apps like a real QA engineer—exploring user journeys, discovering unscripted bugs, and proving each finding before reporting it.**
 
 Argus is an [MCP](https://modelcontextprotocol.io/) server. It adds evidence-first browser QA to Claude Code or any MCP host without taking over the host agent's identity or broader coding task. The agent explores, inspects, verifies persistence, and records reproducible bugs. Every certified finding is **independently re-confirmed from a clean page load** before it's reported.
 
