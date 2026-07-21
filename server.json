@@ -3,7 +3,7 @@
   "name": "io.github.chriswu727/argus",
   "title": "Argus Testing — Autonomous QA MCP",
   "description": "Autonomous QA MCP for web and macOS that tests like a real engineer, finds bugs, and verifies them.",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "repository": {
     "url": "https://github.com/chriswu727/argus",
     "source": "github"
@@ -13,7 +13,7 @@
     {
       "registryType": "pypi",
       "identifier": "argus-testing",
-      "version": "0.5.1",
+      "version": "0.6.0",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
