@@ -57,7 +57,7 @@ def test_client_install_examples_start_the_published_stdio_server():
     assert "codex mcp add argus -- uvx --from argus-testing argus-mcp" in readme
     assert "claude mcp add argus -- uvx --from argus-testing argus-mcp" in agent_install
     assert "codex mcp add argus -- uvx --from argus-testing argus-mcp" in agent_install
-    assert "core` profile with 29 tools" in agent_install
+    assert "core` profile with 30 tools" in agent_install
 
     cursor_url = re.search(r"https://cursor\.com/install-mcp\?name=argus&config=[^)]+", readme)
     assert cursor_url is not None

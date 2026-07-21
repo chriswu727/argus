@@ -53,24 +53,11 @@ from .resolver import (
 
 mcp = FastMCP(
     "argus",
-    instructions="""Argus is an evidence-first QA capability inside the host's current task.
-It does not change the user's authority, prevent coding, or take over the host's identity.
-
-For exploratory testing: map real user goals, walk them end-to-end with real state,
-make one deliberate probe at a time, and observe after every action. Verify saves,
-deletes, edits, submits, and toggles with verify_persistence; visible success feedback
-is not proof. Record only reproducible, user-affecting bugs. Pass a verify clause to
-record_bug whenever the symptom is text-checkable. Before end_session, cover important
-goals you have not exercised.
-
-For visual review: use screenshots, inspect_element, check_layout, responsive device
-emulation, and record_observation for qualitative findings. Do not inflate polish notes
-into functional bugs.
-
-Severity: HIGH for security, data loss, payment, or blocked primary flows; MEDIUM for
-workflow friction, deceptive feedback, or cross-page inconsistency; LOW for minor UX.
-Do not perform real purchases or irreversible publication unless the user explicitly
-authorized that external effect.""",
+    instructions=(
+        "Start with start_session and follow the session protocol it returns. "
+        "Exercise real user journeys, verify text-checkable findings before record_bug, "
+        "and never exceed the user's authority."
+    ),
 )
 
 
@@ -103,6 +90,10 @@ class Session:
         self.start_time: Optional[float] = None
         self.url: Optional[str] = None
         self.focus_areas: List[str] = []
+        self.coverage_goals: List[dict] = []
+        self.constraints: List[str] = []
+        self.time_budget_minutes: int = 0
+        self.discovered_pages: List[str] = []
         self.tool_calls = 0
         self._last_elements = []
         self._last_screen_elements = []
@@ -958,6 +949,172 @@ def _file_event_bugs(s: "Session", new_bugs: list) -> list[Bug]:
     return filed
 
 
+_COVERAGE_STATUSES = frozenset({"untested", "in_progress", "exercised", "blocked"})
+_MAX_DISCOVERED_PAGES = 200
+
+
+def _contract_items(label: str, values: Optional[List[str]]) -> tuple[List[str], Optional[str]]:
+    if values is None:
+        return [], None
+    if len(values) > 20:
+        return [], f"start_session: {label} accepts at most 20 items."
+    cleaned = []
+    seen = set()
+    for value in values:
+        text = " ".join(value.split())
+        if not text:
+            return [], f"start_session: {label} cannot contain an empty item."
+        if len(text) > 300:
+            return [], f"start_session: each {label} item must be at most 300 characters."
+        key = text.casefold()
+        if key not in seen:
+            seen.add(key)
+            cleaned.append(text)
+    return cleaned, None
+
+
+def _coverage_path(url: str) -> str:
+    path = urlparse(url).path.rstrip("/") or "/"
+    return path
+
+
+def _update_coverage_from_state(s: Session, state: PageState) -> None:
+    if not hasattr(s, "discovered_pages"):
+        s.discovered_pages = []
+    current = _coverage_path(state.url)
+    if current not in s.discovered_pages:
+        s.discovered_pages.append(current)
+    for link in state.links or []:
+        if len(s.discovered_pages) >= _MAX_DISCOVERED_PAGES:
+            break
+        if not link.get("isInternal"):
+            continue
+        path = _coverage_path(urljoin(state.url, link.get("href") or ""))
+        if path not in s.discovered_pages:
+            s.discovered_pages.append(path)
+
+
+def _coverage_snapshot(s: Session, elapsed_seconds: Optional[float] = None) -> dict:
+    goals = [dict(goal) for goal in getattr(s, "coverage_goals", [])]
+    counts = {status: 0 for status in _COVERAGE_STATUSES}
+    for goal in goals:
+        status = goal.get("status", "untested")
+        counts[status if status in counts else "untested"] += 1
+    counts["total"] = len(goals)
+
+    visited = []
+    for url in getattr(s, "pages_visited", []):
+        path = _coverage_path(url)
+        if path not in visited:
+            visited.append(path)
+    discovered = list(getattr(s, "discovered_pages", []))
+    for path in visited:
+        if path not in discovered:
+            discovered.append(path)
+
+    if elapsed_seconds is None:
+        started = getattr(s, "start_time", None)
+        elapsed_seconds = (
+            max(0.0, asyncio.get_event_loop().time() - started)
+            if started is not None
+            else 0.0
+        )
+    budget_minutes = max(0, int(getattr(s, "time_budget_minutes", 0) or 0))
+    budget_seconds = budget_minutes * 60
+    remaining = max(0.0, budget_seconds - elapsed_seconds) if budget_seconds else None
+
+    return {
+        "goals": goals,
+        "summary": counts,
+        "constraints": list(getattr(s, "constraints", [])),
+        "pages": {
+            "visited": visited,
+            "discovered": discovered,
+            "unvisited": [path for path in discovered if path not in visited],
+        },
+        "time_budget": {
+            "minutes": budget_minutes,
+            "elapsed_seconds": round(elapsed_seconds, 1),
+            "remaining_seconds": round(remaining, 1) if remaining is not None else None,
+            "exceeded": bool(budget_seconds and elapsed_seconds > budget_seconds),
+        },
+    }
+
+
+def _format_coverage(snapshot: dict) -> str:
+    lines = []
+    goals = snapshot["goals"]
+    summary = snapshot["summary"]
+    if goals:
+        lines.append(
+            f"Goals: {summary['exercised']}/{summary['total']} exercised, "
+            f"{summary['blocked']} blocked, {summary['in_progress']} in progress, "
+            f"{summary['untested']} untested"
+        )
+        pending = [goal["goal"] for goal in goals if goal["status"] in {"untested", "in_progress"}]
+        if pending:
+            shown = "; ".join(_short(goal, 70) for goal in pending[:4])
+            lines.append(f"Still to cover: {shown}{' …' if len(pending) > 4 else ''}")
+    unvisited = snapshot["pages"]["unvisited"]
+    if unvisited:
+        shown = ", ".join(unvisited[:6]) + (" …" if len(unvisited) > 6 else "")
+        lines.append(f"Pages: {len(snapshot['pages']['visited'])}/{len(snapshot['pages']['discovered'])} visited; unvisited: {shown}")
+    budget = snapshot["time_budget"]
+    if budget["minutes"]:
+        elapsed = int(round(budget["elapsed_seconds"] / 60))
+        if budget["exceeded"]:
+            lines.append(f"Time: {elapsed}m elapsed; {budget['minutes']}m budget exceeded")
+        else:
+            remaining = max(0, int(round((budget["remaining_seconds"] or 0) / 60)))
+            lines.append(f"Time: {elapsed}m elapsed; about {remaining}m remaining")
+    return "\n".join(lines)
+
+
+def _session_protocol(s: Session) -> str:
+    lines = [
+        "Session protocol (returned once; observe keeps the coverage ledger visible):",
+        "1. MAP the supplied goals and the real user journeys that satisfy them.",
+        "2. USE the product end-to-end with real state; make one deliberate probe, then observe.",
+        "3. HYPOTHESIZE user-affecting failures, including cross-page and persistence failures.",
+        "4. VERIFY saves, edits, deletes, submits, and toggles; visible success feedback is not proof.",
+        "5. RECORD only reproducible bugs. Use record_observation for qualitative visual or UX evidence.",
+        "6. COVER every important goal and discovered page before ending. Call coverage_update only with evidence.",
+        "Severity: HIGH for security, data loss, payment, or a blocked primary flow; MEDIUM for workflow friction, deceptive feedback, or inconsistency; LOW for minor UX.",
+        "Authority: do not purchase, publish, delete real data, or cause another irreversible external effect unless explicitly authorized.",
+    ]
+    if s.coverage_goals:
+        lines.append("Goals:")
+        lines.extend(f"- {goal['goal']}" for goal in s.coverage_goals)
+    else:
+        lines.append("Goals: infer a small set of important user journeys from the product and request.")
+    if s.constraints:
+        lines.append("User constraints (keep these visible in your decisions):")
+        lines.extend(f"- {constraint}" for constraint in s.constraints)
+    if s.time_budget_minutes:
+        lines.append(f"Advisory time budget: {s.time_budget_minutes} minutes; finish safely and report uncovered work when it expires.")
+    return "\n".join(lines)
+
+
+def _coverage_goal_index(s: Session, query: str) -> tuple[Optional[int], Optional[str]]:
+    normalized = " ".join(query.split()).casefold()
+    if not normalized:
+        return None, "coverage_update: goal cannot be empty."
+    exact = [i for i, goal in enumerate(s.coverage_goals) if goal["goal"].casefold() == normalized]
+    if exact:
+        return exact[0], None
+    matches = [
+        i for i, goal in enumerate(s.coverage_goals)
+        if normalized in goal["goal"].casefold() or goal["goal"].casefold() in normalized
+    ]
+    if len(matches) == 1:
+        return matches[0], None
+    if not matches:
+        available = "; ".join(goal["goal"] for goal in s.coverage_goals)
+        return None, f"coverage_update: no goal matches {query!r}. Available: {available}"
+    candidates = "; ".join(s.coverage_goals[i]["goal"] for i in matches)
+    return None, f"coverage_update: {query!r} is ambiguous. Candidates: {candidates}"
+
+
 @mcp.tool()
 async def start_session(
     url: str,
@@ -966,6 +1123,9 @@ async def start_session(
     viewport_height: int = 720,
     include_observation: bool = True,
     review_mode: str = "exploratory",
+    goals: Optional[List[str]] = None,
+    constraints: Optional[List[str]] = None,
+    time_budget_minutes: int = 0,
 ) -> str:
     """Start a browser testing session and navigate to the given URL.
 
@@ -976,12 +1136,23 @@ async def start_session(
         viewport_height: Browser viewport height in pixels
         include_observation: Return the initial page observation in this call.
         review_mode: exploratory, visual, or regression.
+        goals: Up to 20 user journeys or review outcomes to exercise.
+        constraints: Up to 20 user-supplied boundaries to preserve in the report.
+        time_budget_minutes: Advisory budget from 1 to 240 minutes, or 0 for none.
     """
     global _session
 
     review_mode = review_mode.strip().lower()
     if review_mode not in {"exploratory", "visual", "regression"}:
         return "start_session: review_mode must be exploratory, visual, or regression."
+    cleaned_goals, error = _contract_items("goals", goals)
+    if error:
+        return error
+    cleaned_constraints, error = _contract_items("constraints", constraints)
+    if error:
+        return error
+    if time_budget_minutes < 0 or time_budget_minutes > 240:
+        return "start_session: time_budget_minutes must be 0 or between 1 and 240."
 
     await _teardown_active_session()
 
@@ -990,6 +1161,13 @@ async def start_session(
     new_session.review_mode = review_mode
     new_session.url = url
     new_session.start_time = asyncio.get_event_loop().time()
+    new_session.coverage_goals = [
+        {"goal": goal, "status": "untested", "evidence": ""}
+        for goal in cleaned_goals
+    ]
+    new_session.focus_areas = list(cleaned_goals)
+    new_session.constraints = cleaned_constraints
+    new_session.time_budget_minutes = time_budget_minutes
     new_session.browser = BrowserDriver(
         headless=headless,
         viewport_width=viewport_width,
@@ -1034,6 +1212,7 @@ async def start_session(
     _session._last_observed_counts = dict(state.counts)
     _session._last_observed_url = state.url
     element_count = len(state.elements)
+    _update_coverage_from_state(_session, state)
 
     hint = ""
     n_journaled = len(_journal_entries(urlparse(url).netloc or "default"))
@@ -1048,9 +1227,10 @@ async def start_session(
         f"Review mode: {review_mode}\n"
         f"Found {element_count} interactive elements.{hint}"
     )
+    introduction = summary + "\n\n" + _session_protocol(_session)
     if not include_observation:
-        return summary + " Call observe() to inspect the page."
-    return summary + "\n\nInitial observation:\n" + _format_observation(state) + _coverage_line(_session, state)
+        return introduction + _coverage_line(_session, state) + "\nCall observe() to inspect the page."
+    return introduction + "\n\nInitial observation:\n" + _format_observation(state) + _coverage_line(_session, state)
 
 
 @mcp.tool()
@@ -1477,29 +1657,11 @@ def _resolve_or_error(
     return None, "\n".join(lines)
 
 
-def _coverage_line(s, state) -> str:
-    """Surface internal destinations the agent hasn't visited — the COVER step made
-    concrete. Agents chronically explore a narrow slice (the recall probe: 2 navigate
-    calls, whole flows like /register and /help never opened), so bugs on unvisited
-    pages are never found. List unseen internal link paths to nudge breadth."""
-    from urllib.parse import urlparse
+def _coverage_line(s: Session, state: PageState) -> str:
     try:
-        cur = urlparse(state.url).path.rstrip("/") or "/"
-        visited = {urlparse(u).path.rstrip("/") or "/" for u in s.pages_visited}
-        seen, unseen = set(), []
-        for lk in (state.links or []):
-            if not lk.get("isInternal"):
-                continue
-            p = urlparse(lk.get("href") or "").path.rstrip("/") or "/"
-            if p == cur or p in visited or p in seen:
-                continue
-            seen.add(p)
-            unseen.append(p)
-        if not unseen:
-            return ""
-        shown = ", ".join(unseen[:6]) + (" …" if len(unseen) > 6 else "")
-        return (f"\n\nNot yet explored ({len(unseen)} internal page(s)): {shown}\n"
-                "  (Coverage — bugs hide on pages you never open; walk these before end_session.)")
+        _update_coverage_from_state(s, state)
+        text = _format_coverage(_coverage_snapshot(s))
+        return f"\n\nCoverage:\n{text}" if text else ""
     except Exception:
         return ""
 
@@ -1534,6 +1696,40 @@ async def observe() -> str:
     if state.url not in s.pages_visited:
         s.pages_visited.append(state.url)
     return _format_observation(state) + delta_note + _coverage_line(s, state)
+
+
+@mcp.tool()
+async def coverage_update(goal: str, status: str, evidence: str = "") -> str:
+    """Update one supplied testing goal after exercising it or hitting a blocker.
+
+    Args:
+        goal: The goal text, or a unique part of it.
+        status: untested, in_progress, exercised, or blocked.
+        evidence: Concrete observed result; required for exercised and blocked.
+    """
+    s = _require_session()
+    if not s.coverage_goals:
+        return "coverage_update: this session has no supplied goals. Continue exploring and report pages visited."
+    status = status.strip().lower()
+    if status not in _COVERAGE_STATUSES:
+        return "coverage_update: status must be untested, in_progress, exercised, or blocked."
+    evidence = " ".join(evidence.split())
+    if len(evidence) > 1000:
+        return "coverage_update: evidence must be at most 1000 characters."
+    if status in {"exercised", "blocked"} and not evidence:
+        return f"coverage_update: {status} requires concrete evidence."
+    index, error = _coverage_goal_index(s, goal)
+    if error:
+        return error
+    assert index is not None
+    selected = s.coverage_goals[index]
+    selected["status"] = status
+    selected["evidence"] = "" if status == "untested" else evidence
+    snapshot = _coverage_snapshot(s)
+    return (
+        f"Coverage updated: {selected['goal']} → {status}.\n"
+        + _format_coverage(snapshot)
+    )
 
 
 def _format_screen_observation(obs) -> str:
@@ -5132,6 +5328,7 @@ async def end_session() -> str:
         await s.screen.stop()
 
     duration = asyncio.get_event_loop().time() - (s.start_time or 0)
+    coverage = _coverage_snapshot(s, duration)
 
     target = s.url if s.mode == "web" else f"screen://{s.mode}"
     result = ExplorationResult(
@@ -5145,6 +5342,8 @@ async def end_session() -> str:
         observations=s.observations,
         tool_calls=s.tool_calls,
         review_mode=s.review_mode,
+        constraints=s.constraints,
+        coverage=coverage,
     )
 
     output_dir = _output_dir()
@@ -5168,6 +5367,21 @@ async def end_session() -> str:
         f"  Screenshots: {len(result.screenshots)}",
         f"  Duration: {duration:.1f}s",
     ]
+    goal_summary = result.coverage.get("summary", {})
+    if goal_summary.get("total"):
+        lines.append(
+            f"  Goals exercised: {goal_summary['exercised']}/{goal_summary['total']} "
+            f"({goal_summary['blocked']} blocked)"
+        )
+        unfinished = [
+            goal["goal"] for goal in result.coverage["goals"]
+            if goal["status"] in {"untested", "in_progress"}
+        ]
+        if unfinished:
+            lines.append("  Unfinished goals: " + "; ".join(unfinished))
+    unvisited = result.coverage.get("pages", {}).get("unvisited", [])
+    if unvisited:
+        lines.append("  Unvisited discovered pages: " + ", ".join(unvisited))
     if result.bugs:
         lines.append("")
         lines.append("Bugs:")
@@ -5206,11 +5420,13 @@ _DESTRUCTIVE_TOOL_NAMES = frozenset({
 
 _CLOSED_WORLD_TOOL_NAMES = frozenset({
     "screenshot_diff", "record_observation", "screen_session_status",
-    "network_clear_log", "network_clear_mocks", "network_unmock", "end_session",
+    "network_clear_log", "network_clear_mocks", "network_unmock",
+    "coverage_update", "end_session",
 })
 
 _TOOL_TITLES = {
     "start_session": "Start Browser Test",
+    "coverage_update": "Update Testing Goal Coverage",
     "observe": "Observe Current Target",
     "click_what": "Click Element by Description",
     "type_into": "Type into Field by Description",
@@ -5310,7 +5526,7 @@ _configure_tool_metadata()
 
 
 _CORE_TOOL_NAMES = frozenset({
-    "start_session", "observe", "click_what", "type_into", "select_into",
+    "start_session", "observe", "coverage_update", "click_what", "type_into", "select_into",
     "hover_what", "press_key", "upload_file", "resize", "emulate_device",
     "navigate", "go_back", "scroll_down", "inspect_element", "check_layout",
     "screenshot", "screenshot_diff", "get_errors", "check_links",

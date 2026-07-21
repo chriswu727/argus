@@ -40,7 +40,8 @@ the user's broader task. The short version:
 - **BOUNDARY**: Do not infer permission for purchases, publication, or
   other irreversible external effects. Argus does not prevent in-scope
   diagnosis or implementation work the user requested.
-- **THE RITUAL** (return to it on every tool call):
+- **THE RITUAL** (`start_session` returns it once; `observe` keeps its
+  compact coverage ledger visible):
   Map → **Use it** (walk each goal end-to-end, carrying real state) →
   Hypothesize → Act → Observe → Verify → Record → Cover.
 
@@ -50,8 +51,9 @@ the user's broader task. The short version:
 
 | Tool | Purpose |
 |------|---------|
-| `start_session(url, review_mode=...)` | Launch Playwright in `exploratory`, `visual`, or `regression` mode and return the initial observation. |
+| `start_session(url, review_mode=..., goals=[...], constraints=[...], time_budget_minutes=...)` | Launch Playwright, establish the review contract, and return the one-time QA protocol plus initial observation. The budget is advisory; `0` means none. |
 | `observe()` | URL + interactive elements (description-keyed) + visible feedback + counts + ARIA + viewport state. Read this first, after every action. |
+| `coverage_update(goal, status, evidence)` | Update a supplied goal as `untested`, `in_progress`, `exercised`, or `blocked`. Concrete evidence is mandatory for `exercised` and `blocked`; Argus never guesses semantic completion. |
 | `click_what(description)` | Click the element matching `description`. Returns the top candidates if ambiguous — rephrase rather than guess. |
 | `type_into(description, text)` / `select_into(description, value)` | Inputs and dropdowns by description. |
 | `test_action(target, expect=...)` | Click + before/after diff in one call. Pass `expect` to PREDICT the outcome ({"count":{"label":"tasks","delta":1}}, {"gains":"Buy milk"}, {"removes":...}, {"text_present":...}, {"toast":...}, {"url_changed":true}) and Argus reports MATCH / SURPRISE — a surprise is a bug lead. Also shows CROSS-STACK: which requests the click fired (methods/statuses) and a CHECK nudge when a message appeared without a matching write. |
@@ -84,7 +86,7 @@ the user's broader task. The short version:
 ### Recommended flow
 
 ```
-start_session(url)
+start_session(url, goals=[...], constraints=[...], time_budget_minutes=15)
                                        # initial result already MAPS the page
                                        # USE IT — pick a real goal, walk it
                                        #   end-to-end, carrying state across pages
@@ -94,15 +96,18 @@ test_form({...})
 observe()                              # OBSERVE — what changed?
 verify_persistence(...)                # VERIFY (delete / save / submit / toggle)
 record_bug(..., verify={...})          # RECORD — verify clause attaches a receipt
+coverage_update(goal, "exercised",    # COVER — preserve the observed evidence
+                evidence)
 ... repeat ...
-end_session()                          # writes the HTML report
+end_session()                          # reports completed + unfinished coverage
 ```
 
 Reports preserve original screenshot evidence and normally reference
 compact WebP previews under `report-assets/`. Set
 `ARGUS_PORTABLE_REPORT=1` only when a single base64-embedded HTML file is
 needed. Machine-readable JSON also contains complete reproduction receipts,
-review mode, observations, tool-call counts, step counts, and screenshot metadata.
+goal evidence, user constraints, page coverage, time-budget status, review mode,
+observations, tool-call counts, step counts, and screenshot metadata.
 
 ## When `record_bug` is appropriate
 

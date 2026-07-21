@@ -329,6 +329,8 @@ class Reporter:
             "tool_calls": r.tool_calls,
             "actions_taken": r.actions_taken,
             "focus_areas": list(r.focus_areas or []),
+            "constraints": list(r.constraints or []),
+            "coverage": dict(r.coverage or {}),
             "pages_visited": list(r.pages_visited or []),
             "screenshots": [s.to_dict() for s in r.screenshots],
             "observations": [o.to_dict() for o in r.observations],
@@ -473,6 +475,58 @@ class Reporter:
             if r.focus_areas
             else "<li>General exploration</li>"
         )
+        coverage = r.coverage or {}
+        coverage_goals = coverage.get("goals", [])
+        coverage_summary = coverage.get("summary", {})
+        coverage_pages = coverage.get("pages", {})
+        coverage_budget = coverage.get("time_budget", {})
+        has_coverage = bool(
+            coverage_goals
+            or r.constraints
+            or coverage_pages.get("discovered")
+            or coverage_budget.get("minutes")
+        )
+        if has_coverage:
+            goal_items = ""
+            for goal in coverage_goals:
+                status = goal.get("status", "untested")
+                if status not in {"untested", "in_progress", "exercised", "blocked"}:
+                    status = "untested"
+                evidence = goal.get("evidence") or ""
+                detail = f'<div class="ce">{_esc(evidence)}</div>' if evidence else ""
+                goal_items += (
+                    f'<li><span class="cs cs-{status}">{_esc(status.replace("_", " "))}</span> '
+                    f'<strong>{_esc(goal.get("goal", ""))}</strong>{detail}</li>'
+                )
+            if not goal_items:
+                goal_items = "<li>No explicit goals supplied; general exploration.</li>"
+            constraints_html = ""
+            if r.constraints:
+                items = "".join(f"<li>{_esc(item)}</li>" for item in r.constraints)
+                constraints_html = f"<h3>Constraints</h3><ul>{items}</ul>"
+            unvisited_html = ""
+            unvisited = coverage_pages.get("unvisited", [])
+            if unvisited:
+                items = "".join(f"<li>{_esc(path)}</li>" for path in unvisited)
+                unvisited_html = f"<h3>Discovered but not visited</h3><ul>{items}</ul>"
+            budget_html = ""
+            if coverage_budget.get("minutes"):
+                state = "exceeded" if coverage_budget.get("exceeded") else "observed"
+                budget_html = (
+                    f'<p class="cb">Time budget: {coverage_budget["minutes"]} minutes ({state}); '
+                    f'{coverage_budget.get("elapsed_seconds", 0):.1f}s elapsed.</p>'
+                )
+            coverage_section = (
+                "<h2>Coverage Contract</h2>"
+                f'<p class="cb">{coverage_summary.get("exercised", 0)}/'
+                f'{coverage_summary.get("total", 0)} goals exercised; '
+                f'{coverage_summary.get("blocked", 0)} blocked; '
+                f'{coverage_summary.get("in_progress", 0)} in progress; '
+                f'{coverage_summary.get("untested", 0)} untested.</p>'
+                f"<ul>{goal_items}</ul>{constraints_html}{unvisited_html}{budget_html}"
+            )
+        else:
+            coverage_section = f"<h2>Focus Areas</h2><ul>{focus}</ul>"
         no_bugs = '<div class="nb">No bugs found.</div>' if not r.bugs else ""
 
         observations_html = ""
@@ -534,6 +588,13 @@ h3{{font-size:1.1rem;margin:.5rem 0;color:#f1f5f9}}
 .rd{{color:#94a3b8;font-size:.85rem;margin:.4rem 0;padding:.4rem .6rem;background:#0f172a;border-left:2px solid #1a7f37;border-radius:3px}}
 .rd code{{color:#e2e8f0}}
 .ac{{color:#94a3b8;font-style:italic}}
+.cb{{color:#94a3b8;margin:.5rem 0}}
+.ce{{color:#94a3b8;margin:.25rem 0 .5rem}}
+.cs{{display:inline-block;padding:2px 7px;border-radius:4px;font-size:.7rem;font-weight:700;text-transform:uppercase;margin-right:.35rem}}
+.cs-exercised{{background:#166534;color:#dcfce7}}
+.cs-blocked{{background:#9a3412;color:#ffedd5}}
+.cs-in_progress{{background:#1d4ed8;color:#dbeafe}}
+.cs-untested{{background:#334155;color:#cbd5e1}}
 .st ol{{margin:.5rem 0 .5rem 1.5rem;color:#cbd5e1;word-break:break-word}}
 .st li{{margin:.2rem 0}}
 .cl pre{{background:#0f172a;padding:.75rem;border-radius:4px;overflow-x:auto;font-size:.85rem;color:#fbbf24;margin-top:.3rem;white-space:pre-wrap;word-break:break-all}}
@@ -560,7 +621,7 @@ li{{margin:.2rem 0}}
 <div class="s"><div class="sv2">{len(r.pages_visited)}</div><div class="sl">Pages Visited</div></div>
 <div class="s"><div class="sv2">{len(r.screenshots)}</div><div class="sl">Screenshots</div></div>
 </div>
-<h2>Focus Areas</h2><ul>{focus}</ul>
+{coverage_section}
 <h2>Bugs ({len(r.bugs)})</h2><div class="sm">{summary}</div>
 {cards}{no_bugs}
 {observations_html}
