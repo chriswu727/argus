@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 - 2026-07-21
 
 - Move the full QA protocol from the global MCP instruction into the
   one-time `start_session` response, with a regression budget for the default
