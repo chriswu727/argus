@@ -53,7 +53,7 @@ the user's broader task. The short version:
 |------|---------|
 | `start_session(url, review_mode=..., goals=[...], constraints=[...], time_budget_minutes=...)` | Launch Playwright, establish the review contract, and return the one-time QA protocol plus initial observation. The budget is advisory; `0` means none. |
 | `observe()` | URL + interactive elements (description-keyed) + visible feedback + counts + ARIA + viewport state. Read this first, after every action. |
-| `coverage_update(goal, status, evidence)` | Update a supplied goal as `untested`, `in_progress`, `exercised`, or `blocked`. Concrete evidence is mandatory for `exercised` and `blocked`; Argus never guesses semantic completion. |
+| `coverage_update(goal, status, evidence)` | Mark a goal `in_progress` before its journey to open a precise evidence window. `exercised` and `blocked` require an explanation and automatically link URLs, value-redacted actions, screenshots, checks, and findings; Argus never guesses semantic completion. |
 | `click_what(description)` | Click the element matching `description`. Returns the top candidates if ambiguous — rephrase rather than guess. |
 | `type_into(description, text)` / `select_into(description, value)` | Inputs and dropdowns by description. |
 | `test_action(target, expect=...)` | Click + before/after diff in one call. Pass `expect` to PREDICT the outcome ({"count":{"label":"tasks","delta":1}}, {"gains":"Buy milk"}, {"removes":...}, {"text_present":...}, {"toast":...}, {"url_changed":true}) and Argus reports MATCH / SURPRISE — a surprise is a bug lead. Also shows CROSS-STACK: which requests the click fired (methods/statuses) and a CHECK nudge when a message appeared without a matching write. |
@@ -88,6 +88,7 @@ the user's broader task. The short version:
 ```
 start_session(url, goals=[...], constraints=[...], time_budget_minutes=15)
                                        # initial result already MAPS the page
+coverage_update(goal, "in_progress")   # opens this goal's evidence window
                                        # USE IT — pick a real goal, walk it
                                        #   end-to-end, carrying state across pages
                                        # HYPOTHESIZE — what could go wrong
