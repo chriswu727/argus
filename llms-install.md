@@ -51,8 +51,8 @@ uvx --from argus-testing argus-mcp --list-tools
 ```
 
 The first command should report the current `argus-testing` version. The second
-should report the default `core` profile with 29 tools, including
-`start_session`, `observe`, `record_bug`, and `end_session`.
+should report the default `core` profile with 30 tools, including
+`start_session`, `observe`, `coverage_update`, `record_bug`, and `end_session`.
 
 Then restart or refresh the MCP client and ask:
 
@@ -60,10 +60,10 @@ Then restart or refresh the MCP client and ask:
 
 ## Optional profiles
 
-- `--tool-profile core` is the 29-tool default for browser QA.
+- `--tool-profile core` is the 30-tool default for browser QA.
 - `--tool-profile screen` exposes 14 native macOS testing tools and requires
   Screen Recording and Accessibility permissions.
-- `--tool-profile full` exposes all 76 specialist browser and screen tools.
+- `--tool-profile full` exposes all 77 specialist browser and screen tools.
 
 Do not add `--unsafe` unless arbitrary page-context JavaScript execution is
 explicitly required and the target is trusted.

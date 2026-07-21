@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Move the full QA protocol from the global MCP instruction into the
+  one-time `start_session` response, with a regression budget for the default
+  tool context.
+- Add natural-language testing goals, user constraints, and an advisory time
+  budget to `start_session`.
+- Add `coverage_update` with evidence-required `exercised` and `blocked`
+  states; keep goal and discovered-page coverage visible during observations.
+- Preserve completed, blocked, and unfinished coverage in HTML and JSON
+  reports and in the final session summary.
+
 ## 0.5.0 - 2026-07-14
 
 Argus 0.5 replaces the index-keyed MCP interface with a smaller,

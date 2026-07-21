@@ -48,7 +48,7 @@ flowchart LR
     E --> G[["report: HTML · JSON · JUnit · SARIF"]]
 ```
 
-The agent is the intelligence. Argus supplies concise QA guidance, a description-keyed tool surface (`click_what("Login button")`, not `click(7)`), and a **reproduction-receipt engine** that turns "the model thinks this is a bug" into "this bug is real, here's the proof."
+The agent is the intelligence. Argus supplies concise QA guidance, a description-keyed tool surface (`click_what("Login button")`, not `click(7)`), a goal coverage ledger, and a **reproduction-receipt engine** that turns "the model thinks this is a bug" into "this bug is real, here's the proof."
 
 ---
 
@@ -103,6 +103,8 @@ Then just ask, in your agent session:
 
 That's it. The agent drives; Argus keeps it honest and writes the report.
 
+For a scoped review, the host can give `start_session` explicit `goals`, `constraints`, and an advisory `time_budget_minutes`. Argus returns the full testing protocol once, keeps outstanding goals and discovered pages visible in later observations, and requires concrete evidence before `coverage_update` can mark a goal `exercised` or `blocked`. The final HTML and JSON reports preserve both completed and unfinished coverage instead of implying that an incomplete pass was comprehensive.
+
 <details>
 <summary><b>pip installation</b></summary>
 
@@ -150,6 +152,7 @@ Same description-keyed tools, but the target is whatever app is foreground on ma
 | | |
 |---|---|
 | **Autonomous & black-box** | You give it a URL, not a test plan. It explores like a real user — no repo access, no scripted steps. |
+| **Coverage contract** | Optional natural-language goals, user constraints, discovered pages, and time budget stay visible throughout the session and in the final report. |
 | **Reproduction receipts** | Before certifying a bug, it re-loads the page from a clean state and re-confirms the symptom. Engineered for **zero false-certifications.** |
 | **Finds human-eye bugs** | Fake "Only 3 left!" scarcity, a "Saved" toast that doesn't save, a sale badge where the price didn't drop, a stale navbar after a rename. Static analysis catches none of these. |
 | **Discover → guard** | Findings are journaled; `argus-regression` re-checks them on every build with **zero LLM cost** and a non-zero exit — a real CI gate against known bugs coming back. |
@@ -227,17 +230,18 @@ uvx --from argus-testing argus-mcp --tool-profile full --list-tools
 
 | Profile | Public tools | Intended use |
 |---------|-------------:|--------------|
-| `core` | 29 | Primary browser QA workflow; the default. |
+| `core` | 30 | Primary browser QA workflow; the default. |
 | `screen` | 14 | Focused native macOS testing through Accessibility and screenshots. |
-| `full` | 76 | Everything in core and screen, plus specialist browser, state, network, coordinate, and crawl controls. |
+| `full` | 77 | Everything in core and screen, plus specialist browser, state, network, coordinate, and crawl controls. |
 
 <details>
-<summary><b>Core profile — 29 tools</b></summary>
+<summary><b>Core profile — 30 tools</b></summary>
 
 | Tools | Purpose |
 |-------|---------|
-| `start_session` | Start an `exploratory`, `visual`, or `regression` browser review and return the initial observation. |
+| `start_session` | Start an `exploratory`, `visual`, or `regression` browser review; optionally accept `goals`, `constraints`, and `time_budget_minutes`; return the one-time protocol and initial observation. |
 | `observe` | Return URL, title, description-keyed interactive elements, counts, visible feedback, ARIA tree, and viewport state. |
+| `coverage_update` | Mark a supplied goal `untested`, `in_progress`, `exercised`, or `blocked`; exercised and blocked states require concrete evidence. |
 | `click_what` | Click the element best matching a natural-language description; return candidates instead of guessing when ambiguous. |
 | `type_into` · `select_into` | Resolve a field by description, then type text or select an option. |
 | `hover_what` · `press_key` | Exercise hover states and keyboard interactions against description-keyed targets. |
@@ -257,7 +261,7 @@ uvx --from argus-testing argus-mcp --tool-profile full --list-tools
 
 </details>
 
-Reports keep original screenshots as evidence and, by default, write compact WebP previews under `report-assets/` instead of base64-embedding every full-size PNG into the HTML. Set `ARGUS_PORTABLE_REPORT=1` when a single self-contained HTML file is more important than size. JSON output includes complete reproduction receipts, review mode, tool-call and recorded-step counts, screenshot metadata, and qualitative observations. JUnit suite failure totals match the emitted `<failure>` nodes.
+Reports keep original screenshots as evidence and, by default, write compact WebP previews under `report-assets/` instead of base64-embedding every full-size PNG into the HTML. Set `ARGUS_PORTABLE_REPORT=1` when a single self-contained HTML file is more important than size. JSON output includes complete reproduction receipts, the coverage contract, constraints, review mode, tool-call and recorded-step counts, screenshot metadata, and qualitative observations. JUnit suite failure totals match the emitted `<failure>` nodes.
 
 <details>
 <summary><b>Screen profile — 14 tools</b></summary>
@@ -278,7 +282,7 @@ Reports keep original screenshots as evidence and, by default, write compact Web
 </details>
 
 <details>
-<summary><b>Full profile — 76 tools</b></summary>
+<summary><b>Full profile — 77 tools</b></summary>
 
 The full profile includes every core and screen tool above plus these 36 specialist tools. Use it when the workflow genuinely needs low-level state, fault injection, multi-tab control, coordinates, or crawling.
 
@@ -330,7 +334,7 @@ Argus assumes an Opus-class driver. Static rules that pretend to *be* the smart 
 <details>
 <summary><b>Guide the review; don't hijack the host task</b></summary>
 
-The instruction block gives the agent a compact evidence-first ritual and a bug bar, then gets out of the way. Argus remains a capability inside the user's current task: it does not prevent implementation work, replace the host's identity, or imply authority for irreversible external actions.
+The global instruction is intentionally tiny so it does not repeat a long QA prompt in every MCP tool description. `start_session` returns the full evidence-first ritual, goals, constraints, and budget once; observations then surface only the compact live coverage ledger. Argus remains a capability inside the user's current task: it does not prevent implementation work, replace the host's identity, or imply authority for irreversible external actions.
 
 </details>
 
