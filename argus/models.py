@@ -194,4 +194,6 @@ class ExplorationResult:
     observations: List[Observation] = field(default_factory=list)
     tool_calls: int = 0
     review_mode: str = "exploratory"
+    constraints: List[str] = field(default_factory=list)
+    coverage: Dict = field(default_factory=dict)
     timestamp: datetime = field(default_factory=datetime.now)
