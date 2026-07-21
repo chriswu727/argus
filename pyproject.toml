@@ -1,6 +1,6 @@
 [project]
 name = "argus-testing"
-version = "0.5.1"
+version = "0.6.0"
 description = "Autonomous QA MCP that tests apps like a real testing engineer and verifies every certified bug"
 readme = "README.md"
 requires-python = ">=3.10"
