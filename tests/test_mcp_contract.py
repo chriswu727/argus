@@ -92,6 +92,18 @@ def test_coverage_ledger_accumulates_discovered_pages():
     assert pages["unvisited"] == ["/settings"]
 
 
+def test_coverage_action_references_omit_input_values():
+    session = m.Session()
+    session.url = "https://example.test/login"
+    m._record_action(session, "type_into", "Password field", "secret-value")
+    m._record_action(session, "paste_into", "secret-value into token")
+
+    refs = m._coverage_evidence_refs(session, m.Session()._coverage_evidence_cursor)
+    serialized = json.dumps(refs)
+    assert "Password field" in serialized
+    assert "secret-value" not in serialized
+
+
 async def test_observations_and_tool_calls_are_reported(tmp_path, monkeypatch):
     page = tmp_path / "review.html"
     page.write_text("<html><body><h1>Review</h1></body></html>")
@@ -133,6 +145,10 @@ async def test_session_contract_requires_evidence_and_reaches_reports(tmp_path, 
 
     start = getattr(m.start_session, "fn", m.start_session)
     update = getattr(m.coverage_update, "fn", m.coverage_update)
+    click = getattr(m.click_what, "fn", m.click_what)
+    capture = getattr(m.screenshot, "fn", m.screenshot)
+    verify = getattr(m.verify_persistence, "fn", m.verify_persistence)
+    record = getattr(m.record_observation, "fn", m.record_observation)
     end = getattr(m.end_session, "fn", m.end_session)
     try:
         started = await start(
@@ -142,18 +158,31 @@ async def test_session_contract_requires_evidence_and_reaches_reports(tmp_path, 
             time_budget_minutes=5,
         )
         assert "Session protocol (returned once" in started
-        assert "coverage_update only with evidence" in started
+        assert "Mark a goal in_progress before its journey" in started
         assert "Change the account settings" in started
         assert "Do not submit external forms" in started
 
         refused = await update("account settings", "exercised")
         assert "requires concrete evidence" in refused
+        await update("account settings", "in_progress")
+        clicked = await click("Settings")
+        assert "settings.html" in clicked
+        await capture("settings-goal")
+        checked = await verify("present", "Settings")
+        assert "Result: MATCH" in checked
+        await record(
+            "Settings page is understandable",
+            "The settings heading is visible after navigation.",
+            category="usability",
+            screenshot="skip",
+        )
         updated = await update(
             "account settings",
             "exercised",
             "Settings value remained visible after a fresh load.",
         )
         assert "1/1 exercised" in updated
+        assert "Evidence linked:" in updated
         ended = await end()
         assert "Goals exercised: 1/1" in ended
     finally:
@@ -162,16 +191,24 @@ async def test_session_contract_requires_evidence_and_reaches_reports(tmp_path, 
 
     payload = json.loads(next(output_dir.glob("report_*.json")).read_text())
     assert payload["constraints"] == ["Do not submit external forms"]
-    assert payload["coverage"]["goals"][0] == {
-        "goal": "Change the account settings and verify persistence",
-        "status": "exercised",
-        "evidence": "Settings value remained visible after a fresh load.",
-    }
+    goal = payload["coverage"]["goals"][0]
+    assert goal["goal"] == "Change the account settings and verify persistence"
+    assert goal["status"] == "exercised"
+    assert goal["evidence"] == "Settings value remained visible after a fresh load."
+    refs = goal["evidence_refs"]
+    assert any(url.endswith("settings.html") for url in refs["urls"])
+    assert refs["actions"] == [{"tool": "click_what", "description": "Settings"}]
+    assert refs["screenshots"][0]["name"].endswith("settings-goal")
+    assert refs["verifications"][0]["matches"] is True
+    assert refs["findings"][0]["title"] == "Settings page is understandable"
     assert payload["coverage"]["time_budget"]["minutes"] == 5
     assert any(
         path.endswith("settings.html")
-        for path in payload["coverage"]["pages"]["unvisited"]
+        for path in payload["coverage"]["pages"]["visited"]
     )
     report_html = next(output_dir.glob("report_*.html")).read_text()
     assert "Coverage Contract" in report_html
     assert "Settings value remained visible after a fresh load." in report_html
+    assert "Tested URLs" in report_html
+    assert "Verification" in report_html
+    assert "Settings page is understandable" in report_html

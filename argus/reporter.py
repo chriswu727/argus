@@ -494,9 +494,63 @@ class Reporter:
                     status = "untested"
                 evidence = goal.get("evidence") or ""
                 detail = f'<div class="ce">{_esc(evidence)}</div>' if evidence else ""
+                refs = goal.get("evidence_refs") or {}
+                reference_groups = []
+                if refs.get("urls"):
+                    values = "".join(f"<li><code>{_esc(url)}</code></li>" for url in refs["urls"])
+                    reference_groups.append(f"<strong>Tested URLs</strong><ul>{values}</ul>")
+                if refs.get("actions"):
+                    values = "".join(
+                        f'<li><code>{_esc(action.get("tool", "action"))}</code>'
+                        + (f' — {_esc(action.get("description", ""))}' if action.get("description") else "")
+                        + "</li>"
+                        for action in refs["actions"]
+                    )
+                    reference_groups.append(f"<strong>Actions</strong><ul>{values}</ul>")
+                if refs.get("verifications"):
+                    values = "".join(
+                        f'<li><span class="cv {"cv-ok" if check.get("matches") else "cv-bad"}">'
+                        f'{"MATCH" if check.get("matches") else "MISMATCH"}</span> '
+                        f'{_esc(check.get("expect", ""))} {_esc(check.get("target_text", ""))} '
+                        f'@ <code>{_esc(check.get("url", ""))}</code></li>'
+                        for check in refs["verifications"]
+                    )
+                    reference_groups.append(f"<strong>Verification</strong><ul>{values}</ul>")
+                if refs.get("findings"):
+                    finding_items = []
+                    for finding in refs["findings"]:
+                        if finding.get("kind") == "bug":
+                            trust = "verified" if finding.get("verified") else "unverified"
+                            label = f"bug · {finding.get('severity', '')} · {trust}"
+                        else:
+                            label = f"observation · {finding.get('category', '')}"
+                        finding_items.append(
+                            f'<li>{_esc(label)}: {_esc(finding.get("title", ""))}</li>'
+                        )
+                    values = "".join(finding_items)
+                    reference_groups.append(f"<strong>Linked findings</strong><ul>{values}</ul>")
+                if refs.get("screenshots"):
+                    values = "".join(
+                        f'<li>{_esc(screenshot.get("name", "screenshot"))}</li>'
+                        for screenshot in refs["screenshots"]
+                    )
+                    reference_groups.append(f"<strong>Screenshots</strong><ul>{values}</ul>")
+                omitted = refs.get("omitted") or {}
+                omitted_total = sum(value for value in omitted.values() if isinstance(value, int))
+                if omitted_total:
+                    labels = ", ".join(
+                        f"{count} {kind}" for kind, count in omitted.items() if count
+                    )
+                    reference_groups.append(
+                        f'<div class="co">Compact view omits {labels}; counts remain explicit.</div>'
+                    )
+                references = (
+                    '<div class="cr">' + "".join(reference_groups) + "</div>"
+                    if reference_groups else ""
+                )
                 goal_items += (
                     f'<li><span class="cs cs-{status}">{_esc(status.replace("_", " "))}</span> '
-                    f'<strong>{_esc(goal.get("goal", ""))}</strong>{detail}</li>'
+                    f'<strong>{_esc(goal.get("goal", ""))}</strong>{detail}{references}</li>'
                 )
             if not goal_items:
                 goal_items = "<li>No explicit goals supplied; general exploration.</li>"
@@ -590,6 +644,14 @@ h3{{font-size:1.1rem;margin:.5rem 0;color:#f1f5f9}}
 .ac{{color:#94a3b8;font-style:italic}}
 .cb{{color:#94a3b8;margin:.5rem 0}}
 .ce{{color:#94a3b8;margin:.25rem 0 .5rem}}
+.cr{{background:#0f172a;border-left:2px solid #475569;border-radius:4px;margin:.5rem 0 1rem;padding:.7rem .9rem;color:#94a3b8}}
+.cr strong{{color:#cbd5e1;font-size:.82rem}}
+.cr ul{{margin:.25rem 0 .6rem 1.25rem;font-size:.82rem}}
+.cr code{{color:#bfdbfe}}
+.co{{font-size:.75rem;font-style:italic;color:#64748b}}
+.cv{{display:inline-block;padding:1px 5px;border-radius:3px;font-size:.65rem;font-weight:700}}
+.cv-ok{{background:#166534;color:#dcfce7}}
+.cv-bad{{background:#9a3412;color:#ffedd5}}
 .cs{{display:inline-block;padding:2px 7px;border-radius:4px;font-size:.7rem;font-weight:700;text-transform:uppercase;margin-right:.35rem}}
 .cs-exercised{{background:#166534;color:#dcfce7}}
 .cs-blocked{{background:#9a3412;color:#ffedd5}}

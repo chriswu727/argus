@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Link each completed or blocked coverage goal to the URLs, value-redacted
+  actions, screenshots, persistence checks, bugs, and observations produced
+  during its testing window.
+- Render structured goal evidence in HTML reports and preserve the same stable
+  shape in JSON reports.
+
 ## 0.6.0 - 2026-07-21
 
 - Move the full QA protocol from the global MCP instruction into the

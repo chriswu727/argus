@@ -103,7 +103,7 @@ Then just ask, in your agent session:
 
 That's it. The agent drives; Argus keeps it honest and writes the report.
 
-For a scoped review, the host can give `start_session` explicit `goals`, `constraints`, and an advisory `time_budget_minutes`. Argus returns the full testing protocol once, keeps outstanding goals and discovered pages visible in later observations, and requires concrete evidence before `coverage_update` can mark a goal `exercised` or `blocked`. The final HTML and JSON reports preserve both completed and unfinished coverage instead of implying that an incomplete pass was comprehensive.
+For a scoped review, the host can give `start_session` explicit `goals`, `constraints`, and an advisory `time_budget_minutes`. Argus returns the full testing protocol once and keeps outstanding goals and discovered pages visible in later observations. Mark a goal `in_progress` before its journey; when `coverage_update` marks it `exercised` or `blocked`, Argus requires a concrete explanation and automatically links the URLs, value-redacted actions, screenshots, persistence checks, bugs, and observations produced in that testing window. The final HTML and JSON reports preserve both completed and unfinished coverage instead of implying that an incomplete pass was comprehensive.
 
 <details>
 <summary><b>pip installation</b></summary>
@@ -241,7 +241,7 @@ uvx --from argus-testing argus-mcp --tool-profile full --list-tools
 |-------|---------|
 | `start_session` | Start an `exploratory`, `visual`, or `regression` browser review; optionally accept `goals`, `constraints`, and `time_budget_minutes`; return the one-time protocol and initial observation. |
 | `observe` | Return URL, title, description-keyed interactive elements, counts, visible feedback, ARIA tree, and viewport state. |
-| `coverage_update` | Mark a supplied goal `untested`, `in_progress`, `exercised`, or `blocked`; exercised and blocked states require concrete evidence. |
+| `coverage_update` | Open a goal evidence window with `in_progress`, then mark it `exercised` or `blocked`; terminal states require an explanation and automatically link session evidence. |
 | `click_what` | Click the element best matching a natural-language description; return candidates instead of guessing when ambiguous. |
 | `type_into` · `select_into` | Resolve a field by description, then type text or select an option. |
 | `hover_what` · `press_key` | Exercise hover states and keyboard interactions against description-keyed targets. |
@@ -261,7 +261,7 @@ uvx --from argus-testing argus-mcp --tool-profile full --list-tools
 
 </details>
 
-Reports keep original screenshots as evidence and, by default, write compact WebP previews under `report-assets/` instead of base64-embedding every full-size PNG into the HTML. Set `ARGUS_PORTABLE_REPORT=1` when a single self-contained HTML file is more important than size. JSON output includes complete reproduction receipts, the coverage contract, constraints, review mode, tool-call and recorded-step counts, screenshot metadata, and qualitative observations. JUnit suite failure totals match the emitted `<failure>` nodes.
+Reports keep original screenshots as evidence and, by default, write compact WebP previews under `report-assets/` instead of base64-embedding every full-size PNG into the HTML. Set `ARGUS_PORTABLE_REPORT=1` when a single self-contained HTML file is more important than size. JSON output includes complete reproduction receipts, the coverage contract and its structured evidence references, constraints, review mode, tool-call and recorded-step counts, screenshot metadata, and qualitative observations. JUnit suite failure totals match the emitted `<failure>` nodes.
 
 <details>
 <summary><b>Screen profile — 14 tools</b></summary>
