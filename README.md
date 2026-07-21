@@ -2,19 +2,22 @@
 
 <div align="center">
 
+<img src="https://raw.githubusercontent.com/chriswu727/argus/main/assets/argus-icon.png" alt="Argus Testing logo — an eye with a verified check" width="112">
+
 # Argus
 
-**An MCP server that tests apps like a real QA engineer—exploring user journeys, discovering unscripted bugs, and proving each finding before reporting it.**
+**An MCP server that tests apps like a real testing engineer—exploring user journeys, discovering unscripted bugs, and proving each finding before reporting it.**
 
-Argus is an [MCP](https://modelcontextprotocol.io/) server. It adds evidence-first browser QA to Claude Code or any MCP host without taking over the host agent's identity or broader coding task. The agent explores, inspects, verifies persistence, and records reproducible bugs. Every certified finding is **independently re-confirmed from a clean page load** before it's reported.
+Argus is an [MCP](https://modelcontextprotocol.io/) server. It adds evidence-first browser QA to Claude Code, Codex, Cursor, or any MCP host without taking over the host agent's identity or broader coding task. The agent explores, inspects, verifies persistence, and records reproducible bugs. Every certified finding is **independently re-confirmed from a clean page load** before it's reported.
 
 [![PyPI](https://img.shields.io/pypi/v/argus-testing?color=1a7f37)](https://pypi.org/project/argus-testing/)
 [![Python](https://img.shields.io/pypi/pyversions/argus-testing)](https://pypi.org/project/argus-testing/)
 [![MCP server](https://img.shields.io/badge/MCP-server-blue)](https://modelcontextprotocol.io/)
+[![Official MCP Registry](https://img.shields.io/badge/MCP_Registry-listed-5b5bd6)](https://registry.modelcontextprotocol.io/?q=argus)
 [![Capability ceiling](https://img.shields.io/badge/bench-34%2F34-brightgreen)](#benchmarks)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-[Quick start](#quick-start) · [Why Argus](#why-argus-is-different) · [Compared](#how-it-compares) · [Tools](#tool-surface) · [Benchmarks](#benchmarks)
+[Product page](https://yichenwu.dev/projects/argus) · [Quick start](#quick-start) · [Why Argus](#why-argus-is-different) · [Compared](#how-it-compares) · [Tools](#tool-surface) · [Benchmarks](#benchmarks)
 
 </div>
 
@@ -25,7 +28,7 @@ Argus is an [MCP](https://modelcontextprotocol.io/) server. It adds evidence-fir
 Give it a URL; get a report of bugs — each tagged with whether Argus **independently reproduced it** or only observed it:
 
 <div align="center">
-<img src="assets/report.png" alt="Argus bug report — verified findings with reproduction receipts" width="800">
+<img src="https://raw.githubusercontent.com/chriswu727/argus/main/assets/report.png" alt="Argus bug report — verified findings with reproduction receipts" width="800">
 </div>
 
 The green badge is the whole point. Anyone can have an LLM *claim* a bug. Argus re-loads the page from scratch and re-checks the symptom before it says **VERIFIED** — so the report is a list of bugs you can trust, not a list of guesses to triage.
@@ -51,13 +54,45 @@ The agent is the intelligence. Argus supplies concise QA guidance, a description
 
 ## Quick start
 
-With [`uv`](https://docs.astral.sh/uv/) installed, no global Python package install is required:
+With [`uv`](https://docs.astral.sh/uv/) installed, no global Python package install is required. Install Chromium once:
 
 ```bash
 uvx --from playwright playwright install chromium
+```
 
-# Wire it into Claude Code (or Cursor, or any MCP host)
+Then connect Argus to your MCP client.
+
+### Claude Code
+
+```bash
 claude mcp add argus -- uvx --from argus-testing argus-mcp
+```
+
+### Codex and the ChatGPT desktop app
+
+Codex CLI, the Codex IDE extension, and the ChatGPT desktop app share the same local MCP configuration:
+
+```bash
+codex mcp add argus -- uvx --from argus-testing argus-mcp
+```
+
+### Cursor
+
+[![Add Argus to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/install-mcp?name=argus&config=eyJjb21tYW5kIjoidXZ4IiwiYXJncyI6WyItLWZyb20iLCJhcmd1cy10ZXN0aW5nIiwiYXJndXMtbWNwIl19)
+
+The button adds Argus to Cursor; run the Chromium installation command above once before the first test.
+
+### Any stdio MCP client
+
+```json
+{
+  "mcpServers": {
+    "argus": {
+      "command": "uvx",
+      "args": ["--from", "argus-testing", "argus-mcp"]
+    }
+  }
+}
 ```
 
 The default `core` profile exposes the primary web-testing workflow without flooding the host with every specialist tool. Use `uvx --from argus-testing argus-mcp --list-tools` to inspect the selected profile, `--tool-profile screen` for native macOS testing, or `--tool-profile full` for the entire advanced surface. `ARGUS_TOOL_PROFILE` provides the same setting through the environment.
@@ -275,6 +310,14 @@ uvx --from argus-testing argus-mcp --tool-profile full --unsafe
 
 ---
 
+## Local-first security and privacy
+
+Argus runs on your machine and does not send telemetry to an Argus-operated service. Reports and screenshots stay under `./argus-reports` by default; your MCP host and its configured model provider can still receive tool results included in the conversation. Browser actions and native macOS controls can cause real side effects, so use test accounts and non-production data wherever possible.
+
+Read the full [privacy disclosure](PRIVACY.md) and [security policy](SECURITY.md) before using Argus against sensitive systems.
+
+---
+
 ## Philosophy
 
 <details>
@@ -320,6 +363,6 @@ human-eye-fixture/    # DarkShop    (12 human-eye bugs)
 
 <div align="center">
 
-**MIT licensed** · Built by [Yichen Wu](https://github.com/chriswu727) · Issues and PRs welcome
+**MIT licensed** · [Product page](https://yichenwu.dev/projects/argus) · [Agent install guide](llms-install.md) · [Privacy](PRIVACY.md) · [Security](SECURITY.md) · Built by [Yichen Wu](https://github.com/chriswu727)
 
 </div>

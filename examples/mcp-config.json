@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "argus": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "argus-testing",
+        "argus-mcp"
+      ]
+    }
+  }
+}
