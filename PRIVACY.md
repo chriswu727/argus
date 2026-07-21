@@ -6,9 +6,12 @@ cloud service, user account system, analytics endpoint, or telemetry collector.
 ## Data Argus handles
 
 During a test, Argus may process page text, accessibility data, URLs, browser
-console and network events, cookies or storage when the corresponding tools are
-called, screenshots, downloaded-file metadata, and native macOS accessibility
-information in screen mode.
+console and network events, testing goals and constraints, verification targets,
+cookies or storage when the corresponding tools are called, screenshots,
+downloaded-file metadata, and native macOS accessibility information in screen
+mode. Coverage reports omit typed and pasted input values from action references,
+but goals, constraints, verification targets, finding titles, and screenshots are
+evidence and may contain application data; do not put secrets in those fields.
 
 Reports, screenshots, reproduction receipts, state capsules, and regression
 journals are written locally under `./argus-reports` by default. Set

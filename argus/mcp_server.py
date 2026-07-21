@@ -94,6 +94,16 @@ class Session:
         self.constraints: List[str] = []
         self.time_budget_minutes: int = 0
         self.discovered_pages: List[str] = []
+        self.verification_checks: List[dict] = []
+        self._coverage_goal_cursors: dict[int, dict] = {}
+        self._coverage_evidence_cursor: dict = {
+            "actions": 0,
+            "pages": 0,
+            "screenshots": 0,
+            "verifications": 0,
+            "bugs": 0,
+            "observations": 0,
+        }
         self.tool_calls = 0
         self._last_elements = []
         self._last_screen_elements = []
@@ -102,6 +112,7 @@ class Session:
         # self.steps). Each entry: {tool, description, value}. record_bug slices
         # the actions since the previous bug onto Bug.replay_steps.
         self.action_trace: List[dict] = []
+        self.coverage_action_trace: List[dict] = []
         self._actions_since_last_bug: int = 0
         # Liveness marker of the most recently restored state capsule (or None).
         # record_bug re-checks it against the CURRENT page so a finding made
@@ -167,6 +178,16 @@ async def _teardown_active_session() -> None:
 def _record_action(s: "Session", tool: str, description: str = "", value: Optional[str] = None) -> None:
     """Append a structured, replayable action to the session trace."""
     s.action_trace.append({"tool": tool, "description": description, "value": value})
+    _record_coverage_action(s, tool, description)
+
+
+def _record_coverage_action(s: "Session", tool: str, description: str = "") -> None:
+    if tool == "paste_into":
+        description = "field input (value omitted)"
+    s.coverage_action_trace.append({
+        "tool": tool,
+        "description": _short(_redact(description), 120),
+    })
 
 
 def _output_dir() -> str:
@@ -978,6 +999,108 @@ def _coverage_path(url: str) -> str:
     return path
 
 
+def _coverage_reference_url(url: str) -> str:
+    if not url:
+        return ""
+    if url.startswith("screen://"):
+        return url
+    return _coverage_path(url)
+
+
+def _current_coverage_url(s: Session) -> str:
+    if s.mode == "web" and s.browser is not None and s.browser._page is not None:
+        return s.browser._page.url
+    if s.mode == "screen" and s.screen is not None:
+        return f"screen://{s.screen._app_name or 'unknown'}"
+    return s.url or ""
+
+
+def _coverage_cursor(s: Session) -> dict:
+    return {
+        "actions": len(s.coverage_action_trace),
+        "pages": len(s.pages_visited),
+        "screenshots": len(s.screenshots),
+        "verifications": len(s.verification_checks),
+        "bugs": len(s.bugs),
+        "observations": len(s.observations),
+    }
+
+
+def _coverage_evidence_refs(s: Session, cursor: dict) -> dict:
+    urls = []
+    candidates = list(s.pages_visited[cursor["pages"]:])
+    current_url = _current_coverage_url(s)
+    if current_url:
+        candidates.append(current_url)
+    for url in candidates:
+        reference = _coverage_reference_url(url)
+        if reference not in urls:
+            urls.append(reference)
+
+    action_candidates = s.coverage_action_trace[cursor["actions"]:]
+    actions = []
+    for action in action_candidates[:25]:
+        tool = action.get("tool") or "action"
+        description = action.get("description") or ""
+        actions.append({
+            "tool": tool,
+            "description": description,
+        })
+
+    screenshot_candidates = s.screenshots[cursor["screenshots"]:]
+    screenshots = [
+        {
+            "name": screenshot.name,
+            "path": screenshot.path,
+            "url": _coverage_reference_url(screenshot.url),
+        }
+        for screenshot in screenshot_candidates[:10]
+    ]
+    verification_candidates = s.verification_checks[cursor["verifications"]:]
+    verifications = [
+        dict(check)
+        for check in verification_candidates[:10]
+    ]
+
+    bug_candidates = s.bugs[cursor["bugs"]:]
+    observation_candidates = s.observations[cursor["observations"]:]
+    findings = []
+    for bug in bug_candidates[:20]:
+        receipt = bug.reproduction_receipt or {}
+        findings.append({
+            "kind": "bug",
+            "title": bug.title,
+            "severity": bug.severity.value,
+            "verified": receipt.get("reproduced") is True,
+            "url": _coverage_reference_url(bug.url),
+            "screenshot": bug.screenshot_path,
+        })
+    remaining = 20 - len(findings)
+    for observation in observation_candidates[:remaining]:
+        findings.append({
+            "kind": "observation",
+            "title": observation.title,
+            "category": observation.category,
+            "url": _coverage_reference_url(observation.url),
+            "screenshot": observation.screenshot_path,
+        })
+
+    return {
+        "urls": urls[:20],
+        "actions": actions,
+        "screenshots": screenshots,
+        "verifications": verifications,
+        "findings": findings,
+        "omitted": {
+            "urls": max(0, len(urls) - 20),
+            "actions": max(0, len(action_candidates) - 25),
+            "screenshots": max(0, len(screenshot_candidates) - 10),
+            "verifications": max(0, len(verification_candidates) - 10),
+            "findings": max(0, len(bug_candidates) + len(observation_candidates) - 20),
+        },
+    }
+
+
 def _update_coverage_from_state(s: Session, state: PageState) -> None:
     if not hasattr(s, "discovered_pages"):
         s.discovered_pages = []
@@ -1078,7 +1201,7 @@ def _session_protocol(s: Session) -> str:
         "3. HYPOTHESIZE user-affecting failures, including cross-page and persistence failures.",
         "4. VERIFY saves, edits, deletes, submits, and toggles; visible success feedback is not proof.",
         "5. RECORD only reproducible bugs. Use record_observation for qualitative visual or UX evidence.",
-        "6. COVER every important goal and discovered page before ending. Call coverage_update only with evidence.",
+        "6. COVER every important goal and discovered page. Mark a goal in_progress before its journey, then call coverage_update with evidence.",
         "Severity: HIGH for security, data loss, payment, or a blocked primary flow; MEDIUM for workflow friction, deceptive feedback, or inconsistency; LOW for minor UX.",
         "Authority: do not purchase, publish, delete real data, or cause another irreversible external effect unless explicitly authorized.",
     ]
@@ -1700,7 +1823,7 @@ async def observe() -> str:
 
 @mcp.tool()
 async def coverage_update(goal: str, status: str, evidence: str = "") -> str:
-    """Update one supplied testing goal after exercising it or hitting a blocker.
+    """Update one testing goal and attach its session evidence automatically.
 
     Args:
         goal: The goal text, or a unique part of it.
@@ -1723,13 +1846,39 @@ async def coverage_update(goal: str, status: str, evidence: str = "") -> str:
         return error
     assert index is not None
     selected = s.coverage_goals[index]
-    selected["status"] = status
-    selected["evidence"] = "" if status == "untested" else evidence
+    if status == "untested":
+        selected["status"] = status
+        selected["evidence"] = ""
+        selected.pop("evidence_refs", None)
+        s._coverage_goal_cursors.pop(index, None)
+    elif status == "in_progress":
+        selected["status"] = status
+        selected["evidence"] = evidence
+        selected.pop("evidence_refs", None)
+        s._coverage_goal_cursors[index] = _coverage_cursor(s)
+    else:
+        cursor = s._coverage_goal_cursors.setdefault(
+            index, dict(s._coverage_evidence_cursor)
+        )
+        selected["status"] = status
+        selected["evidence"] = evidence
+        selected["evidence_refs"] = _coverage_evidence_refs(s, cursor)
+        s._coverage_evidence_cursor = _coverage_cursor(s)
     snapshot = _coverage_snapshot(s)
-    return (
+    result = (
         f"Coverage updated: {selected['goal']} → {status}.\n"
         + _format_coverage(snapshot)
     )
+    refs = selected.get("evidence_refs")
+    if refs:
+        result += (
+            "\nEvidence linked: "
+            f"{len(refs['urls'])} URL(s), {len(refs['actions'])} action(s), "
+            f"{len(refs['screenshots'])} screenshot(s), "
+            f"{len(refs['verifications'])} verification(s), "
+            f"{len(refs['findings'])} finding(s)."
+        )
+    return result
 
 
 def _format_screen_observation(obs) -> str:
@@ -2706,6 +2855,7 @@ async def hover_what(description: str) -> str:
     ok = await s.browser.hover(idx, s._last_elements)
     if not ok:
         return f"hover_what({description!r}) — failed (element may be off-screen or detached)."
+    _record_coverage_action(s, "hover_what", description)
     return f"Hovered \"{label[:60]}\". observe() to see what just appeared."
 
 
@@ -3028,6 +3178,7 @@ async def upload_file(description: str, paths: list) -> str:
     ok = await s.browser.upload_file(idx, paths, s._last_elements)
     if not ok:
         return f"upload_file({description!r}) — failed."
+    _record_coverage_action(s, "upload_file", f"{description}; {len(paths)} file(s)")
     return f"Attached {len(paths)} file(s) to {description!r}: {', '.join(paths)}"
 
 
@@ -3759,6 +3910,7 @@ async def capsule_save(name: str, liveness_marker: str = "") -> str:
     except Exception as exc:
         return f"capsule_save: could not write capsule — {type(exc).__name__}: {str(exc)[:120]}"
     s.steps.append(f"capsule_save({name!r})")
+    _record_coverage_action(s, "capsule_save", name)
     n_c = len(capsule.get("cookies") or [])
     n_l = len(capsule.get("local") or {})
     n_s = len(capsule.get("session") or {})
@@ -3809,6 +3961,7 @@ async def capsule_restore(name: str) -> str:
     state = await s.browser.get_state()
     s._last_elements = state.elements
     s.steps.append(f"capsule_restore({name!r})")
+    _record_coverage_action(s, "capsule_restore", name)
 
     warn = ""
     if not applied.get("origin_ok", True):
@@ -4010,6 +4163,9 @@ async def go_back() -> str:
     if ok:
         state = await s.browser.get_state()
         s._last_elements = state.elements
+        if state.url not in s.pages_visited:
+            s.pages_visited.append(state.url)
+        _record_coverage_action(s, "go_back", _coverage_reference_url(state.url))
         return f"Went back to {state.url}"
     return "Failed to go back"
 
@@ -4023,6 +4179,7 @@ async def scroll_down() -> str:
         return err
     s.steps.append("Scroll down")
     await s.browser.scroll_down()
+    _record_coverage_action(s, "scroll_down")
     return "Scrolled down. Call observe() to see what's now in view."
 
 
@@ -4748,6 +4905,14 @@ async def verify_persistence(
     matches = (present and expect_norm == "present") or (
         not present and expect_norm == "absent"
     )
+    s.verification_checks.append({
+        "expect": expect_norm,
+        "target_text": _short(target_text, 200),
+        "url": _coverage_reference_url(nav_url),
+        "present": present,
+        "matches": matches,
+        "clear_storage": clear_storage,
+    })
 
     if expect_norm == "absent":
         verdict = (
@@ -5209,6 +5374,9 @@ async def test_form(
     changes = compute_changes(before, after, "form submission")
 
     redirected = after.url != before_url
+    _record_coverage_action(
+        s, "test_form", f"{len(form_fields)} field(s) via {submit_label}"
+    )
     ss_path = await _auto_screenshot(s, "form_result", f"Form: {submit_label}")
     for bug in new_bugs:
         bug.screenshot_path = ss_path
