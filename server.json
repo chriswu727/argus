@@ -1,19 +1,19 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.chriswu727/argus",
-  "title": "Argus",
-  "description": "Evidence-first exploratory browser testing and reproducible bug reporting for coding agents.",
-  "version": "0.5.0",
+  "title": "Argus Testing — Autonomous QA MCP",
+  "description": "Autonomous QA MCP for web and macOS that tests like a real engineer, finds bugs, and verifies them.",
+  "version": "0.5.1",
   "repository": {
     "url": "https://github.com/chriswu727/argus",
     "source": "github"
   },
-  "websiteUrl": "https://github.com/chriswu727/argus",
+  "websiteUrl": "https://yichenwu.dev/projects/argus",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "argus-testing",
-      "version": "0.5.0",
+      "version": "0.5.1",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"

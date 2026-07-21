@@ -1,12 +1,12 @@
 [project]
 name = "argus-testing"
-version = "0.5.0"
-description = "AI-powered exploratory testing agent that discovers bugs like a real user"
+version = "0.5.1"
+description = "Autonomous QA MCP that tests apps like a real testing engineer and verifies every certified bug"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [{name = "Yichen Wu", email = "yichenwujob@gmail.com"}]
-urls = {Homepage = "https://github.com/chriswu727/argus", Repository = "https://github.com/chriswu727/argus"}
+urls = {Homepage = "https://yichenwu.dev/projects/argus", Documentation = "https://github.com/chriswu727/argus#readme", Repository = "https://github.com/chriswu727/argus", Issues = "https://github.com/chriswu727/argus/issues"}
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -14,7 +14,7 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
 ]
-keywords = ["testing", "qa", "ai", "playwright", "agent", "exploratory-testing", "mcp", "claude-code"]
+keywords = ["testing", "qa", "software-testing", "browser-testing", "autonomous-testing", "qa-engineer", "bug-finding", "ai-agent", "playwright", "exploratory-testing", "mcp", "claude-code", "codex"]
 dependencies = [
     "playwright>=1.40.0",
     "litellm>=1.40.0",

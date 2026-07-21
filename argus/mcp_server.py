@@ -28,6 +28,7 @@ from urllib.parse import urljoin, urlparse
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.utilities.types import Image as MCPImage
+from mcp.types import ToolAnnotations
 
 from .browser import BrowserDriver, _redact, _redact_headers
 from .detector import Detector
@@ -5180,6 +5181,132 @@ def _argus_version() -> str:
     """The Argus version — single source is argus.__version__."""
     from . import __version__
     return __version__
+
+
+_READ_ONLY_TOOL_NAMES = frozenset({
+    "observe", "inspect_element", "check_layout", "check_links",
+    "check_performance", "network_requests", "network_request", "cookies_get",
+    "storage_get", "tabs_list", "wait_for_text", "wait_for_request",
+    "get_downloads", "screen_is_running", "screen_session_status",
+    "screen_wait_for_stable",
+})
+
+_DESTRUCTIVE_TOOL_NAMES = frozenset({
+    "start_session", "click_what", "type_into", "select_into", "press_key",
+    "upload_file", "navigate", "go_back", "click_at", "type_at", "drag_at",
+    "drag_what", "drop_file", "paste_into", "set_dialog_handler", "eval_js",
+    "get_errors", "test_action", "test_form", "verify_persistence", "record_bug",
+    "capsule_restore", "regression_check", "network_clear_log",
+    "network_clear_mocks", "network_unmock", "cookies_set", "cookies_clear",
+    "storage_set", "storage_remove", "storage_clear", "tabs_close", "crawl_site",
+    "start_screen_session", "screen_click_what", "screen_click_at",
+    "screen_type_into", "screen_type_at", "screen_press_key", "screen_keys",
+    "screen_drag", "screen_quit", "end_session",
+})
+
+_CLOSED_WORLD_TOOL_NAMES = frozenset({
+    "screenshot_diff", "record_observation", "screen_session_status",
+    "network_clear_log", "network_clear_mocks", "network_unmock", "end_session",
+})
+
+_TOOL_TITLES = {
+    "start_session": "Start Browser Test",
+    "observe": "Observe Current Target",
+    "click_what": "Click Element by Description",
+    "type_into": "Type into Field by Description",
+    "select_into": "Select Option by Description",
+    "hover_what": "Hover over Element by Description",
+    "press_key": "Press Browser Key",
+    "upload_file": "Upload File to Matching Input",
+    "resize": "Resize Browser Viewport",
+    "emulate_device": "Emulate Mobile Device",
+    "navigate": "Navigate Browser",
+    "go_back": "Go Back in Browser",
+    "scroll_down": "Scroll Down",
+    "inspect_element": "Inspect Element",
+    "check_layout": "Check Responsive Layout",
+    "screenshot": "Capture Screenshot",
+    "screenshot_diff": "Compare Screenshots",
+    "get_errors": "Collect Console and Network Errors",
+    "check_links": "Check Internal Links",
+    "check_performance": "Check Browser Performance",
+    "test_action": "Test User Action",
+    "test_form": "Test Form Submission",
+    "verify_persistence": "Verify State after Reload",
+    "record_bug": "Record Confirmed Bug",
+    "record_observation": "Record QA Observation",
+    "capsule_save": "Save Browser State Capsule",
+    "capsule_restore": "Restore Browser State Capsule",
+    "regression_check": "Replay Regression Checks",
+    "end_session": "Finish Test and Write Reports",
+    "start_screen_session": "Start Native macOS Test",
+    "screen_observe": "Observe Native macOS App",
+    "screen_click_what": "Click Native Element by Description",
+    "screen_type_into": "Type into Native Field",
+    "screen_press_key": "Press Native App Key",
+    "screen_wait_for_stable": "Wait for Stable Screen",
+    "screen_launch": "Launch macOS App",
+    "screen_quit": "Quit macOS App",
+    "screen_is_running": "Check Whether App Is Running",
+    "screen_screenshot_region": "Capture Screen Region",
+    "screen_session_status": "Check Native Test Status",
+    "click_at": "Click Browser Coordinates",
+    "cookies_clear": "Clear Browser Cookies",
+    "cookies_get": "Read Browser Cookies",
+    "cookies_set": "Set Browser Cookies",
+    "crawl_site": "Crawl Internal Pages",
+    "drag_at": "Drag between Browser Coordinates",
+    "drag_what": "Drag Element by Description",
+    "drop_file": "Drop File on Matching Target",
+    "emulate_media": "Emulate Color and Motion Preferences",
+    "eval_js": "Evaluate Page JavaScript",
+    "get_downloads": "Inspect Browser Downloads",
+    "hover_at": "Hover at Browser Coordinates",
+    "network_clear_log": "Clear Network Request Log",
+    "network_clear_mocks": "Clear All Network Mocks",
+    "network_mock": "Mock Network Response",
+    "network_request": "Inspect Network Request",
+    "network_requests": "List Network Requests",
+    "network_unmock": "Remove Network Mock",
+    "paste_into": "Paste into Field by Description",
+    "right_click": "Open Element Context Menu",
+    "screen_click_at": "Click Screen Coordinates",
+    "screen_drag": "Drag between Screen Coordinates",
+    "screen_hover_at": "Hover at Screen Coordinates",
+    "screen_keys": "Send Native Key Sequence",
+    "screen_type_at": "Type at Screen Coordinates",
+    "set_dialog_handler": "Configure JavaScript Dialog Response",
+    "storage_clear": "Clear Browser Storage",
+    "storage_get": "Read Browser Storage",
+    "storage_remove": "Remove Browser Storage Value",
+    "storage_set": "Set Browser Storage Value",
+    "tabs_close": "Close Browser Tab",
+    "tabs_list": "List Browser Tabs",
+    "tabs_switch": "Switch Browser Tab",
+    "type_at": "Type at Browser Coordinates",
+    "wait_for_request": "Wait for Network Request",
+    "wait_for_text": "Wait for Visible Text",
+}
+
+
+def _configure_tool_metadata() -> None:
+    tool_names = set(mcp._tool_manager._tools)
+    unknown = (_READ_ONLY_TOOL_NAMES | _DESTRUCTIVE_TOOL_NAMES | _CLOSED_WORLD_TOOL_NAMES) - tool_names
+    if unknown:
+        raise RuntimeError(f"tool metadata references unknown tools: {sorted(unknown)}")
+
+    for name, tool in mcp._tool_manager._tools.items():
+        read_only = name in _READ_ONLY_TOOL_NAMES
+        tool.title = _TOOL_TITLES.get(name, name.replace("_", " ").title())
+        tool.annotations = ToolAnnotations(
+            readOnlyHint=read_only,
+            destructiveHint=False if read_only else name in _DESTRUCTIVE_TOOL_NAMES,
+            idempotentHint=read_only,
+            openWorldHint=name not in _CLOSED_WORLD_TOOL_NAMES,
+        )
+
+
+_configure_tool_metadata()
 
 
 _CORE_TOOL_NAMES = frozenset({

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400" role="img" aria-labelledby="title desc">
+  <title id="title">Argus Testing</title>
+  <desc id="desc">A lime green eye with a check-shaped pupil on a black square.</desc>
+  <rect width="400" height="400" rx="72" fill="#0b0c0a"/>
+  <path d="M52 204C88 132 137 96 200 96s112 36 148 108c-36 72-85 108-148 108S88 276 52 204Z" fill="none" stroke="#c8ff00" stroke-width="24" stroke-linejoin="round"/>
+  <circle cx="200" cy="204" r="72" fill="#151712" stroke="#e0e0e4" stroke-width="14"/>
+  <path d="m161 205 25 26 57-61" fill="none" stroke="#c8ff00" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
