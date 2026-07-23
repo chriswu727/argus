@@ -4,6 +4,8 @@ WORKDIR /app
 
 COPY . .
 
-RUN pip install --no-cache-dir -e . && playwright install chromium && playwright install-deps
+RUN pip install --no-cache-dir . \
+    && playwright install --with-deps chromium \
+    && rm -rf /var/lib/apt/lists/*
 
 ENTRYPOINT ["argus-mcp"]

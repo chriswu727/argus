@@ -65,6 +65,13 @@ def test_client_install_examples_start_the_published_stdio_server():
     assert json.loads(base64.b64decode(encoded)) == expected
 
 
+def test_docker_image_installs_only_chromium_dependencies():
+    dockerfile = (ROOT / "Dockerfile").read_text()
+
+    assert "playwright install --with-deps chromium" in dockerfile
+    assert "playwright install-deps" not in dockerfile
+
+
 def test_every_mcp_tool_has_display_and_risk_metadata():
     from argus.mcp_server import (
         _DESTRUCTIVE_TOOL_NAMES,
