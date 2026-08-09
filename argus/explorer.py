@@ -9,7 +9,7 @@ from rich.console import Console
 from .browser import BrowserDriver
 from .config import Config
 from .detector import Detector
-from .models import Action, ActionType, ExplorationResult, Screenshot
+from .models import Action, ActionType, ExplorationResult, Screenshot, new_run_id
 
 console = Console()
 
@@ -19,6 +19,7 @@ class Explorer:
 
     def __init__(self, config: Config):
         self.config = config
+        self.run_id = new_run_id()
         self.browser = BrowserDriver(
             headless=config.headless,
             viewport_width=config.viewport_width,
@@ -176,6 +177,7 @@ class Explorer:
             duration_seconds=duration,
             focus_areas=[fa.name for fa in self.config.focus_areas],
             screenshots=self.screenshots,
+            run_id=self.run_id,
         )
 
         bug_color = "red" if self.bugs else "green"
@@ -193,7 +195,7 @@ class Explorer:
     async def _take_screenshot(self, name: str, step: str) -> str:
         self._screenshot_counter += 1
         safe_name = f"{self._screenshot_counter:03d}_{name}"
-        ss_dir = Path(self.config.output_dir) / "screenshots"
+        ss_dir = Path(self.config.output_dir) / "screenshots" / self.run_id
         path = str(ss_dir / f"{safe_name}.png")
         await self.browser.screenshot(path)
         url = self.browser._page.url if self.browser._page else ""

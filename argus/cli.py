@@ -154,6 +154,7 @@ def _merge_results(results: list):
         tool_calls=sum(r.tool_calls for r in results),
         review_mode=base.review_mode,
         timestamp=base.timestamp,
+        run_id=base.run_id,
     )
 
 
@@ -183,6 +184,66 @@ def _resolve_output_dir(output: Optional[str]) -> str:
     invisible ('no journaled findings')."""
     import os
     return output or os.environ.get("ARGUS_OUTPUT_DIR") or "./argus-reports"
+
+
+def _format_bytes(value: int) -> str:
+    size = float(value)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if size < 1024 or unit == "TB":
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} TB"
+
+
+@click.command()
+@click.option("--output", "-o", default=None, help="Report directory (defaults to $ARGUS_OUTPUT_DIR, else ./argus-reports)")
+@click.option("--keep-runs", type=click.IntRange(min=0), default=20, show_default=True)
+@click.option("--older-than-days", type=click.IntRange(min=0), default=0, show_default=True)
+@click.option("--max-size-mb", type=click.FloatRange(min=0), default=0.0, show_default=True)
+@click.option("--apply", "apply_changes", is_flag=True, help="Delete the selected run artifacts; otherwise only show the plan")
+def cleanup(output, keep_runs, older_than_days, max_size_mb, apply_changes):
+    """Plan or apply safe cleanup of complete Argus report runs.
+
+    The newest KEEP_RUNS are always protected. Older runs are selected once
+    they exceed that count; OLDER_THAN_DAYS can require a minimum age, and
+    MAX_SIZE_MB can additionally trim unprotected runs to a size budget.
+    Journals and state capsules under .argus are never touched.
+    """
+    from .cleanup import execute_cleanup, plan_cleanup
+
+    output_dir = _resolve_output_dir(output)
+    plan = plan_cleanup(
+        output_dir,
+        keep_runs=keep_runs,
+        older_than_days=older_than_days,
+        max_bytes=int(max_size_mb * 1024 * 1024),
+    )
+    console.print(
+        f"Found {len(plan.runs)} report run(s), {_format_bytes(plan.total_bytes)} total."
+    )
+    if plan.legacy_screenshot_files:
+        console.print(
+            f"Legacy ungrouped screenshots: {plan.legacy_screenshot_files} file(s), "
+            f"{_format_bytes(plan.legacy_screenshot_bytes)}; left untouched because they "
+            "cannot be mapped safely to one old run."
+        )
+    if not plan.selected:
+        console.print("Nothing is eligible for cleanup.")
+        return
+    console.print(
+        f"Selected {len(plan.selected)} run(s), {_format_bytes(plan.selected_bytes)}."
+    )
+    for run in plan.selected[:10]:
+        console.print(f"  {run.run_id}  {_format_bytes(run.size_bytes)}")
+    if len(plan.selected) > 10:
+        console.print(f"  … and {len(plan.selected) - 10} more")
+    if not apply_changes:
+        console.print("Dry run only. Re-run with --apply to delete these complete run artifacts.")
+        return
+    removed_paths, removed_bytes = execute_cleanup(plan)
+    console.print(
+        f"Removed {removed_paths} artifact path(s), {_format_bytes(removed_bytes)}."
+    )
 
 
 async def _run_regression(url: str, output: str, headless: bool = True) -> int:

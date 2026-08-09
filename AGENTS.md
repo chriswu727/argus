@@ -156,6 +156,8 @@ Don't record speculation, polish nits, or static a11y / SEO that
 - `argus-mcp --list-tools` — selected tool profile and exported names.
 - `argus-mcp --tool-profile core|screen|full` — control discovery size.
 - `argus-mcp --unsafe` — turn on `eval_js` (off by default).
+- `argus-cleanup --keep-runs 20` — dry-run report retention; add `--apply`
+  to remove complete old run artifacts without touching journals or capsules.
 - `python -m argus.bench --target all` — reproduce the 34 / 34 matrix.
 - `python -m argus.screen.validate <app names...>` — read-only AX walk
   over running apps, JSON output.

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Bound browser network, error, download, and dialog capture; avoid loading
+  binary or oversized response bodies and redact credentials at capture time.
+- Give every run a unique artifact identity so screenshots and reports cannot
+  overwrite evidence from another session.
+- Add atomic, schema-versioned journal and capsule persistence with visible
+  diagnostics instead of silent write failures.
+- Add the dry-run-first `argus-cleanup` command for removing complete old report
+  runs without touching regression journals or state capsules.
+- Serialize session lifecycle transitions and surface teardown, capture-limit,
+  and secondary-report warnings in the final session summary.
 - Link each completed or blocked coverage goal to the URLs, value-redacted
   actions, screenshots, persistence checks, bugs, and observations produced
   during its testing window.
