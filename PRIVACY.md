@@ -15,8 +15,15 @@ evidence and may contain application data; do not put secrets in those fields.
 
 Reports, screenshots, reproduction receipts, state capsules, and regression
 journals are written locally under `./argus-reports` by default. Set
-`ARGUS_OUTPUT_DIR` to choose another location. Remove that directory when the
-artifacts are no longer needed.
+`ARGUS_OUTPUT_DIR` to choose another location. `argus-cleanup` can plan and
+remove complete old report runs while leaving journals and state capsules
+untouched; it is a dry run unless `--apply` is passed.
+
+Captured request headers, response headers, request bodies, and inspectable API
+response bodies are redacted for common credential-bearing keys before they are
+retained. Response bodies are bounded, and binary or oversized bodies are not
+loaded for inspection. These safeguards reduce common exposure paths but cannot
+recognize every application-specific secret format.
 
 ## Where data can go
 

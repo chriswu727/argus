@@ -45,6 +45,7 @@ argus = "argus.cli:main"
 argus-mcp = "argus.mcp_server:main"
 argus-testing = "argus.mcp_server:main"
 argus-regression = "argus.cli:regression"
+argus-cleanup = "argus.cli:cleanup"
 
 [tool.hatch.build.targets.wheel]
 packages = ["argus"]

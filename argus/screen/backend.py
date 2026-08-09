@@ -110,7 +110,11 @@ class ScreenBackend:
         from AppKit import NSWorkspace
         self._workspace = NSWorkspace.sharedWorkspace()
 
-    async def start(self, target_app: Optional[str] = None) -> ScreenObservation:
+    async def start(
+        self,
+        target_app: Optional[str] = None,
+        screenshot_dir: Optional[str] = None,
+    ) -> ScreenObservation:
         """Bind to the current foreground app (or `target_app` if given).
 
         `target_app` matches the localised app name as shown in the menu
@@ -119,7 +123,7 @@ class ScreenBackend:
         """
         self._load_frameworks()
         self._target_app_name = target_app
-        return await self.observe()
+        return await self.observe(screenshot_dir=screenshot_dir)
 
     async def stop(self) -> None:
         """Nothing to release — AX refs are reference-counted by the
