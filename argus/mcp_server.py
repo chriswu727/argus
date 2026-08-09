@@ -22,6 +22,7 @@ import json
 import os
 import re
 from collections import Counter
+from functools import wraps
 from pathlib import Path
 from typing import List, Optional
 from urllib.parse import urljoin, urlparse
@@ -42,6 +43,7 @@ from .models import (
     PageState,
     Screenshot,
     Severity,
+    new_run_id,
 )
 from .reporter import Reporter
 from .resolver import (
@@ -49,6 +51,16 @@ from .resolver import (
     describe_screen as describe_screen_element,
     resolve_element,
     resolve_screen_element,
+)
+from .storage import (
+    StorageError,
+    atomic_write_json,
+    atomic_write_text,
+    exclusive_file_lock,
+    read_json,
+    read_journal,
+    storage_warning,
+    write_journal,
 )
 
 mcp = FastMCP(
@@ -72,6 +84,7 @@ class Session:
     """
 
     def __init__(self):
+        self.run_id = new_run_id()
         self.mode: Optional[str] = None  # "web" | "screen" | None
         self.review_mode: str = "exploratory"
         self.browser: Optional[BrowserDriver] = None
@@ -129,6 +142,21 @@ class Session:
 
 
 _session = Session()
+_session_transition_lock = asyncio.Lock()
+
+
+def _exclusive_session_transition(func):
+    @wraps(func)
+    async def wrapped(*args, **kwargs):
+        if _session_transition_lock.locked():
+            return (
+                f"{func.__name__}: another session lifecycle operation is in progress; "
+                "wait for it to finish and retry."
+            )
+        async with _session_transition_lock:
+            return await func(*args, **kwargs)
+
+    return wrapped
 
 
 def _require_session() -> Session:
@@ -153,7 +181,7 @@ def _require_web_session(s: "Session", tool: str) -> Optional[str]:
     return None
 
 
-async def _teardown_active_session() -> None:
+async def _teardown_active_session() -> list[str]:
     """Cleanly stop whichever backend the current session holds.
 
     Both start_session and start_screen_session switch modes; tearing down
@@ -162,17 +190,19 @@ async def _teardown_active_session() -> None:
     is set, best-effort.
     """
     if not _session.active:
-        return
+        return []
+    errors: list[str] = []
     if _session.browser is not None:
         try:
             await _session.browser.stop()
-        except Exception:
-            pass
+        except Exception as exc:
+            errors.append(f"browser: {type(exc).__name__}: {str(exc)[:120]}")
     if _session.screen is not None:
         try:
             await _session.screen.stop()
-        except Exception:
-            pass
+        except Exception as exc:
+            errors.append(f"screen: {type(exc).__name__}: {str(exc)[:120]}")
+    return errors
 
 
 def _record_action(s: "Session", tool: str, description: str = "", value: Optional[str] = None) -> None:
@@ -192,6 +222,10 @@ def _record_coverage_action(s: "Session", tool: str, description: str = "") -> N
 
 def _output_dir() -> str:
     return str(Path(os.environ.get("ARGUS_OUTPUT_DIR", "./argus-reports")).expanduser().resolve())
+
+
+def _screenshot_dir(s: "Session") -> Path:
+    return Path(_output_dir()) / "screenshots" / s.run_id
 
 
 # ── persistent test journal (cross-run regression) ──────────────────
@@ -215,11 +249,10 @@ def _bug_fingerprint(bug: "Bug") -> str:
 
 def _journal_entries(origin: str) -> list:
     path = _journal_path(origin)
-    if not path.exists():
-        return []
     try:
-        return json.loads(path.read_text())
-    except Exception:
+        return read_journal(path)
+    except StorageError as exc:
+        storage_warning(str(exc))
         return []
 
 
@@ -253,21 +286,19 @@ def _write_journal(s: "Session") -> None:
             })
     if not fresh:
         return
-    merged = {e["fingerprint"]: e for e in _journal_entries(origin)}
-    for e in fresh:
-        merged[e["fingerprint"]] = e
     path = _journal_path(origin)
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        gi = path.parent / ".gitignore"  # journals embed app text — keep out of git
+    with exclusive_file_lock(path.with_suffix(path.suffix + ".lock")):
+        existing = read_journal(path)
+        merged = {entry["fingerprint"]: entry for entry in existing}
+        for entry in fresh:
+            merged[entry["fingerprint"]] = entry
+        gi = path.parent / ".gitignore"
         if not gi.exists():
-            gi.write_text("*\n")
-        path.write_text(json.dumps(list(merged.values()), indent=2))
-    except Exception:
-        pass
+            atomic_write_text(gi, "*\n")
+        write_journal(path, list(merged.values()))
 
 
-async def _auto_screenshot(s: Session, name: str, step: str) -> str:
+async def _auto_screenshot(s: Session, name: str, step: str) -> Optional[str]:
     """Take a screenshot and register it in the session.
 
     Mode-aware: web-mode goes through Playwright; screen-mode shells
@@ -276,7 +307,7 @@ async def _auto_screenshot(s: Session, name: str, step: str) -> str:
     """
     s._screenshot_counter += 1
     safe_name = f"{s._screenshot_counter:03d}_{name}"
-    path = str(Path(_output_dir()) / "screenshots" / f"{safe_name}.png")
+    path = str(_screenshot_dir(s) / f"{safe_name}.png")
 
     if s.mode == "web" and s.browser is not None:
         await s.browser.screenshot(path)
@@ -288,10 +319,13 @@ async def _auto_screenshot(s: Session, name: str, step: str) -> str:
         try:
             _sp.run(["screencapture", "-t", "png", "-x", path], capture_output=True, timeout=5, check=True)
         except Exception:
-            pass
+            return None
         url = f"screen://{s.screen._app_name or 'unknown'}"
     else:
-        url = ""
+        return None
+
+    if not Path(path).exists():
+        return None
 
     s.screenshots.append(Screenshot(
         path=path, name=safe_name, step=step, url=url,
@@ -1239,6 +1273,7 @@ def _coverage_goal_index(s: Session, query: str) -> tuple[Optional[int], Optiona
 
 
 @mcp.tool()
+@_exclusive_session_transition
 async def start_session(
     url: str,
     headless: bool = True,
@@ -1277,7 +1312,12 @@ async def start_session(
     if time_budget_minutes < 0 or time_budget_minutes > 240:
         return "start_session: time_budget_minutes must be 0 or between 1 and 240."
 
-    await _teardown_active_session()
+    teardown_errors = await _teardown_active_session()
+    if teardown_errors:
+        return (
+            "start_session: could not close the active session safely — "
+            + "; ".join(teardown_errors)
+        )
 
     new_session = Session()
     new_session.mode = "web"
@@ -1357,6 +1397,7 @@ async def start_session(
 
 
 @mcp.tool()
+@_exclusive_session_transition
 async def start_screen_session(target_app: str = "") -> str:
     """Start a macOS screen-mode testing session.
 
@@ -1406,7 +1447,12 @@ async def start_screen_session(target_app: str = "") -> str:
         except OSError:
             pass
 
-    await _teardown_active_session()
+    teardown_errors = await _teardown_active_session()
+    if teardown_errors:
+        return (
+            "start_screen_session: could not close the active session safely — "
+            + "; ".join(teardown_errors)
+        )
 
     _session = Session()
     _session.mode = "screen"
@@ -1415,7 +1461,10 @@ async def start_screen_session(target_app: str = "") -> str:
     _session._safety = screen_safety.SafetyState()
     try:
         obs = await screen_safety.with_timeout(
-            _session.screen.start(target_app=target_app or None)
+            _session.screen.start(
+                target_app=target_app or None,
+                screenshot_dir=str(_screenshot_dir(_session)),
+            )
         )
     except asyncio.TimeoutError:
         return (
@@ -1677,8 +1726,11 @@ def _new_events_line(s, before_console: int, before_network: int) -> str:
     b = getattr(s, "browser", None)
     if b is None:
         return ""
-    ne = b.network_errors[before_network:]
-    ce = b.console_errors[before_console:]
+    if hasattr(b, "errors_since"):
+        ce, ne = b.errors_since(before_console, before_network)
+    else:
+        ce = b.console_errors[before_console:]
+        ne = b.network_errors[before_network:]
     if not ne and not ce:
         return ""
     bits = []
@@ -1947,7 +1999,9 @@ async def _observe_screen(s: Session) -> str:
 
     from .screen import safety as screen_safety
     try:
-        obs = await screen_safety.with_timeout(s.screen.observe())
+        obs = await screen_safety.with_timeout(
+            s.screen.observe(screenshot_dir=str(_screenshot_dir(s)))
+        )
     except asyncio.TimeoutError:
         screen_safety.record_action(
             s._safety, "screen_observe", "", "timeout", success=False,
@@ -2464,6 +2518,7 @@ async def screen_wait_for_stable(
                 threshold_pct=threshold_pct,
                 stable_window_ms=stable_window_ms,
                 poll_ms=poll_ms,
+                screenshot_dir=str(_screenshot_dir(s)),
             ),
             # Allow the wait itself to hit its own internal timeout, then
             # add a small grace before the safety wrapper trips.
@@ -2641,7 +2696,7 @@ async def screen_screenshot_region(
         return f"screen_screenshot_region: invalid dimensions {width}x{height}."
 
     s.steps.append(f"screen_screenshot_region({x},{y},{width}x{height})")
-    out_dir = _output_dir() + "/screenshots"
+    out_dir = str(_screenshot_dir(s))
     path = s.screen.capture_region(x, y, width, height, screenshot_dir=out_dir)
     if path is None:
         return (
@@ -2718,7 +2773,7 @@ async def click_what(description: str) -> str:
 
     # Peek error counts so we can surface any console/network error THIS click
     # triggers (see _new_events_line) without draining them from get_errors.
-    _bc, _bn = len(s.browser.console_errors), len(s.browser.network_errors)
+    _bc, _bn = s.browser.error_cursors()
     _bt = _tab_count(s)  # to detect a click that spawns a new tab
     # Route through browser.click so a duplicate-label target hits the RESOLVED
     # element (nth-aware), not the first DOM match.
@@ -2911,10 +2966,10 @@ async def press_key(key: str, description: str = "") -> str:
             return err
         idx = s._last_elements.index(el)
         target = f' on "{(el.text or el.aria_label or el.placeholder or el.name or el.tag)[:50]}"'
-        _bc, _bn = len(s.browser.console_errors), len(s.browser.network_errors)
+        _bc, _bn = s.browser.error_cursors()
         ok = await s.browser.press_key(key, idx, s._last_elements)
     else:
-        _bc, _bn = len(s.browser.console_errors), len(s.browser.network_errors)
+        _bc, _bn = s.browser.error_cursors()
         ok = await s.browser.press_key(key)
     if not ok:
         return f"press_key: failed to press {key!r} (unknown key name? use Playwright names like Escape/Enter/Tab/ArrowDown)."
@@ -3034,7 +3089,7 @@ async def click_at(x: int, y: int) -> str:
     err = _require_web_session(s, "click_at")
     if err:
         return err
-    _bc, _bn = len(s.browser.console_errors), len(s.browser.network_errors)
+    _bc, _bn = s.browser.error_cursors()
     ok = await s.browser.click_at(x, y)
     if not ok:
         return f"click_at: failed to click ({x},{y})."
@@ -3515,16 +3570,24 @@ async def network_requests(
     shown = filtered[-limit:]
 
     if not shown:
+        dropped = (
+            f" {s.browser.network_log.dropped} oldest request(s) were discarded by the capture limit."
+            if s.browser.network_log.dropped else ""
+        )
         return (
             f"No matching requests "
             f"(filters: url~{url_substring!r}, method={method!r}, "
-            f"status≥{status_min}). Total captured this session: {len(log)}."
+            f"status≥{status_min}). Total retained this session: {len(log)}.{dropped}"
         )
 
     lines = [
         f"Network log: {len(shown)} of {len(filtered)} matching "
         f"({len(log)} total this session)."
     ]
+    if s.browser.network_log.dropped:
+        lines.append(
+            f"  Capture limit reached: {s.browser.network_log.dropped} oldest request(s) were discarded."
+        )
     for e in shown:
         url_display = _redact(e.get("url") or "")[:90]
         status = e.get("status")
@@ -3610,6 +3673,8 @@ async def network_request(
             # The whole point: read what the server actually returned — a 200
             # whose body says {"error": ...} is the deception behind a toast.
             lines.append(rbody)
+        elif e.get("response_body_omitted"):
+            lines.append(f"  body omitted: {e['response_body_omitted']}")
 
     return "\n".join(lines)
 
@@ -3904,9 +3969,8 @@ async def capsule_save(name: str, liveness_marker: str = "") -> str:
         # committed, even under a non-default ARGUS_OUTPUT_DIR.
         gi = _capsule_dir() / ".gitignore"
         if not gi.exists():
-            gi.write_text("*\n")
-        import json as _json
-        path.write_text(_json.dumps(capsule, indent=2))
+            atomic_write_text(gi, "*\n")
+        atomic_write_json(path, capsule)
     except Exception as exc:
         return f"capsule_save: could not write capsule — {type(exc).__name__}: {str(exc)[:120]}"
     s.steps.append(f"capsule_save({name!r})")
@@ -3953,8 +4017,9 @@ async def capsule_restore(name: str) -> str:
             return (f"capsule_restore: no capsule named {name!r}. "
                     f"capsule_save({name!r}, liveness_marker=...) it first.")
     try:
-        import json as _json
-        capsule = _json.loads(path.read_text())
+        capsule = read_json(path)
+        if not isinstance(capsule, dict):
+            raise StorageError(f"invalid capsule structure in {path}")
         applied = await s.browser.capsule_apply(capsule)
     except Exception as exc:
         return f"capsule_restore: failed to apply — {type(exc).__name__}: {str(exc)[:120]}"
@@ -5129,7 +5194,7 @@ async def test_action(target: str, expectation: str = "", expect: Optional[dict]
 
     s.browser.drain_errors()
     before = await s.browser.get_state()
-    net_pre = len(s.browser.network_log)  # bracket the requests THIS click fires
+    net_pre = s.browser.network_cursor()
 
     try:
         # Route through _locator so a duplicate-label target hits the resolved
@@ -5189,7 +5254,7 @@ async def test_action(target: str, expectation: str = "", expect: Optional[dict]
         lines.append(f"\nAttached {len(new_bugs) - len(filed_bugs)} browser event(s) "
                      "to an existing root-cause finding.")
 
-    new_reqs = s.browser.network_log[net_pre:]
+    new_reqs = s.browser.network_events_since(net_pre)
     xs_evidence, xs_check = _reconcile_action(new_reqs, before, after)
     if new_reqs or xs_check:
         lines.append("")
@@ -5472,28 +5537,49 @@ async def regression_check() -> str:
 
 
 @mcp.tool()
+@_exclusive_session_transition
 async def end_session() -> str:
     """End the testing session, close the browser, and generate an HTML error report.
 
     Returns the path to the generated report and a summary of findings.
     """
     s = _require_session()
+    warnings: list[str] = []
+
+    if s.mode == "web" and s.browser is not None:
+        dropped = {
+            name: count for name, count in s.browser.capture_drops().items() if count
+        }
+        if dropped:
+            summary = ", ".join(f"{name}={count}" for name, count in dropped.items())
+            warnings.append(f"capture limits discarded oldest events ({summary})")
 
     if s.mode == "web":
-        # Persist re-checkable findings so a later run can regression-test them.
         try:
             _write_journal(s)
-        except Exception:
-            pass
+        except Exception as exc:
+            warnings.append(
+                f"journal was not saved: {type(exc).__name__}: {str(exc)[:160]}"
+            )
 
     if s.mode == "web" and s.browser is not None:
         # No blind final drain here: auto-filing console/network bugs after the
         # agent has stopped means they can never be judged or re-confirmed.
         # Events captured during the session were already filed (tagged
         # auto-captured) via get_errors / test_action / test_form / crawl_site.
-        await s.browser.stop()
+        try:
+            await s.browser.stop()
+        except Exception as exc:
+            warnings.append(
+                f"browser teardown was incomplete: {type(exc).__name__}: {str(exc)[:160]}"
+            )
     elif s.mode == "screen" and s.screen is not None:
-        await s.screen.stop()
+        try:
+            await s.screen.stop()
+        except Exception as exc:
+            warnings.append(
+                f"screen teardown was incomplete: {type(exc).__name__}: {str(exc)[:160]}"
+            )
 
     duration = asyncio.get_event_loop().time() - (s.start_time or 0)
     coverage = _coverage_snapshot(s, duration)
@@ -5512,11 +5598,19 @@ async def end_session() -> str:
         review_mode=s.review_mode,
         constraints=s.constraints,
         coverage=coverage,
+        run_id=s.run_id,
     )
 
     output_dir = _output_dir()
     reporter = Reporter()
-    report_path = reporter.generate(result, output_dir)
+    try:
+        report_path = reporter.generate(result, output_dir)
+        warnings.extend(reporter.warnings)
+    except Exception as exc:
+        report_path = ""
+        warnings.append(
+            f"report was not saved: {type(exc).__name__}: {str(exc)[:160]}"
+        )
 
     # Reset session
     global _session
@@ -5524,7 +5618,11 @@ async def end_session() -> str:
 
     # Build summary
     lines = [
-        f"Session ended. Report saved: {report_path}",
+        (
+            f"Session ended. Report saved: {report_path}"
+            if report_path
+            else "Session ended, but the report could not be saved."
+        ),
         f"",
         f"Summary:",
         f"  Tool calls: {result.tool_calls}",
@@ -5535,6 +5633,8 @@ async def end_session() -> str:
         f"  Screenshots: {len(result.screenshots)}",
         f"  Duration: {duration:.1f}s",
     ]
+    if warnings:
+        lines.append("  Warnings: " + " | ".join(warnings))
     goal_summary = result.coverage.get("summary", {})
     if goal_summary.get("total"):
         lines.append(

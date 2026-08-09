@@ -18,7 +18,7 @@ keywords = ["testing", "qa", "software-testing", "browser-testing", "autonomous-
 dependencies = [
     "playwright>=1.40.0",
     "litellm>=1.40.0",
-    "mcp[cli]>=1.0.0",
+    "mcp[cli]>=1.0.0,<2.0.0",
     "click>=8.0.0",
     "pydantic>=2.0.0",
     "pyyaml>=6.0",
@@ -45,6 +45,7 @@ argus = "argus.cli:main"
 argus-mcp = "argus.mcp_server:main"
 argus-testing = "argus.mcp_server:main"
 argus-regression = "argus.cli:regression"
+argus-cleanup = "argus.cli:cleanup"
 
 [tool.hatch.build.targets.wheel]
 packages = ["argus"]

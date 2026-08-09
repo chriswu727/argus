@@ -3,7 +3,19 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+import re
 from typing import Dict, List, Optional
+from uuid import uuid4
+
+
+def new_run_id() -> str:
+    return f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{uuid4().hex[:6]}"
+
+
+def validated_run_id(value: str) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,119}", value or ""):
+        raise ValueError("run_id must contain only letters, numbers, dot, underscore, or hyphen")
+    return value
 
 
 class Severity(str, Enum):
@@ -197,3 +209,4 @@ class ExplorationResult:
     constraints: List[str] = field(default_factory=list)
     coverage: Dict = field(default_factory=dict)
     timestamp: datetime = field(default_factory=datetime.now)
+    run_id: str = field(default_factory=new_run_id)

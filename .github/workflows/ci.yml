@@ -29,6 +29,8 @@ jobs:
           cache: pip
       - name: Install package
         run: python -m pip install --upgrade pip && python -m pip install -e '.[dev]'
+      - name: Smoke-test package import
+        run: python -c "from argus.mcp_server import mcp; assert mcp is not None"
       - name: Install Chromium
         run: python -m playwright install --with-deps chromium
       - name: Run tests

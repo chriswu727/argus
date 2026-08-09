@@ -11,7 +11,8 @@ from urllib.parse import quote
 from PIL import Image
 
 from .browser import _redact
-from .models import Bug, BugType, ExplorationResult, Screenshot, Severity
+from .models import Bug, BugType, ExplorationResult, Screenshot, Severity, validated_run_id
+from .storage import StorageError, atomic_write_text
 
 _BUGTYPE_LABELS = {
     BugType.CONSOLE_ERROR: "Console Error",
@@ -238,42 +239,50 @@ def _trust_rank(bug: Bug) -> int:
 class Reporter:
     """Generates HTML and machine-readable QA reports."""
 
+    def __init__(self) -> None:
+        self.warnings: List[str] = []
+
     def generate(
         self,
         result: ExplorationResult,
         output_dir: str,
         portable: Optional[bool] = None,
     ) -> str:
+        self.warnings = []
         out = Path(output_dir)
         out.mkdir(parents=True, exist_ok=True)
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        ts = validated_run_id(result.run_id)
         path = out / f"report_{ts}.html"
         if portable is None:
             portable = os.environ.get("ARGUS_PORTABLE_REPORT", "").strip().lower() in {
                 "1", "true", "yes", "on",
             }
         asset_dir = None if portable else out / "report-assets" / f"report_{ts}"
-        path.write_text(
+        atomic_write_text(
+            path,
             self._build_html(
                 result,
                 report_dir=out,
                 portable=portable,
                 asset_dir=asset_dir,
             ),
-            encoding="utf-8",
         )
         # Machine-readable siblings so Argus is consumable, not just readable:
         # JSON for API/programmatic use, JUnit XML for CI (the universal format
         # a pipeline can gate on). Best-effort — a serialization hiccup must not
         # cost the human-readable report that already succeeded.
-        try:
-            (out / f"report_{ts}.json").write_text(self._build_json(result), encoding="utf-8")
-            (out / f"report_{ts}.junit.xml").write_text(self._build_junit(result), encoding="utf-8")
-            # SARIF: GitHub code scanning / PR annotations ingest this, so Argus
-            # findings surface inline in review — the dev-workflow half of the vision.
-            (out / f"report_{ts}.sarif").write_text(self._build_sarif(result), encoding="utf-8")
-        except Exception:
-            pass
+        siblings = (
+            (out / f"report_{ts}.json", self._build_json),
+            (out / f"report_{ts}.junit.xml", self._build_junit),
+            (out / f"report_{ts}.sarif", self._build_sarif),
+        )
+        for sibling, build in siblings:
+            try:
+                atomic_write_text(sibling, build(result))
+            except (StorageError, ValueError, TypeError) as exc:
+                self.warnings.append(
+                    f"could not write {sibling.name}: {type(exc).__name__}: {exc}"
+                )
         return str(path)
 
     def _build_sarif(self, r: ExplorationResult) -> str:
@@ -322,6 +331,7 @@ class Reporter:
             by_sev[f["severity"]] = by_sev.get(f["severity"], 0) + 1
         doc = {
             "tool": "argus",
+            "run_id": r.run_id,
             "url": r.url,
             "generated_at": datetime.now().isoformat(),
             "duration_seconds": r.duration_seconds,
