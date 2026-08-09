@@ -12,6 +12,8 @@
   runs without touching regression journals or state capsules.
 - Serialize session lifecycle transitions and surface teardown, capture-limit,
   and secondary-report warnings in the final session summary.
+- Keep the MCP SDK on its supported 1.x API and fail fast on package-import
+  incompatibilities before browser installation in CI and release builds.
 - Link each completed or blocked coverage goal to the URLs, value-redacted
   actions, screenshots, persistence checks, bugs, and observations produced
   during its testing window.
