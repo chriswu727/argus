@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -10,9 +11,14 @@ from playwright.async_api import Browser, BrowserContext, Page, async_playwright
 from typing import Dict, List, Optional, Tuple
 
 from .models import InteractiveElement, PageState
+from .runtime import BoundedEventLog, positive_env_int
 
 # Cap on how much of a (redacted) response body we keep for inspection.
-_BODY_CAP = 16 * 1024
+_BODY_CAP = positive_env_int("ARGUS_MAX_RESPONSE_BODY_BYTES", 16 * 1024)
+_BODY_READ_CAP = positive_env_int("ARGUS_MAX_RESPONSE_READ_BYTES", 256 * 1024)
+_CAPTURE_UNKNOWN_LENGTH_BODY = os.environ.get(
+    "ARGUS_CAPTURE_UNKNOWN_LENGTH_BODY", ""
+).strip().lower() in {"1", "true", "yes", "on"}
 
 # Field-name fragment that marks a secret-bearing key (matched anywhere in the
 # key, so authToken / id_token / sessionId / x-csrf all hit).
@@ -85,6 +91,34 @@ def _capture_body(raw: bytes, headers: dict) -> Optional[str]:
     if len(text) > _BODY_CAP:
         text = text[:_BODY_CAP] + f"\n…[truncated, {len(raw)} bytes total]"
     return text
+
+
+def _response_body_capture_reason(headers: dict, resource_type: str, status: int) -> Optional[str]:
+    ctype = next(
+        (str(value).lower() for key, value in (headers or {}).items()
+         if key.lower() == "content-type"),
+        "",
+    )
+    length = next(
+        (str(value) for key, value in (headers or {}).items()
+         if key.lower() == "content-length"),
+        "",
+    )
+    texty = ("json", "text/", "xml", "javascript", "x-www-form-urlencoded")
+    if ctype and not any(token in ctype for token in texty):
+        return f"non-text content type {ctype.split(';', 1)[0]}"
+    if resource_type not in {"xhr", "fetch"} and not (
+        resource_type == "document" and status >= 400
+    ):
+        return f"resource type {resource_type or 'unknown'} is not inspectable API content"
+    try:
+        if length and int(length) > _BODY_READ_CAP:
+            return f"content-length exceeds {_BODY_READ_CAP} bytes"
+    except ValueError:
+        return "invalid content-length header"
+    if not length and not _CAPTURE_UNKNOWN_LENGTH_BODY:
+        return "missing content-length; set ARGUS_CAPTURE_UNKNOWN_LENGTH_BODY=1 to inspect it"
+    return None
 
 # JS snippet to extract visible interactive elements from the page.
 # Walks open shadow roots too: querySelectorAll does not cross shadow
@@ -729,17 +763,22 @@ class BrowserDriver:
         self._browser: Optional[Browser] = None
         self._context: Optional[BrowserContext] = None
         self._page: Optional[Page] = None
-        self.console_errors: List[Dict] = []
-        self.network_errors: List[Dict] = []
+        error_cap = positive_env_int("ARGUS_MAX_ERROR_EVENTS", 500)
+        self.console_errors = BoundedEventLog[Dict](error_cap)
+        self.network_errors = BoundedEventLog[Dict](error_cap)
         # Downloads triggered this session (Export CSV / Download invoice / PDF).
         # Playwright Download objects — resolved to name+bytes lazily on query so
         # the agent can VERIFY an export actually fired and isn't empty/corrupt.
-        self._downloads: List[object] = []
+        self._downloads = BoundedEventLog[object](
+            positive_env_int("ARGUS_MAX_DOWNLOAD_EVENTS", 50)
+        )
         # Full request/response log — every HTTP call this session has
         # made, regardless of status. Used by network_requests / network_request
         # tools so the agent can verify "did the right /api/foo get called
         # with the right payload" without manually scraping anything.
-        self.network_log: List[Dict] = []
+        self.network_log = BoundedEventLog[Dict](
+            positive_env_int("ARGUS_MAX_NETWORK_EVENTS", 2000)
+        )
         # Request-mock routes registered by the agent. {pattern: {response_dict}}.
         self._mock_routes: Dict[str, Dict] = {}
         # Live route handlers, kept out of _mock_routes (which is surfaced to the
@@ -748,7 +787,9 @@ class BrowserDriver:
         # JS dialog handling — agent queues a response, the handler pops one
         # for each fired alert/confirm/prompt, falls back to auto-dismiss.
         self._dialog_queue: List[Dict] = []
-        self._dialog_log: List[Dict] = []
+        self._dialog_log = BoundedEventLog[Dict](
+            positive_env_int("ARGUS_MAX_DIALOG_EVENTS", 100)
+        )
 
     # -- lifecycle --
 
@@ -858,8 +899,8 @@ class BrowserDriver:
                 "url": request.url,
                 "method": request.method,
                 "resource_type": request.resource_type,
-                "headers": dict(request.headers),
-                "post_data": request.post_data,
+                "headers": _redact_headers(dict(request.headers)),
+                "post_data": _redact(request.post_data or "") or None,
                 "started_at": datetime.now().isoformat(),
                 "page_url": page_url or (self._page.url if self._page else ""),
                 "status": None,
@@ -880,18 +921,30 @@ class BrowserDriver:
             if entry is not None:
                 entry["status"] = response.status
                 try:
-                    entry["response_headers"] = dict(response.headers)
+                    raw_headers = dict(response.headers)
+                    entry["response_headers"] = _redact_headers(raw_headers)
                 except Exception:
+                    raw_headers = {}
                     entry["response_headers"] = None
                 try:
-                    body = await response.body()
-                    entry["response_size"] = len(body) if body else 0
-                    # Keep the decoded body (capped/redacted) — the agent needs
-                    # to read the payload behind a misleading toast (e.g. a 200
-                    # whose body is {"error": ...}). Previously fetched only for
-                    # its length and discarded.
-                    entry["response_body"] = _capture_body(
-                        body, entry.get("response_headers") or {})
+                    omitted = _response_body_capture_reason(
+                        raw_headers,
+                        response.request.resource_type,
+                        response.status,
+                    )
+                    if omitted:
+                        length = next(
+                            (value for key, value in raw_headers.items()
+                             if key.lower() == "content-length"),
+                            None,
+                        )
+                        entry["response_size"] = int(length) if length and str(length).isdigit() else None
+                        entry["response_body"] = None
+                        entry["response_body_omitted"] = omitted
+                    else:
+                        body = await response.body()
+                        entry["response_size"] = len(body) if body else 0
+                        entry["response_body"] = _capture_body(body, raw_headers)
                 except Exception:
                     entry["response_size"] = None
                     entry["response_body"] = None
@@ -1088,6 +1141,30 @@ class BrowserDriver:
     def network_log_snapshot(self) -> List[Dict]:
         """Return a shallow copy of the captured request/response log."""
         return list(self.network_log)
+
+    def network_cursor(self) -> int:
+        return self.network_log.cursor()
+
+    def network_events_since(self, cursor: int) -> List[Dict]:
+        return self.network_log.since(cursor)
+
+    def error_cursors(self) -> Tuple[int, int]:
+        return self.console_errors.cursor(), self.network_errors.cursor()
+
+    def errors_since(self, console_cursor: int, network_cursor: int) -> Tuple[List[Dict], List[Dict]]:
+        return (
+            self.console_errors.since(console_cursor),
+            self.network_errors.since(network_cursor),
+        )
+
+    def capture_drops(self) -> Dict[str, int]:
+        return {
+            "network": self.network_log.dropped,
+            "console_errors": self.console_errors.dropped,
+            "network_errors": self.network_errors.dropped,
+            "downloads": self._downloads.dropped,
+            "dialogs": self._dialog_log.dropped,
+        }
 
     def clear_network_log(self) -> int:
         n = len(self.network_log)

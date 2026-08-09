@@ -143,6 +143,31 @@ Same description-keyed tools, but the target is whatever app is foreground on ma
 
 </details>
 
+### Artifact and resource limits
+
+Argus writes each run's screenshots into its own run directory so later tests
+cannot overwrite earlier evidence. Long browser sessions also keep bounded
+in-memory event logs and only read response bodies for inspectable API traffic;
+binary and oversized bodies are skipped before they enter Python memory.
+
+Report cleanup is explicit and dry-run by default. The newest 20 complete runs
+are protected in this example; `.argus` journals and state capsules are never
+deleted:
+
+```bash
+argus-cleanup --output ./argus-reports --keep-runs 20
+argus-cleanup --output ./argus-reports --keep-runs 20 --apply
+```
+
+Use `--older-than-days` and `--max-size-mb` for stricter policies. Advanced
+limits can be adjusted with `ARGUS_MAX_NETWORK_EVENTS`,
+`ARGUS_MAX_ERROR_EVENTS`, `ARGUS_MAX_DOWNLOAD_EVENTS`,
+`ARGUS_MAX_DIALOG_EVENTS`, `ARGUS_MAX_RESPONSE_BODY_BYTES`, and
+`ARGUS_MAX_RESPONSE_READ_BYTES`. Responses without a declared length are skipped
+by default; `ARGUS_CAPTURE_UNKNOWN_LENGTH_BODY=1` opts into reading them. When a
+limit discards old evidence, Argus says so in tool output and the final session
+summary.
+
 ---
 
 ## Why Argus is different
