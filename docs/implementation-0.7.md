@@ -15,7 +15,7 @@ the compatibility baseline. No paid model evaluation is required for this work.
 - [x] Harden persistence, report exporters and active-run cleanup.
 - [x] Add local monitoring HTTP endpoints, SSE, metrics and dashboard.
 - [x] Add lint, types, architecture checks and fault/integration tests.
-- [x] Document architecture, decisions, extension points and interview evidence.
+- [x] Document architecture, decisions, extension points and verification.
 - [x] Validate wheel and source distributions and run a wheel browser smoke test
   outside the source checkout.
 
@@ -55,4 +55,4 @@ and MCP Registry metadata in dependency order. Source of truth for publication:
 No distributed scheduler, multi-tenant authentication, encrypted capsules or
 whole-repository strict typing. Native macOS live UI was not exercised in this
 web-focused release validation. See `architecture.md` for limits and failure
-semantics; these boundaries must not be overstated in résumé claims.
+semantics.

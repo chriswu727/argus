@@ -58,7 +58,7 @@ TESTING STRATEGIES you must apply systematically:
    - Valid data first to understand happy path
    - Invalid email formats: "notanemail", "a@", "@b.com"
    - Password edge cases: single char "a", empty, 200+ chars "a"*200
-   - Special characters: < > " ' & ; | \\ / { } and unicode 中文 🔥
+   - Special characters: < > " ' & ; | \\ / { }, non-ASCII text, and emoji
    - SQL injection: ' OR 1=1 -- and "; DROP TABLE users; --
    - XSS payloads: <script>alert('xss')</script> and <img onerror=alert(1) src=x>
    - Very long strings: 500+ character inputs

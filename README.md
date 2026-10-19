@@ -464,10 +464,9 @@ human-eye-fixture/    # DarkShop    (12 human-eye bugs)
 ```
 
 Start with [Architecture](docs/architecture.md), [design decisions](docs/decisions.md)
-and [Contributing](CONTRIBUTING.md). The [interview guide](docs/interview-guide.md)
-maps design claims to implementation, tests and explicit limitations. The
-autonomous LiteLLM exploration loop remains a separate workflow; shared
-regression does not import or mutate the MCP server.
+and [Contributing](CONTRIBUTING.md) for implementation boundaries, tests and
+extension points. The autonomous LiteLLM exploration loop remains a separate
+workflow; shared regression does not import or mutate the MCP server.
 
 ---
 
