@@ -1,8 +1,10 @@
 """The exported MCP surface is a public contract, not an implementation detail."""
+
 from __future__ import annotations
 
-from pathlib import Path
 import json
+from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 
 import argus.mcp_server as m
@@ -20,6 +22,7 @@ async def test_start_returns_observation_and_screenshot_returns_mcp_image(tmp_pa
     page = tmp_path / "page.html"
     page.write_text("<html><body><h1>Contract page</h1><button>Save</button></body></html>")
     monkeypatch.setenv("ARGUS_OUTPUT_DIR", str(tmp_path / "reports"))
+    m.runtime.settings = replace(m.runtime.settings, output_dir=Path(str(tmp_path / "reports")))
 
     start = getattr(m.start_session, "fn", m.start_session)
     end = getattr(m.end_session, "fn", m.end_session)
@@ -36,7 +39,7 @@ async def test_start_returns_observation_and_screenshot_returns_mcp_image(tmp_pa
         assert Path(screenshot_path).is_absolute()
         assert Path(screenshot_path).exists()
     finally:
-        if m._session.active:
+        if m.runtime.session.active:
             await end()
 
 
@@ -109,6 +112,7 @@ async def test_observations_and_tool_calls_are_reported(tmp_path, monkeypatch):
     page.write_text("<html><body><h1>Review</h1></body></html>")
     output_dir = tmp_path / "reports"
     monkeypatch.setenv("ARGUS_OUTPUT_DIR", str(output_dir))
+    m.runtime.settings = replace(m.runtime.settings, output_dir=Path(str(output_dir)))
 
     start = getattr(m.start_session, "fn", m.start_session)
     observe = getattr(m.observe, "fn", m.observe)
@@ -142,6 +146,7 @@ async def test_session_contract_requires_evidence_and_reaches_reports(tmp_path, 
     (tmp_path / "settings.html").write_text("<html><body><h1>Settings</h1></body></html>")
     output_dir = tmp_path / "reports"
     monkeypatch.setenv("ARGUS_OUTPUT_DIR", str(output_dir))
+    m.runtime.settings = replace(m.runtime.settings, output_dir=Path(str(output_dir)))
 
     start = getattr(m.start_session, "fn", m.start_session)
     update = getattr(m.coverage_update, "fn", m.coverage_update)
@@ -186,7 +191,7 @@ async def test_session_contract_requires_evidence_and_reaches_reports(tmp_path, 
         ended = await end()
         assert "Goals exercised: 1/1" in ended
     finally:
-        if m._session.active:
+        if m.runtime.session.active:
             await end()
 
     payload = json.loads(next(output_dir.glob("report_*.json")).read_text())
@@ -202,10 +207,7 @@ async def test_session_contract_requires_evidence_and_reaches_reports(tmp_path, 
     assert refs["verifications"][0]["matches"] is True
     assert refs["findings"][0]["title"] == "Settings page is understandable"
     assert payload["coverage"]["time_budget"]["minutes"] == 5
-    assert any(
-        path.endswith("settings.html")
-        for path in payload["coverage"]["pages"]["visited"]
-    )
+    assert any(path.endswith("settings.html") for path in payload["coverage"]["pages"]["visited"])
     report_html = next(output_dir.glob("report_*.html")).read_text()
     assert "Coverage Contract" in report_html
     assert "Settings value remained visible after a fresh load." in report_html

@@ -9,6 +9,7 @@ language. We try to honour that intent without forcing the agent to
 look up integer element indices. When intent is ambiguous, we surface
 the top candidates so the agent can rephrase rather than misclick.
 """
+
 from __future__ import annotations
 
 import re
@@ -29,6 +30,7 @@ class ResolveResult:
     - reason="no_match": no element scored above zero.
     - reason="no_elements": the page exposed nothing interactive.
     """
+
     found: Optional[InteractiveElement]
     candidates: List[Tuple[int, InteractiveElement]]  # (score, element)
     reason: str
@@ -66,16 +68,58 @@ _KIND_HINTS = {
 # not content. A literal region label (a "Navigation" menu item) is still
 # matched first by the exact-label fast path, so dropping these is safe.
 _STOPWORDS = {
-    "the", "a", "an", "this", "that", "in", "on", "of", "to",
-    "row", "rows", "item", "items", "entry", "task", "tasks", "issue", "ticket",
-    "column", "columns", "near", "for", "with",
-    "named", "labeled", "labelled", "label", "labels", "containing", "value", "whose",
-    "navigation", "nav", "navbar", "header", "footer", "sidebar", "toolbar", "bar",
+    "the",
+    "a",
+    "an",
+    "this",
+    "that",
+    "in",
+    "on",
+    "of",
+    "to",
+    "row",
+    "rows",
+    "item",
+    "items",
+    "entry",
+    "task",
+    "tasks",
+    "issue",
+    "ticket",
+    "column",
+    "columns",
+    "near",
+    "for",
+    "with",
+    "named",
+    "labeled",
+    "labelled",
+    "label",
+    "labels",
+    "containing",
+    "value",
+    "whose",
+    "navigation",
+    "nav",
+    "navbar",
+    "header",
+    "footer",
+    "sidebar",
+    "toolbar",
+    "bar",
 }
 
 _ORDINAL_WORDS = {
-    "first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5,
-    "sixth": 6, "seventh": 7, "eighth": 8, "ninth": 9, "tenth": 10,
+    "first": 1,
+    "second": 2,
+    "third": 3,
+    "fourth": 4,
+    "fifth": 5,
+    "sixth": 6,
+    "seventh": 7,
+    "eighth": 8,
+    "ninth": 9,
+    "tenth": 10,
 }
 
 
@@ -90,20 +134,20 @@ def extract_ordinal(desc: str) -> Tuple[str, Optional[int]]:
     d = desc.strip()
     m = re.search(r"#\s*(\d+)\s*$", d)
     if m:
-        return d[:m.start()].strip(), int(m.group(1))
+        return d[: m.start()].strip(), int(m.group(1))
     m = re.search(r"\b(\d+)(?:st|nd|rd|th)\b", d, re.IGNORECASE)
     if m:
-        return (d[:m.start()] + d[m.end():]).strip(), int(m.group(1))
+        return (d[: m.start()] + d[m.end() :]).strip(), int(m.group(1))
     toks = d.split()
     if len(toks) > 1:  # a lone "second"/"last" is a label, not a position
         for i, t in enumerate(toks):
             low = t.lower()
             if low in _ORDINAL_WORDS:
-                return " ".join(toks[:i] + toks[i + 1:]).strip(), _ORDINAL_WORDS[low]
+                return " ".join(toks[:i] + toks[i + 1 :]).strip(), _ORDINAL_WORDS[low]
             # "last X" -> from the end. The exact-label fast path runs before
             # this, so a real label like "Last name" is matched verbatim first.
             if low == "last":
-                return " ".join(toks[:i] + toks[i + 1:]).strip(), -1
+                return " ".join(toks[:i] + toks[i + 1 :]).strip(), -1
     return d, None
 
 
@@ -163,7 +207,7 @@ def _strip_kind(desc: str) -> Tuple[List[str], Optional[str]]:
     # Strip surrounding quotes AND parens/brackets agents habitually wrap a label
     # or context in (`link "Tasks"`, `Title field (Buy groceries)`) — punctuation,
     # not part of the element's text, and left on they match nothing.
-    raw = [w.strip('"“”‘’\'`()[]{}') for w in desc.strip().split()]
+    raw = [w.strip("\"“”‘’'`()[]{}") for w in desc.strip().split()]
     raw = [w for w in raw if w]
     # A kind word can sit anywhere ("Submit button", "the Delete button for X"),
     # not just at the end. Consume EVERY kind word (first one is the signal) so a
@@ -348,8 +392,9 @@ def resolve_element(
         _norm = " ".join(description.lower().split())
         verbatim = [el for el in elements if _label_equals(el, _norm)]
         if len(verbatim) == 1:
-            return ResolveResult(found=verbatim[0],
-                                 candidates=[(110, verbatim[0])], reason="unique")
+            return ResolveResult(
+                found=verbatim[0], candidates=[(110, verbatim[0])], reason="unique"
+            )
 
     # Kind hint comes from the full description; the ordinal token (if any)
     # carries no kind word, so detect kind before stripping anything.
@@ -375,8 +420,7 @@ def resolve_element(
     if phrase:
         exact = [el for el in pool if _label_equals(el, phrase)]
         if len(exact) == 1:
-            return ResolveResult(found=exact[0],
-                                 candidates=[(110, exact[0])], reason="unique")
+            return ResolveResult(found=exact[0], candidates=[(110, exact[0])], reason="unique")
 
     # A trailing "#N" is read as a POSITION by extract_ordinal ("Delete #2" = the
     # 2nd Delete). But "#N" is just as often a LITERAL identifier — issue #42,
@@ -384,8 +428,10 @@ def resolve_element(
     # literal "#N" token, it's an identifier, not a position: keep it as content
     # so scoring targets the right row instead of a positional guess.
     _hm = re.search(r"#\s*(\d+)", description)
-    if _hm and any(_has_token("#" + _hm.group(1),
-                              (el.text or "") + " " + (el.parent_context or "")) for el in pool):
+    if _hm and any(
+        _has_token("#" + _hm.group(1), (el.text or "") + " " + (el.parent_context or ""))
+        for el in pool
+    ):
         ordinal = None
         core, _ = split_description(description)
     else:
@@ -409,8 +455,12 @@ def resolve_element(
         if ordinal == -1:
             return ResolveResult(found=band[-1], candidates=[(100, band[-1])], reason="unique")
         if ordinal is not None and 1 <= ordinal <= len(band):
-            return ResolveResult(found=band[ordinal - 1], candidates=[(100, band[ordinal - 1])], reason="unique")
-        return ResolveResult(found=None, candidates=[(90, el) for el in band[:5]], reason="ambiguous")
+            return ResolveResult(
+                found=band[ordinal - 1], candidates=[(100, band[ordinal - 1])], reason="unique"
+            )
+        return ResolveResult(
+            found=None, candidates=[(90, el) for el in band[:5]], reason="ambiguous"
+        )
 
     scored: List[Tuple[int, InteractiveElement]] = []
     for el in pool:
@@ -448,7 +498,9 @@ def resolve_element(
         face == core or _has_token(core, face) for face in attribute_faces
     )
     if top_score < 40 and not (
-        (explicit_path_target and top_score >= 24) or explicit_attribute_target or ordinal is not None
+        (explicit_path_target and top_score >= 24)
+        or explicit_attribute_target
+        or ordinal is not None
     ):
         return ResolveResult(found=None, candidates=scored[:5], reason="no_match")
 
@@ -460,11 +512,15 @@ def resolve_element(
         band = [el for sc, el in scored if sc == top_score]
         band.sort(key=lambda el: el.index)
         if ordinal == -1 and band:  # "last X" -> last in document order
-            return ResolveResult(found=band[-1],
-                                 candidates=[(top_score, band[-1])], reason="unique")
+            return ResolveResult(
+                found=band[-1], candidates=[(top_score, band[-1])], reason="unique"
+            )
         if 1 <= ordinal <= len(band):
-            return ResolveResult(found=band[ordinal - 1],
-                                 candidates=[(top_score, band[ordinal - 1])], reason="unique")
+            return ResolveResult(
+                found=band[ordinal - 1],
+                candidates=[(top_score, band[ordinal - 1])],
+                reason="unique",
+            )
         return ResolveResult(found=None, candidates=scored[:5], reason="ambiguous")
 
     if len(scored) == 1 or top_score >= runner_up + 15:
@@ -479,7 +535,9 @@ def resolve_element(
     # can only sharpen the pick, never mislead.
     band = [el for sc, el in scored if sc == top_score]
     if len(band) >= 2:
-        ctx = [(el, set(re.findall(r"[a-z0-9]+", (el.parent_context or "").lower()))) for el in band]
+        ctx = [
+            (el, set(re.findall(r"[a-z0-9]+", (el.parent_context or "").lower()))) for el in band
+        ]
         minimal = [el for el, ts in ctx if ts and all(el is o or ts < ots for o, ots in ctx)]
         if len(minimal) == 1:
             return ResolveResult(found=minimal[0], candidates=scored[:3], reason="unique")
@@ -648,8 +706,7 @@ def resolve_screen_element(
     if phrase:
         exact = [el for el in pool if _screen_label_equals(el, phrase)]
         if len(exact) == 1:
-            return ResolveResult(found=exact[0],
-                                 candidates=[(110, exact[0])], reason="unique")
+            return ResolveResult(found=exact[0], candidates=[(110, exact[0])], reason="unique")
 
     description, ordinal = extract_ordinal(description)
     core, _ = split_description(description)
@@ -676,8 +733,11 @@ def resolve_screen_element(
         band = [el for sc, el in scored if sc == top_score]
         band.sort(key=lambda el: (getattr(el, "y", 0), getattr(el, "x", 0)))
         if 1 <= ordinal <= len(band):
-            return ResolveResult(found=band[ordinal - 1],
-                                 candidates=[(top_score, band[ordinal - 1])], reason="unique")
+            return ResolveResult(
+                found=band[ordinal - 1],
+                candidates=[(top_score, band[ordinal - 1])],
+                reason="unique",
+            )
         return ResolveResult(found=None, candidates=scored[:5], reason="ambiguous")
 
     if len(scored) == 1 or top_score >= runner_up + 15:

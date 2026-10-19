@@ -9,22 +9,24 @@ Bench is intentionally simple: scripted competent-agent runs.
 A `--agent <model>` mode (real LLM driving the same MCP tools) will
 plug in here later by exposing the same `(bug_id, name, fn)` shape.
 """
+
 from __future__ import annotations
 
 import json
 import os
 import time
 import urllib.request
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Awaitable, Callable, List, Optional, Tuple
 
 import argus.mcp_server as mcp_module
 from argus.models import Bug
-
+from argus.settings import Settings
 
 # eval_js needs --unsafe — bench enables it.
 os.environ.setdefault("ARGUS_UNSAFE_EVAL", "1")
+mcp_module.runtime.settings = replace(Settings.from_env(), unsafe_eval=True)
 
 
 # ── Result types ────────────────────────────────────────────────────
@@ -127,8 +129,7 @@ class BenchReport:
             "",
             f"- Fixture: `{self.fixture_url}`",
             f"- Duration: {self.finished_at - self.started_at:.1f} s",
-            f"- **Recall: {self.caught} / {self.total} "
-            f"= {self.recall * 100:.0f} %**",
+            f"- **Recall: {self.caught} / {self.total} = {self.recall * 100:.0f} %**",
         ]
         if self.fp_total:
             lines.append(
@@ -163,10 +164,7 @@ class BenchReport:
                     f"{r.method:<13} | {r.notes[:30]:<30} |"
                 )
             else:
-                lines.append(
-                    f"| {r.bug_id:>2} | {r.name[:55]:<55} | {mark:<6} | "
-                    f"{r.method:<13} |"
-                )
+                lines.append(f"| {r.bug_id:>2} | {r.name[:55]:<55} | {mark:<6} | {r.method:<13} |")
         return "\n".join(lines)
 
 
@@ -184,10 +182,7 @@ async def reset(mode: str = "seeded") -> None:
     """POST /api/test/reset?mode=... on whatever fixture this session is on."""
     res = await call(
         mcp_module.eval_js,
-        code=(
-            f"() => fetch('/api/test/reset?mode={mode}', "
-            f"{{method:'POST'}}).then(r => r.json())"
-        ),
+        code=(f"() => fetch('/api/test/reset?mode={mode}', {{method:'POST'}}).then(r => r.json())"),
     )
     if "ok" not in res.lower():
         raise RuntimeError(f"reset({mode!r}) failed: {res}")
@@ -262,11 +257,13 @@ async def run_scenarios(
     print(f"Running {len(scenarios)} scenarios...\n")
 
     await call(mcp_module.start_session, base_url + ("/" if not base_url.endswith("/") else ""))
-    s = mcp_module._session
+    s = mcp_module.runtime.session
 
     report = BenchReport(
-        target=target, fixture_url=base_url,
-        started_at=started, finished_at=started,
+        target=target,
+        fixture_url=base_url,
+        started_at=started,
+        finished_at=started,
     )
 
     for scenario in scenarios:
@@ -280,10 +277,17 @@ async def run_scenarios(
             caught, method = False, "error"
             err_str = repr(exc)
         elapsed = time.time() - t0
-        report.results.append(ScenarioResult(
-            bug_id=bug_id, name=name, caught=caught, method=method,
-            notes=(err_str or "")[:60], elapsed_s=elapsed, kind=kind,
-        ))
+        report.results.append(
+            ScenarioResult(
+                bug_id=bug_id,
+                name=name,
+                caught=caught,
+                method=method,
+                notes=(err_str or "")[:60],
+                elapsed_s=elapsed,
+                kind=kind,
+            )
+        )
         mark = "[Y]" if caught else "[ ]"
         suffix = f" ({err_str})" if err_str else ""
         print(f"  {mark} #{bug_id:>2}  {name[:60]:<60} {elapsed:5.1f}s{suffix}")
@@ -291,11 +295,12 @@ async def run_scenarios(
     await call(mcp_module.end_session)
     report.finished_at = time.time()
 
-    print(f"\nRecall: {report.caught} / {report.total} = "
-          f"{report.recall * 100:.0f} %")
+    print(f"\nRecall: {report.caught} / {report.total} = {report.recall * 100:.0f} %")
     if report.fp_total:
-        print(f"FP-resistance: {report.fp_resisted} / {report.fp_total} = "
-              f"{report.fp_resistance * 100:.0f} %")
+        print(
+            f"FP-resistance: {report.fp_resisted} / {report.fp_total} = "
+            f"{report.fp_resistance * 100:.0f} %"
+        )
     print(f"Duration: {report.finished_at - report.started_at:.1f} s")
 
     if out_json:

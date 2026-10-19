@@ -41,3 +41,32 @@ recognize every application-specific secret format.
 Argus does not intentionally transmit test artifacts to the project maintainer.
 Review reports and screenshots before sharing them because they can contain
 sensitive application data.
+
+## Replay inputs and state capsules
+
+Typed, pasted and selected values are stored in a per-session in-memory vault.
+Action traces retain opaque references; exports omit those references and mark
+input-dependent steps `requires_input`. Closing, replacing, cancelling or timing
+out a session clears its vault. This is reference removal, not a guarantee of
+cryptographic erasure from Python memory, swap or process dumps. The host already
+knows the inputs it supplied. Page content, human-authored evidence, prompts,
+console messages and screenshots may independently reveal the same information.
+
+State capsules intentionally contain raw cookies and browser storage. They use
+atomic writes, schema validation, owner-only files on POSIX, and a defensive
+`.gitignore`. They are not encrypted. They persist until explicitly deleted by
+the user; ordinary report cleanup does not remove them. Do not share them.
+
+## Optional local monitor and diagnostic logs
+
+`--monitor-port` enables a read-only HTTP dashboard on `127.0.0.1` only. Status,
+SSE events and metrics contain operation names, timestamps, state, error codes,
+run IDs and counts, not tool arguments, page URLs, page text, input values or
+images. The event ring is bounded and process-local, not durable audit storage.
+Host/Origin validation reduces cross-site access; there is no authentication
+against other local processes. Do not expose the port publicly.
+
+Structured Argus diagnostics go to stderr, never the MCP stdout channel.
+Operation diagnostics use allowlisted metadata rather than raw arguments or
+exception tracebacks. Dependency diagnostics and explicit tool outputs have
+their own formats. Review host logs before sharing them.

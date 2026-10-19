@@ -16,6 +16,7 @@ the user must grant via System Settings, then re-run.
 Cross-platform: probes return granted=True with a "n/a" detail on
 non-Darwin platforms so #27/#28 can short-circuit cleanly.
 """
+
 from __future__ import annotations
 
 import platform
@@ -29,9 +30,10 @@ from typing import List
 @dataclass
 class PermissionCheck:
     """The outcome of a single permission probe."""
-    name: str          # human-readable name
-    granted: bool      # was the probe satisfied?
-    detail: str        # short reason / observed result
+
+    name: str  # human-readable name
+    granted: bool  # was the probe satisfied?
+    detail: str  # short reason / observed result
     settings_url: str  # `x-apple.systempreferences:` deep link to grant
 
 
@@ -49,13 +51,13 @@ def check_screen_recording() -> PermissionCheck:
     """
     if not is_macos():
         return PermissionCheck(
-            "Screen Recording", True, "n/a (non-macOS)", "",
+            "Screen Recording",
+            True,
+            "n/a (non-macOS)",
+            "",
         )
 
-    settings_url = (
-        "x-apple.systempreferences:com.apple.preference.security"
-        "?Privacy_ScreenCapture"
-    )
+    settings_url = "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
 
     tmp = Path(tempfile.gettempdir()) / "argus_screen_probe.png"
     if tmp.exists():
@@ -67,40 +69,45 @@ def check_screen_recording() -> PermissionCheck:
     try:
         result = subprocess.run(
             ["screencapture", "-t", "png", "-x", "-R", "0,0,100,100", str(tmp)],
-            capture_output=True, timeout=5,
+            capture_output=True,
+            timeout=5,
         )
     except FileNotFoundError:
         return PermissionCheck(
-            "Screen Recording", False,
+            "Screen Recording",
+            False,
             "`screencapture` binary not found",
             settings_url,
         )
     except subprocess.TimeoutExpired:
         return PermissionCheck(
-            "Screen Recording", False,
+            "Screen Recording",
+            False,
             "screencapture timed out — system may be prompting",
             settings_url,
         )
 
     if not tmp.exists():
         return PermissionCheck(
-            "Screen Recording", False,
-            "screencapture produced no output (rc="
-            f"{result.returncode})",
+            "Screen Recording",
+            False,
+            f"screencapture produced no output (rc={result.returncode})",
             settings_url,
         )
 
     size = tmp.stat().st_size
     if size < 500:
         return PermissionCheck(
-            "Screen Recording", False,
-            f"capture produced a {size}-byte image (suspiciously small — "
-            "likely permission denied)",
+            "Screen Recording",
+            False,
+            f"capture produced a {size}-byte image (suspiciously small — likely permission denied)",
             settings_url,
         )
 
     return PermissionCheck(
-        "Screen Recording", True, f"captured 100x100 patch ({size} bytes)",
+        "Screen Recording",
+        True,
+        f"captured 100x100 patch ({size} bytes)",
         settings_url,
     )
 
@@ -115,13 +122,13 @@ def check_accessibility() -> PermissionCheck:
     """
     if not is_macos():
         return PermissionCheck(
-            "Accessibility", True, "n/a (non-macOS)", "",
+            "Accessibility",
+            True,
+            "n/a (non-macOS)",
+            "",
         )
 
-    settings_url = (
-        "x-apple.systempreferences:com.apple.preference.security"
-        "?Privacy_Accessibility"
-    )
+    settings_url = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
 
     try:
         result = subprocess.run(
@@ -136,25 +143,31 @@ def check_accessibility() -> PermissionCheck:
         )
     except FileNotFoundError:
         return PermissionCheck(
-            "Accessibility", False, "`osascript` not found", settings_url,
+            "Accessibility",
+            False,
+            "`osascript` not found",
+            settings_url,
         )
     except subprocess.TimeoutExpired:
         return PermissionCheck(
-            "Accessibility", False,
+            "Accessibility",
+            False,
             "osascript timed out — system may be prompting",
             settings_url,
         )
 
     if result.returncode == 0 and result.stdout.strip():
         return PermissionCheck(
-            "Accessibility", True,
+            "Accessibility",
+            True,
             f"can query System Events (sees {result.stdout.strip()!r})",
             settings_url,
         )
 
     err = (result.stderr or "").strip().splitlines()[-1] if result.stderr else ""
     return PermissionCheck(
-        "Accessibility", False,
+        "Accessibility",
+        False,
         f"osascript failed: {err[:160] or 'no error message'}",
         settings_url,
     )
@@ -182,17 +195,12 @@ def render_report(checks: List[PermissionCheck]) -> str:
         lines.append(f"        {c.detail}")
         if not c.granted:
             all_ok = False
-            lines.append(
-                "        Grant via: System Settings -> Privacy & Security -> "
-                f"{c.name}"
-            )
+            lines.append(f"        Grant via: System Settings -> Privacy & Security -> {c.name}")
             lines.append(f"        Open directly: {c.settings_url}")
         lines.append("")
 
     if all_ok:
-        lines.append(
-            "All checks passed. Argus screen mode is ready to launch."
-        )
+        lines.append("All checks passed. Argus screen mode is ready to launch.")
     else:
         lines.append(
             "Fix the missing grants above, then re-run "
@@ -219,4 +227,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     import sys as _sys
+
     _sys.exit(main())

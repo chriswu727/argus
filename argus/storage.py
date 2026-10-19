@@ -4,11 +4,11 @@ import json
 import os
 import sys
 import tempfile
-import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from filelock import FileLock, Timeout
 
 JOURNAL_SCHEMA_VERSION = 1
 
@@ -29,9 +29,9 @@ def read_json(path: Path) -> Any:
 
 
 def atomic_write_text(path: Path, text: str, encoding: str = "utf-8") -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
     temporary: Path | None = None
     try:
+        path.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(
             mode="w",
             encoding=encoding,
@@ -64,43 +64,16 @@ def exclusive_file_lock(
     timeout_seconds: float = 5.0,
     stale_after_seconds: float = 60.0,
 ):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    deadline = time.monotonic() + timeout_seconds
-    acquired = False
-    while not acquired:
-        try:
-            descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-            try:
-                os.write(descriptor, f"{os.getpid()}\n".encode())
-            finally:
-                os.close(descriptor)
-            acquired = True
-        except FileExistsError:
-            try:
-                stale = time.time() - path.stat().st_mtime > stale_after_seconds
-            except FileNotFoundError:
-                continue
-            if stale:
-                try:
-                    path.unlink()
-                    continue
-                except FileNotFoundError:
-                    continue
-            if time.monotonic() >= deadline:
-                raise StorageError(f"timed out waiting for storage lock {path}")
-            time.sleep(0.05)
-        except OSError as exc:
-            raise StorageError(
-                f"could not create storage lock {path}: {type(exc).__name__}: {exc}"
-            ) from exc
     try:
-        yield
-    finally:
-        if acquired:
-            try:
-                path.unlink()
-            except FileNotFoundError:
-                pass
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # The OS releases this lock on process exit. Never unlink its inode:
+        # waiters may already hold it open, which would create two lock domains.
+        with FileLock(path, timeout=timeout_seconds):
+            yield
+    except Timeout as exc:
+        raise StorageError(f"timed out waiting for storage lock {path}") from exc
+    except OSError as exc:
+        raise StorageError(f"storage lock failed for {path}: {exc}") from exc
 
 
 def read_journal(path: Path) -> list[dict]:

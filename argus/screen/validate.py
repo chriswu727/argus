@@ -15,6 +15,7 @@ Usage:
     python -m argus.screen.validate Finder Notes   # walk a list of apps
     python -m argus.screen.validate --json out.json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -26,9 +27,9 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import List, Optional
 
+from ..resolver import resolve_screen_element
 from .backend import ScreenBackend
 from .permissions import gate_screen_mode
-from ..resolver import resolve_screen_element
 
 
 @dataclass
@@ -70,12 +71,14 @@ async def validate_app(name: Optional[str]) -> AppValidation:
         label = el.title or el.value or el.description or el.role_description
         if not label:
             continue
-        sample_elements.append({
-            "role": el.role,
-            "label": str(label)[:80],
-            "rect": [el.x, el.y, el.width, el.height],
-            "enabled": el.enabled,
-        })
+        sample_elements.append(
+            {
+                "role": el.role,
+                "label": str(label)[:80],
+                "rect": [el.x, el.y, el.width, el.height],
+                "enabled": el.enabled,
+            }
+        )
         if len(sample_elements) >= 10:
             break
 
@@ -88,15 +91,18 @@ async def validate_app(name: Optional[str]) -> AppValidation:
         if not probe:
             continue
         result = resolve_screen_element(probe, obs.elements)
-        samples.append({
-            "probe": probe,
-            "outcome": result.reason,
-            "matched_role": result.found.role if result.found else None,
-            "matched_label": (
-                (result.found.title or result.found.value or result.found.description)
-                if result.found else None
-            ),
-        })
+        samples.append(
+            {
+                "probe": probe,
+                "outcome": result.reason,
+                "matched_role": result.found.role if result.found else None,
+                "matched_label": (
+                    (result.found.title or result.found.value or result.found.description)
+                    if result.found
+                    else None
+                ),
+            }
+        )
 
     return AppValidation(
         name=obs.foreground_app,
@@ -137,7 +143,7 @@ async def run(targets: List[str]) -> dict:
 def render_text(report: dict) -> str:
     if not report.get("ok"):
         return f"Screen-mode validation failed: {report.get('error')}"
-    lines = [f"Argus screen-mode validation"]
+    lines = ["Argus screen-mode validation"]
     lines.append(f"  duration: {report['duration_s']}s")
     lines.append("")
     for r in report["results"]:
@@ -177,11 +183,12 @@ def render_text(report: dict) -> str:
 
 def main() -> int:
     p = argparse.ArgumentParser(prog="python -m argus.screen.validate")
-    p.add_argument("targets", nargs="*",
-                   help="App names to walk (e.g. Finder Notes Safari). "
-                        "Empty = frontmost app.")
-    p.add_argument("--json", type=Path, default=None,
-                   help="Write the report as JSON to this path.")
+    p.add_argument(
+        "targets",
+        nargs="*",
+        help="App names to walk (e.g. Finder Notes Safari). Empty = frontmost app.",
+    )
+    p.add_argument("--json", type=Path, default=None, help="Write the report as JSON to this path.")
     args = p.parse_args()
 
     report = asyncio.run(run(args.targets))

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -49,7 +50,8 @@ def test_storage_lock_times_out_instead_of_racing(tmp_path):
         with pytest.raises(StorageError, match="timed out"):
             with exclusive_file_lock(lock, timeout_seconds=0.01):
                 pass
-    assert not lock.exists()
+    with exclusive_file_lock(lock, timeout_seconds=0):
+        assert lock.exists()
 
 
 def test_stale_storage_lock_is_recovered(tmp_path):
@@ -61,7 +63,8 @@ def test_stale_storage_lock_is_recovered(tmp_path):
     with exclusive_file_lock(lock, stale_after_seconds=60):
         assert lock.exists()
 
-    assert not lock.exists()
+    with exclusive_file_lock(lock, timeout_seconds=0):
+        assert lock.exists()
 
 
 def test_journal_reads_legacy_list_and_writes_versioned_document(tmp_path):
@@ -79,6 +82,7 @@ def test_journal_reads_legacy_list_and_writes_versioned_document(tmp_path):
 
 def test_corrupt_journal_is_diagnosed(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("ARGUS_OUTPUT_DIR", str(tmp_path))
+    m.runtime.settings = replace(m.runtime.settings, output_dir=Path(str(tmp_path)))
     path = m._journal_path("example.test")
     path.parent.mkdir(parents=True)
     path.write_text("{broken")

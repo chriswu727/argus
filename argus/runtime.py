@@ -5,7 +5,6 @@ from collections import deque
 from collections.abc import Iterator, Sequence
 from typing import Generic, TypeVar, overload
 
-
 T = TypeVar("T")
 
 

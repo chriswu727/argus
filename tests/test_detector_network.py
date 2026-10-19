@@ -1,4 +1,5 @@
 """Detector tests for process_network_errors."""
+
 from __future__ import annotations
 
 
@@ -25,12 +26,14 @@ def test_4xx_is_medium_severity(detector, empty_steps):
 
 def test_network_error_keeps_event_page_instead_of_drain_page(detector, empty_steps):
     bugs = detector.process_network_errors(
-        [{
-            "method": "GET",
-            "url": "http://example.test/missing",
-            "page_url": "http://example.test/search-result",
-            "status": 404,
-        }],
+        [
+            {
+                "method": "GET",
+                "url": "http://example.test/missing",
+                "page_url": "http://example.test/search-result",
+                "status": 404,
+            }
+        ],
         url="http://example.test/later",
         steps=empty_steps,
     )
