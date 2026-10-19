@@ -14,7 +14,10 @@ from argus.settings import Settings
 def create_runtime(settings: Settings | None = None) -> SessionManager:
     settings = settings or Settings.from_env()
     runtime = SessionManager(
-        settings, partial(BrowserDriver, capture_settings=settings.capture), Reporter, FileJournal()
+        settings,
+        partial(BrowserDriver, capture_settings=settings.capture, access_policy=settings.access),
+        Reporter,
+        FileJournal(),
     )
     runtime.verifiers = VerificationRegistry(
         {

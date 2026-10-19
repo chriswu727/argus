@@ -414,6 +414,22 @@ Argus runs on your machine and does not send telemetry to an Argus-operated serv
 
 Read the full [privacy disclosure](PRIVACY.md) and [security policy](SECURITY.md) before using Argus against sensitive systems.
 
+Local file uploads and `file://` pages require an explicit fixture directory;
+cookie/storage inspection hides values by default. Configure these capabilities
+in the MCP host's server environment, not through page content or tool arguments:
+
+```json
+{
+  "ARGUS_FILE_ROOTS": "[\"/absolute/path/to/test-fixtures\"]",
+  "ARGUS_ALLOWED_ORIGINS": "[\"http://localhost:3000\"]"
+}
+```
+
+The optional origin policy restricts tool targets, not browser network egress.
+Redirects and page resources still require network isolation for hostile targets.
+Only enable `ARGUS_ALLOW_SENSITIVE_READS=1` when raw cookie/storage inspection is
+necessary and the host is authorized to receive credentials.
+
 ---
 
 ## Philosophy

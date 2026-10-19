@@ -6,10 +6,13 @@ are run against synthetic PageState / error / page-content payloads.
 
 from __future__ import annotations
 
+import json
 import os
+import tempfile
 
 import pytest
 
+from argus.access import AccessPolicy
 from argus.application.context import runtime_scope
 from argus.bootstrap import create_runtime
 from argus.detector import Detector
@@ -22,7 +25,11 @@ from argus.settings import Settings
 def isolated_runtime(monkeypatch, tmp_path):
     import argus.mcp_server as m
 
-    runtime = create_runtime(Settings(output_dir=tmp_path / "reports"))
+    monkeypatch.setenv("ARGUS_FILE_ROOTS", json.dumps([str(tmp_path)]))
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    runtime = create_runtime(
+        Settings(output_dir=tmp_path / "reports", access=AccessPolicy(file_roots=(tmp_path,)))
+    )
     monkeypatch.setattr(m, "runtime", runtime)
     monkeypatch.setattr(m, "mcp", create_server(runtime, "full"))
     with runtime_scope(runtime):

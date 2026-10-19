@@ -14,6 +14,7 @@ playwright install chromium
 ruff check argus tests
 ruff format --check argus tests
 mypy
+python -m pip_audit --vulnerability-service osv --progress-spinner off --skip-editable
 ARGUS_REQUIRE_BROWSER=1 pytest -q
 ```
 
@@ -39,6 +40,10 @@ separate macOS manual check; Linux CI does not claim to test that integration.
   access `_page`, `_context`, `_locator` or other adapter private state.
 - Monitor additions: `adapters/monitoring.py` and its packaged `assets/`.
   Never add raw inputs, arbitrary URLs, page contents or credentials to events.
+- Access rules: `access.py`; keep operator policy outside tool-controlled data.
+  File tests must explicitly grant their temporary fixture directory.
+- Redaction: `security.py` and the shared reporting privacy wrapper. Test every
+  exporter with synthetic credentials and verify live objects remain unchanged.
 
 Each runtime is explicit. Use `create_runtime(Settings(...))` and
 `runtime.execute(name, operation, ...)`; do not set global environment variables

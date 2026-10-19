@@ -112,14 +112,18 @@ async def check_links() -> str:
     s._last_elements = state.elements
 
     link_results = await s.browser.check_links(state.links)
-    dead = [r for r in link_results if not r["ok"]]
+    dead = [r for r in link_results if r["ok"] is False]
     alive = [r for r in link_results if r["ok"]]
+    inconclusive = [r for r in link_results if r["ok"] is None]
     external = [link for link in state.links if not link.get("isInternal")]
 
     lines = [f"Checked {len(link_results)} internal links on {state.url}"]
     lines.append(f"  OK: {len(alive)}")
     lines.append(f"  Dead: {len(dead)}")
+    lines.append(f"  Inconclusive (redirect or policy restriction): {len(inconclusive)}")
     lines.append(f"  External (not checked): {len(external)}")
+    for result in inconclusive:
+        lines.append(f"  [Unverified HTTP {result['status']}] {result['href']}")
     if dead:
         lines.append("")
         for r in dead:
@@ -210,7 +214,7 @@ async def crawl_site(max_pages: int = 20) -> str:
 
         # Probe links once (raw probe, no auto-bug — agent decides).
         link_results = await s.browser.check_links(state.links)
-        dead = [r for r in link_results if not r["ok"]]
+        dead = [r for r in link_results if r["ok"] is False]
 
         # Screenshot when console/network captured something.
         if new_bugs:

@@ -7,8 +7,10 @@ from argus.domain.models import ExplorationResult, Severity
 from .common import (
     _BUGTYPE_LABELS,
 )
+from .privacy import safe_report
 
 
+@safe_report
 def render_sarif(r: ExplorationResult) -> str:
     import json
 

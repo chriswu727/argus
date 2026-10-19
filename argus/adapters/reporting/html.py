@@ -20,8 +20,10 @@ from .common import (
     _repro_detail,
     _trust_rank,
 )
+from .privacy import safe_report
 
 
+@safe_report
 def render_html(
     r: ExplorationResult,
     report_dir: Optional[Path] = None,

@@ -22,6 +22,7 @@ from .adapters.reporting.json import render_json
 from .adapters.reporting.junit import render_junit
 from .adapters.reporting.sarif import render_sarif
 from .models import ExplorationResult, validated_run_id
+from .security import redacted_copy
 from .storage import StorageError, atomic_write_text, exclusive_file_lock
 
 
@@ -56,6 +57,7 @@ class Reporter:
         output_dir: str,
         portable: Optional[bool] = None,
     ) -> str:
+        result = redacted_copy(result)
         run_id = validated_run_id(result.run_id)
         lock = Path(output_dir) / ".argus" / "locks" / f"{run_id}.lock"
         with exclusive_file_lock(lock):

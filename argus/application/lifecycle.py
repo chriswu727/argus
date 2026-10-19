@@ -53,6 +53,7 @@ async def start_session(
     if not 1 <= viewport_width <= 16384 or not 1 <= viewport_height <= 16384:
         return Rejection("start_session: viewport dimensions must be between 1 and 16384.")
 
+    current_runtime().settings.access.check_url(url)
     teardown_errors = await _teardown_active_session()
     if teardown_errors:
         current_runtime().transition(SessionState.FAILED)

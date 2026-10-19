@@ -6,8 +6,11 @@ from typing import Dict, List, Optional, Tuple
 
 from playwright.async_api import Browser, BrowserContext, Page, async_playwright
 
+from argus.access import AccessPolicy, canonical_origin
+from argus.domain.contracts import OperationError
 from argus.security import _redact as _redact
 from argus.security import _redact_headers as _redact_headers
+from argus.security import redact_body
 
 from .models import InteractiveElement, PageState
 from .runtime import BoundedEventLog
@@ -117,9 +120,11 @@ class BrowserDriver:
         viewport_width: int = 1280,
         viewport_height: int = 720,
         capture_settings: Optional[CaptureSettings] = None,
+        access_policy: Optional[AccessPolicy] = None,
     ):
         self.headless = headless
         self.capture_settings = capture_settings or CaptureSettings.from_env()
+        self.access_policy = access_policy or AccessPolicy.from_env()
         self.viewport = {"width": viewport_width, "height": viewport_height}
         self._playwright = None
         self._browser: Optional[Browser] = None
@@ -299,13 +304,16 @@ class BrowserDriver:
                 page_url = self._page.url if self._page else ""
             entry = {
                 "id": id(request),
-                "url": request.url,
+                "url": _redact(request.url),
                 "method": request.method,
                 "resource_type": request.resource_type,
                 "headers": _redact_headers(dict(request.headers)),
-                "post_data": _redact(request.post_data or "") or None,
+                "post_data": redact_body(
+                    request.post_data or "", request.headers.get("content-type", "")
+                )
+                or None,
                 "started_at": datetime.now().isoformat(),
-                "page_url": page_url or (self._page.url if self._page else ""),
+                "page_url": _redact(page_url or (self._page.url if self._page else "")),
                 "status": None,
                 "response_headers": None,
                 "response_size": None,
@@ -683,8 +691,10 @@ class BrowserDriver:
         Returns counts of what was actually applied vs expected, so the caller
         can warn on a silent shortfall.
         """
-        from urllib.parse import urlparse
 
+        url = capsule.get("url") or ""
+        expected_origin = canonical_origin(url)
+        self.access_policy.check_url(url)
         applied = {
             "cookies": 0,
             "cookies_expected": 0,
@@ -702,13 +712,12 @@ class BrowserDriver:
         applied["cookies_expected"] = len(cookies)
         if cookies:
             applied["cookies"] = await self.cookies_set(cookies)
-        url = capsule.get("url") or ""
-        if not url:
-            return applied
         await self.goto(url)
-        want = urlparse(url).netloc
-        cur = urlparse(self._page.url).netloc if self._page else ""
-        if want and cur and want != cur:
+        try:
+            actual_origin = canonical_origin(self._page.url) if self._page else None
+        except ValueError:
+            actual_origin = None
+        if actual_origin != expected_origin:
             # Redirected cross-origin (e.g. to an IdP) — writing storage here
             # would land it on the wrong origin. Bail rather than corrupt.
             applied["origin_ok"] = False
@@ -841,6 +850,7 @@ class BrowserDriver:
             pass
 
     async def goto(self, url: str):
+        self.access_policy.check_url(url)
         if self._page is None:
             # All tabs were closed; reopen one so navigation recovers the
             # session instead of dereferencing a None page.
@@ -856,6 +866,7 @@ class BrowserDriver:
         # (and flaggable as a bug) instead of a 30s hang reported as a load failure.
         resp = await self._page.goto(url, wait_until="domcontentloaded", timeout=30_000)
         await self._settle_network()
+        self.access_policy.check_url(self._page.url)
         return resp
 
     # -- state extraction --
@@ -1095,8 +1106,10 @@ class BrowserDriver:
         try:
             if start_url:
                 try:
+                    self.access_policy.check_url(start_url)
                     resp = await page.goto(start_url, wait_until="domcontentloaded", timeout=30_000)
                     await self._settle_network(page)
+                    self.access_policy.check_url(page.url)
                     if resp is not None and resp.status >= 400:
                         return {
                             "steps": [
@@ -1120,12 +1133,15 @@ class BrowserDriver:
             baseline = await self.get_state(page)
             for act in actions:
                 tool = act.get("tool")
+                self.access_policy.check_url(page.url)
                 desc = act.get("description") or ""
                 val = act.get("value")
                 if tool == "navigate":
                     try:
+                        self.access_policy.check_url(val)
                         resp = await page.goto(val, wait_until="domcontentloaded", timeout=30_000)
                         await self._settle_network(page)
+                        self.access_policy.check_url(page.url)
                         if resp is not None and resp.status >= 400:
                             steps.append(
                                 {
@@ -1177,6 +1193,7 @@ class BrowserDriver:
                     )
                     diverged = True
                     break
+            self.access_policy.check_url(page.url)
             final = None if diverged else await self.get_state(page)
             return {
                 "steps": steps,
@@ -1518,6 +1535,7 @@ class BrowserDriver:
         paths: List[str],
         elements: List[InteractiveElement],
     ) -> bool:
+        paths = [str(self.access_policy.check_file(path)) for path in paths]
         try:
             await self._locator(element_index, elements).set_input_files(paths, timeout=5_000)
             return True
@@ -1537,6 +1555,7 @@ class BrowserDriver:
         import base64
         import mimetypes
 
+        path = str(self.access_policy.check_file(path))
         try:
             data = Path(path).read_bytes()
             name = Path(path).name
@@ -1656,14 +1675,17 @@ class BrowserDriver:
                 continue
             checked.add(href)
             try:
-                resp = await self._context.request.head(href, timeout=5000)
+                self.access_policy.check_url(href)
+                resp = await self._context.request.head(href, timeout=5000, max_redirects=0)
                 # 405 = server doesn't support HEAD, retry with GET
                 if resp.status == 405:
-                    resp = await self._context.request.get(href, timeout=5000)
+                    resp = await self._context.request.get(href, timeout=5000, max_redirects=0)
                 # 403 from context.request often means anti-bot, not a real dead link
                 # Mark as ok since the page loaded fine in the browser
-                is_ok = resp.ok or resp.status == 403
+                is_ok = None if 300 <= resp.status < 400 else resp.ok or resp.status == 403
                 results.append({"href": href, "status": resp.status, "ok": is_ok})
+            except OperationError:
+                results.append({"href": href, "status": 0, "ok": None})
             except Exception:
                 results.append({"href": href, "status": 0, "ok": False})
         return results

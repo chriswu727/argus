@@ -25,6 +25,20 @@ retained. Response bodies are bounded, and binary or oversized bodies are not
 loaded for inspection. These safeguards reduce common exposure paths but cannot
 recognize every application-specific secret format.
 
+JSON bodies are parsed and recursively redacted; multipart bodies are omitted
+from inspection rather than retaining uploaded fields or file bytes. Known
+credential-bearing URL parameters and headers are redacted in captured requests.
+All built-in report formats use a common redacted copy of the report data,
+including visited URLs and nested reproduction evidence. This does not modify
+the live session or the journal's executable verification conditions. Journals
+remain private local artifacts and may retain sensitive verification URLs.
+Screenshots and unlabeled application-specific secrets still require manual review.
+
+Cookie and storage inspection hides values unless the operator enables
+`ARGUS_ALLOW_SENSITIVE_READS=1` before startup. This is separate from capsule
+capture/restore, which intentionally preserves raw browser state. Local file
+inputs require approved directories in `ARGUS_FILE_ROOTS`; see [Security](SECURITY.md).
+
 ## Where data can go
 
 - The MCP host and its configured model provider receive the Argus tool inputs
