@@ -37,6 +37,7 @@ _RE_SECRET_KEY = re.compile(_SECRET_KEY, re.IGNORECASE)
 
 
 _RE_JSON_STR = re.compile(r'("' + _SECRET_KEY + r'"\s*:\s*)"(?:[^"\\]|\\.)*"', re.IGNORECASE)
+_RE_JSON_KEY = re.compile(r'("(?:[^"\\]|\\.)*")\s*:')
 
 
 _RE_FORM = re.compile(r"([\w%.\-]+)=([^&\s#\"<>]+)")
@@ -79,8 +80,12 @@ def _redact(text: str) -> str:
             sanitized = redacted_copy(parsed)
             return text if sanitized == parsed else json.dumps(sanitized, ensure_ascii=False)
         except (ValueError, RecursionError):
-            if _RE_SECRET_KEY.search(text):
-                return "[redacted malformed structured data]"
+            for key in _RE_JSON_KEY.findall(text):
+                try:
+                    if _RE_SECRET_KEY.search(json.loads(key)):
+                        return "[redacted malformed structured data]"
+                except ValueError:
+                    continue
     text = _RE_JWT.sub("[redacted-jwt]", text)
     text = _RE_JSON_STR.sub(r'\1"[redacted]"', text)
     text = _RE_FORM.sub(

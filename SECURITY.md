@@ -54,6 +54,11 @@ Policy is configured by the operator at process startup, not by tool arguments:
   HTTP(S) targets; `[]` denies all HTTP(S) targets. Scheme, host and effective
   port must match. Embedded URL credentials and non-web schemes are rejected.
 
+Background-tab metadata is filtered before it is returned, including popup URLs.
+Capsule storage restoration requires the same HTTP(S) origin or, for approved
+local fixtures, the same resolved file path; different local files are not
+treated as a shared origin.
+
 The origin policy controls explicit navigation and rejects tool operations or
 results on an out-of-scope page. Replay applies the same checks. Link probes do
 not follow redirects. It is **not an egress firewall**: browser redirects,

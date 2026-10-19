@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Tuple
 
 from playwright.async_api import Browser, BrowserContext, Page, async_playwright
 
-from argus.access import AccessPolicy, canonical_origin
+from argus.access import AccessPolicy
 from argus.domain.contracts import OperationError
 from argus.security import _redact as _redact
 from argus.security import _redact_headers as _redact_headers
@@ -186,7 +186,15 @@ class BrowserDriver:
         return self._page is not None
 
     def page_urls(self) -> list[str]:
-        return [page.url for page in self._live_pages()]
+        return [self._tab_url(page) for page in self._live_pages()]
+
+    def _tab_url(self, page: Page) -> str:
+        url = page.url
+        try:
+            self.access_policy.check_url(url)
+        except (OperationError, OSError, ValueError):
+            return "[restricted tab]"
+        return _redact(url)
 
     def selector_for(self, element: InteractiveElement) -> str:
         return self._build_selector(element)
@@ -693,8 +701,7 @@ class BrowserDriver:
         """
 
         url = capsule.get("url") or ""
-        expected_origin = canonical_origin(url)
-        self.access_policy.check_url(url)
+        expected_origin = self.access_policy.storage_scope(url)
         applied = {
             "cookies": 0,
             "cookies_expected": 0,
@@ -714,8 +721,8 @@ class BrowserDriver:
             applied["cookies"] = await self.cookies_set(cookies)
         await self.goto(url)
         try:
-            actual_origin = canonical_origin(self._page.url) if self._page else None
-        except ValueError:
+            actual_origin = self.access_policy.storage_scope(self._page.url) if self._page else None
+        except (ValueError, OperationError, OSError):
             actual_origin = None
         if actual_origin != expected_origin:
             # Redirected cross-origin (e.g. to an IdP) — writing storage here
@@ -746,15 +753,21 @@ class BrowserDriver:
         """Return one entry per open tab: index, url, title, active."""
         out: List[Dict] = []
         for i, p in enumerate(self._live_pages()):
+            url = self._tab_url(p)
+            title = ""
             try:
-                title = await p.title()
+                if url != "[restricted tab]":
+                    title = await p.title()
             except Exception:
+                pass
+            url = self._tab_url(p)
+            if url == "[restricted tab]":
                 title = ""
             out.append(
                 {
                     "index": i,
-                    "url": p.url,
-                    "title": title,
+                    "url": url,
+                    "title": _redact(title),
                     "active": p is self._page,
                 }
             )
@@ -764,6 +777,7 @@ class BrowserDriver:
         pages = self._live_pages()
         if index < 0 or index >= len(pages):
             return False
+        self.access_policy.check_url(pages[index].url)
         self._page = pages[index]
         try:
             await self._page.bring_to_front()

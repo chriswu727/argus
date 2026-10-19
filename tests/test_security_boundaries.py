@@ -52,6 +52,18 @@ def test_encoded_and_malformed_credentials_fail_closed(text):
     assert "SYNTHETIC_SECRET" not in _redact(text)
 
 
+@pytest.mark.parametrize(
+    "text",
+    ["[P1] Session expires after save", "[Auth] Login failed", "{UI} Password field is clipped"],
+)
+def test_bracket_prefixed_prose_is_not_destroyed(text):
+    assert _redact(text) == text
+
+
+def test_malformed_json_with_escaped_secret_key_is_redacted():
+    assert "SYNTHETIC_SECRET" not in _redact('{"pass\\u0077ord":"SYNTHETIC_SECRET')
+
+
 def test_multipart_and_custom_credential_headers_are_not_retained():
     assert "SYNTHETIC_SECRET" not in redact_body(
         "SYNTHETIC_SECRET", "multipart/form-data; boundary=x"
@@ -281,3 +293,69 @@ async def test_link_probes_do_not_follow_redirects_or_mislabel_policy_denials():
     )
     assert len(calls) == 1 and calls[0][1]["max_redirects"] == 0
     assert [item["ok"] for item in result] == [None, None]
+
+
+async def test_background_tabs_never_expose_disallowed_metadata():
+    class Page:
+        def __init__(self, url):
+            self.url = url
+            self.reads = 0
+
+        def is_closed(self):
+            return False
+
+        async def title(self):
+            self.reads += 1
+            return "Synthetic title"
+
+    approved = Page("https://approved.test/?token=SYNTHETIC_SECRET")
+    denied = Page("https://unapproved.test/?token=SYNTHETIC_SECRET")
+    browser = BrowserDriver(access_policy=AccessPolicy(allowed_origins=("https://approved.test",)))
+    browser._context = SimpleNamespace(pages=[approved, denied])
+    browser._page = approved
+    tabs = await browser.tabs_list()
+    assert "SYNTHETIC_SECRET" not in str(tabs) + str(browser.page_urls())
+    assert "unapproved.test" not in str(tabs) + str(browser.page_urls())
+    assert tabs[1]["title"] == "" and denied.reads == 0
+    with pytest.raises(OperationError):
+        await browser.tabs_switch(1)
+    assert browser._page is approved
+
+
+async def test_tab_navigation_during_title_read_cannot_leak_metadata():
+    class Page:
+        url = "https://approved.test/"
+
+        def is_closed(self):
+            return False
+
+        async def title(self):
+            self.url = "https://unapproved.test/"
+            return "SYNTHETIC_SECRET"
+
+    page = Page()
+    browser = BrowserDriver(access_policy=AccessPolicy(allowed_origins=("https://approved.test",)))
+    browser._context = SimpleNamespace(pages=[page])
+    assert (await browser.tabs_list())[0]["title"] == ""
+
+
+async def test_capsule_round_trip_for_approved_file_page(tmp_path):
+    page = tmp_path / "fixture.html"
+    page.write_text("<html><body>Local fixture</body></html>")
+    other = tmp_path / "other.html"
+    other.write_text("<html><body>Different fixture</body></html>")
+    policy = AccessPolicy(file_roots=(tmp_path,))
+    assert policy.storage_scope(page.as_uri()) != policy.storage_scope(other.as_uri())
+    browser = BrowserDriver(access_policy=policy)
+    try:
+        await browser.start()
+        await browser.goto(page.as_uri())
+        await browser.storage_set("state", "saved", "local")
+        await browser.storage_set("state", "saved", "session")
+        capsule = await browser.capsule_capture()
+        await browser.storage_set("state", "changed", "local")
+        applied = await browser.capsule_apply(capsule)
+        assert applied["origin_ok"] and applied["local"] == 1 and applied["session"] == 1
+        assert (await browser.storage_get("local"))["state"] == "saved"
+    finally:
+        await browser.stop()

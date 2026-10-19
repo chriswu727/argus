@@ -105,3 +105,10 @@ class AccessPolicy:
             raise OperationError(
                 ErrorCode.PERMISSION, "Target origin is outside ARGUS_ALLOWED_ORIGINS."
             )
+
+    def storage_scope(self, url: str) -> tuple[str, str] | tuple[str, str, int]:
+        self.check_url(url)
+        parsed = urlsplit(url)
+        if parsed.scheme == "file":
+            return "file", str(self.check_file(unquote(parsed.path)))
+        return canonical_origin(url)
