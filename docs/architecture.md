@@ -135,5 +135,4 @@ not advertised as whole-project strict typing. CI tests Python 3.10/3.12 and
 Chromium. Native macOS UI permissions and behavior require manual integration
 testing; unit tests alone do not establish native app correctness.
 
-See [design decisions](decisions.md), [extension guide](../CONTRIBUTING.md) and
-[interview evidence](interview-guide.md).
+See [design decisions](decisions.md) and the [extension guide](../CONTRIBUTING.md).

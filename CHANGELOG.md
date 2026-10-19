@@ -19,7 +19,7 @@
   report generation and cleanup and split individual report exporters.
 - Add real stdio MCP and HTTP-monitor integration tests, runtime fault tests,
   architecture boundaries, Ruff checks and scoped core type checking in CI.
-- Add architecture, decision, extension and interview documentation. Existing
+- Add architecture, design decision and extension documentation. Existing
   public MCP tool names and profiles are retained.
 
 ### Also included since 0.6

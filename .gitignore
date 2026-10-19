@@ -18,5 +18,4 @@ CLAUDE.md
 docs/*
 !docs/architecture.md
 !docs/decisions.md
-!docs/interview-guide.md
 !docs/implementation-0.7.md
