@@ -257,6 +257,7 @@ def test_workflows_pin_actions_and_gate_on_dependency_audit():
         assert actions and all(re.fullmatch(r"[^@]+@[0-9a-f]{40}", value) for value in actions)
         assert "python -m pip_audit --vulnerability-service osv" in workflow
         assert "--ignore-vuln" not in workflow
+        assert "setuptools>=83.0.0" in workflow
     release = (root / ".github/workflows/release.yml").read_text()
     assert "/releases/latest/" not in release
     assert release.index("sha256sum --check") < release.index("tar xzf mcp-publisher.tar.gz")
