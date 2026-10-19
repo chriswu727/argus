@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from argus.domain.models import ExplorationResult
 
+from .privacy import safe_report
 
+
+@safe_report
 def render_junit(r: ExplorationResult) -> str:
     # Each finding is a <testcase> with a <failure> — a CI pipeline treats the
     # suite as failed if Argus found anything, the shift-left "did we ship a

@@ -80,10 +80,22 @@ check. The older autonomous LiteLLM explorer is a separate workflow.
 
 ## Privacy and persistence
 
+`AccessPolicy` is immutable startup configuration shared by the runtime and
+browser adapter. It validates explicit tool targets and local file inputs;
+`permission_denied` is distinct from a browser failure. Resolved filesystem
+containment and optional full-origin matching are application-level guards,
+not an OS sandbox or egress firewall. See [Security](../SECURITY.md) for limits.
+
 Input values live in an `InputVault`, referenced by opaque IDs in session action
 traces. Exporters remove references and mark input-dependent replay steps.
 Missing input fails closed. Closing a backend clears the vault. This does not
 scrub screenshots, arbitrary user-authored evidence or Python process memory.
+
+Every built-in report renderer receives a recursively redacted copy through the
+shared reporting privacy wrapper. The reporter also sanitizes inputs to custom
+exporters. Structured JSON, URLs and common credential headers are handled
+centrally; multipart inspection is omitted. Live replay inputs and executable
+journal conditions are not rewritten to redaction placeholders.
 
 Files use temp-write, flush, fsync and atomic replace. Journals use a versioned
 envelope (legacy lists remain readable); capsules and JSON reports are versioned.

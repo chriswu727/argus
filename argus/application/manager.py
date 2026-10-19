@@ -134,9 +134,17 @@ class SessionManager:
                     ErrorCode.BACKEND, "Session failed; end it or start a new session."
                 )
             with runtime_scope(self):
+                if name not in {"start_session", "start_screen_session", "end_session"}:
+                    url = getattr(self.session.browser, "current_url", "")
+                    if url:
+                        self.settings.access.check_url(url)
                 value = await asyncio.wait_for(
                     operation(*args, **kwargs), self.settings.operation_timeout
                 )
+                if name != "end_session":
+                    url = getattr(self.session.browser, "current_url", "")
+                    if url:
+                        self.settings.access.check_url(url)
             if isinstance(value, Rejection):
                 error = value.code
                 return OperationResult(str(value), error)

@@ -5,7 +5,10 @@ from typing import Dict
 
 from argus.domain.models import ExplorationResult
 
+from .privacy import safe_report
 
+
+@safe_report
 def render_json(r: ExplorationResult) -> str:
     import json
 

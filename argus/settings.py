@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
 
+from argus.access import AccessPolicy
+
 
 @dataclass(frozen=True)
 class CaptureSettings:
@@ -48,6 +50,7 @@ class Settings:
     monitor_port: int | None = None
     unsafe_eval: bool = False
     capture: CaptureSettings = field(default_factory=CaptureSettings)
+    access: AccessPolicy = field(default_factory=AccessPolicy)
 
     def __post_init__(self) -> None:
         import math
@@ -76,6 +79,7 @@ class Settings:
             else None,
             "unsafe_eval": env.get("ARGUS_UNSAFE_EVAL", "").lower() in {"1", "true"},
             "capture": CaptureSettings.from_env(env),
+            "access": AccessPolicy.from_env(env),
         }
         values.update({k: v for k, v in overrides.items() if v is not None})
         return cls(**values)

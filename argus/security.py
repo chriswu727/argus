@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import json
 import re
+from dataclasses import fields, is_dataclass, replace
+from enum import Enum
+from urllib.parse import unquote
 
 
 def export_trace(actions: list[dict]) -> list[dict]:
@@ -29,13 +33,15 @@ _SECRET_KEY = (
 )
 
 
-_RE_JSON_STR = re.compile(r'("' + _SECRET_KEY + r'"\s*:\s*)"[^"]*"', re.IGNORECASE)
+_RE_SECRET_KEY = re.compile(_SECRET_KEY, re.IGNORECASE)
 
 
-_RE_JSON_BARE = re.compile(r'("' + _SECRET_KEY + r'"\s*:\s*)(?!["{\[])([^\s,}\]]+)', re.IGNORECASE)
+_RE_JSON_STR = re.compile(r'("' + _SECRET_KEY + r'"\s*:\s*)"(?:[^"\\]|\\.)*"', re.IGNORECASE)
+_RE_JSON_KEY = re.compile(r'("(?:[^"\\]|\\.)*")\s*:')
 
 
-_RE_FORM = re.compile(r"(?i)\b(" + _SECRET_KEY + r")=([^&\s]+)")
+_RE_FORM = re.compile(r"([\w%.\-]+)=([^&\s#\"<>]+)")
+_RE_URL_AUTH = re.compile(r"(https?://)[^\s/@]+(?::[^\s/@]*)?@", re.IGNORECASE)
 
 
 _RE_JWT = re.compile(r"eyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]+")
@@ -66,10 +72,27 @@ def _redact(text: str) -> str:
     """
     if not text:
         return text
+    if "content-disposition:" in text.lower() and "form-data;" in text.lower():
+        return "[redacted multipart body]"
+    if text.lstrip().startswith(("{", "[")):
+        try:
+            parsed = json.loads(text)
+            sanitized = redacted_copy(parsed)
+            return text if sanitized == parsed else json.dumps(sanitized, ensure_ascii=False)
+        except (ValueError, RecursionError):
+            for key in _RE_JSON_KEY.findall(text):
+                try:
+                    if _RE_SECRET_KEY.search(json.loads(key)):
+                        return "[redacted malformed structured data]"
+                except ValueError:
+                    continue
     text = _RE_JWT.sub("[redacted-jwt]", text)
     text = _RE_JSON_STR.sub(r'\1"[redacted]"', text)
-    text = _RE_JSON_BARE.sub(r"\1[redacted]", text)
-    text = _RE_FORM.sub(r"\1=[redacted]", text)
+    text = _RE_FORM.sub(
+        lambda m: f"{m[1]}=[redacted]" if _RE_SECRET_KEY.search(unquote(m[1])) else m[0],
+        text,
+    )
+    text = _RE_URL_AUTH.sub(r"\1[redacted]@", text)
     text = _RE_BEARER.sub(r"\1[redacted]", text)
     return text
 
@@ -78,5 +101,36 @@ def _redact_headers(headers: dict) -> dict:
     """Mask whole values of credential-bearing headers; redact the rest in place."""
     out = {}
     for k, v in (headers or {}).items():
-        out[k] = "[redacted]" if k.lower() in _SENSITIVE_HEADERS else _redact(str(v))
+        out[k] = (
+            "[redacted]"
+            if k.lower() in _SENSITIVE_HEADERS or _RE_SECRET_KEY.search(k)
+            else _redact(str(v))
+        )
     return out
+
+
+def redacted_copy(value):
+    if isinstance(value, Enum):
+        return value
+    if isinstance(value, str):
+        return _redact(value)
+    if is_dataclass(value) and not isinstance(value, type):
+        return replace(
+            value, **{f.name: redacted_copy(getattr(value, f.name)) for f in fields(value)}
+        )
+    if isinstance(value, dict):
+        return {
+            k: "[redacted]" if _RE_SECRET_KEY.search(str(k)) else redacted_copy(v)
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [redacted_copy(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(redacted_copy(item) for item in value)
+    return value
+
+
+def redact_body(text: str, content_type: str = "") -> str:
+    if "multipart/" in content_type.lower():
+        return "[redacted multipart body]"
+    return _redact(text)

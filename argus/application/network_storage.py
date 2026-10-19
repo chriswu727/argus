@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from argus.security import _redact, _redact_headers
 
+from .context import current_runtime
 from .session import _require_session, _require_web_session
 
 
@@ -265,6 +266,8 @@ async def cookies_get(url: str = "") -> str:
         path = c.get("path", "/")
         name = c.get("name", "")
         val = c.get("value", "")
+        if not current_runtime().settings.access.sensitive_reads:
+            val = "[redacted]"
         if len(val) > 60:
             val = val[:57] + "..."
         flags = []
@@ -342,6 +345,8 @@ async def storage_get(kind: str = "local") -> str:
     lines = [f"{label} ({len(items)} key(s)):"]
     for k, v in items.items():
         sval = v if v is not None else ""
+        if not current_runtime().settings.access.sensitive_reads:
+            sval = "[redacted]"
         if len(sval) > 200:
             sval = sval[:197] + "..."
         lines.append(f"  {k} = {sval}")

@@ -22,6 +22,7 @@ class ErrorCode(str, Enum):
     BACKEND = "backend_error"
     INVALID_ARGUMENT = "invalid_argument"
     STORAGE = "storage_error"
+    PERMISSION = "permission_denied"
 
 
 class OperationError(RuntimeError):
