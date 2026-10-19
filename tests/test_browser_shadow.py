@@ -5,6 +5,7 @@ real Chromium and run the actual extraction JS + selector builder, because
 shadow-DOM behaviour only exists at the browser boundary. Skipped cleanly
 when the Chromium binary isn't installed.
 """
+
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
@@ -14,7 +15,6 @@ from playwright.async_api import async_playwright
 
 from argus.browser import _EXTRACT_ELEMENTS_JS, BrowserDriver
 from argus.models import InteractiveElement
-
 
 _PAGE = """
 <button id="light-btn">Light Button</button>
@@ -68,8 +68,10 @@ def test_build_selector_handles_multiline_and_special_chars():
     newline (CSS BADSTRING) — regression for a real click failure found while
     dogfooding the shop fixture."""
     from argus.browser import BrowserDriver
+
     el = InteractiveElement(
-        index=0, tag="a",
+        index=0,
+        tag="a",
         text="[no image]\n            Wireless Headphones\n            $89.99-50%$89.99",
     )
     sel = BrowserDriver._build_selector(el)
@@ -83,16 +85,23 @@ def test_build_selector_shadow_long_label_uses_substring_form():
     """A shadow label >50 chars can't use exact text="..." (a truncated snippet
     matches zero elements); it must fall back to the unquoted substring form."""
     from argus.browser import BrowserDriver
-    long_label = ("This is a very long shadow web-component menu item label that "
-                  "clearly exceeds fifty characters")
+
+    long_label = (
+        "This is a very long shadow web-component menu item label that "
+        "clearly exceeds fifty characters"
+    )
     sel = BrowserDriver._build_selector(
-        InteractiveElement(index=0, tag="button", text=long_label, shadow=True))
+        InteractiveElement(index=0, tag="button", text=long_label, shadow=True)
+    )
     assert sel.startswith("button >> text=")
     assert 'text="' not in sel  # NOT the exact-quoted form
     # a short shadow label keeps the precise exact-quoted form
-    assert BrowserDriver._build_selector(
-        InteractiveElement(index=0, tag="button", text="OK", shadow=True)
-    ) == 'button >> text="OK"'
+    assert (
+        BrowserDriver._build_selector(
+            InteractiveElement(index=0, tag="button", text="OK", shadow=True)
+        )
+        == 'button >> text="OK"'
+    )
 
 
 def test_build_selector_escapes_css_special_ids():
@@ -100,13 +109,20 @@ def test_build_selector_escapes_css_special_ids():
     are CSS-special. A raw "#:r3:" is a parse error and "#ok.x" mis-targets, so
     the id branch must emit the quoted attribute form, not "#id"."""
     from argus.browser import BrowserDriver
-    assert BrowserDriver._build_selector(
-        InteractiveElement(index=0, tag="button", id=":r3:")) == '[id=":r3:"]'
-    assert BrowserDriver._build_selector(
-        InteractiveElement(index=0, tag="div", id="ok.x")) == '[id="ok.x"]'
+
+    assert (
+        BrowserDriver._build_selector(InteractiveElement(index=0, tag="button", id=":r3:"))
+        == '[id=":r3:"]'
+    )
+    assert (
+        BrowserDriver._build_selector(InteractiveElement(index=0, tag="div", id="ok.x"))
+        == '[id="ok.x"]'
+    )
     # a quote inside the id is escaped, not left to break the selector string
-    assert BrowserDriver._build_selector(
-        InteractiveElement(index=0, tag="div", id='a"b')) == '[id="a\\"b"]'
+    assert (
+        BrowserDriver._build_selector(InteractiveElement(index=0, tag="div", id='a"b'))
+        == '[id="a\\"b"]'
+    )
 
 
 async def test_shadow_elements_are_actionable():
@@ -114,6 +130,7 @@ async def test_shadow_elements_are_actionable():
     no 'visible but unreachable' half-feature. Text-only is the hard case:
     :has-text doesn't pierce shadow, so _build_selector must switch forms."""
     async with _page_with(_PAGE) as (page, els):
+
         async def clicked(el: InteractiveElement) -> bool:
             sel = BrowserDriver._build_selector(el)
             await page.click(sel, timeout=2000)

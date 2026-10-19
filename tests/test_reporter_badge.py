@@ -6,6 +6,7 @@ intermittent, auto-captured event (not verified), verify-clause-rejected, and
 observation-based (no badge). Conflating any of these is the false-confidence
 the precision moat exists to avoid (F9, F24, F25).
 """
+
 from __future__ import annotations
 
 import argus.mcp_server as m
@@ -47,11 +48,13 @@ def test_rejected_verify_clause_badge_is_distinct():
 
 
 def test_inconclusive_badge_surfaces_reason_instead_of_unknown_error():
-    b = _repro_badge({
-        "attempted": True,
-        "reproduced": None,
-        "reason": "clean load returned HTTP 404",
-    })
+    b = _repro_badge(
+        {
+            "attempted": True,
+            "reproduced": None,
+            "reason": "clean load returned HTTP 404",
+        }
+    )
     assert "INCONCLUSIVE" in b
     assert "HTTP 404" in b
     assert "errored" not in b.lower()
@@ -59,8 +62,14 @@ def test_inconclusive_badge_surfaces_reason_instead_of_unknown_error():
 
 def test_file_event_bugs_tags_auto_captured():
     sess = m.Session()
-    bug = Bug(type=BugType.CONSOLE_ERROR, severity=Severity.HIGH, title="t",
-              description="d", url="u", steps_to_reproduce=[])
+    bug = Bug(
+        type=BugType.CONSOLE_ERROR,
+        severity=Severity.HIGH,
+        title="t",
+        description="d",
+        url="u",
+        steps_to_reproduce=[],
+    )
     m._file_event_bugs(sess, [bug])
     assert sess.bugs == [bug]
     assert bug.reproduction_receipt["auto_captured"] is True

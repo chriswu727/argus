@@ -1,11 +1,14 @@
 """Persistent journal + receipt-driven regression: a finding recorded and
 journaled in one session is re-tested against the current build in the next —
 STILL-PRESENT vs NO-LONGER-REPRODUCES — by re-running its clean-load receipt."""
+
 from __future__ import annotations
 
 import http.server
 import socketserver
 import threading
+from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -53,9 +56,13 @@ async def test_journal_and_regression_roundtrip():
     try:
         # Session 1: confirm + record the bug, then end (journals it).
         await _start(base + "/")
-        rb = await _call(m.record_bug, title="ghost bug", severity="high",
-                         evidence={"screenshot": "skip"},
-                         verify={"expect": "present", "target_text": "GHOST-BUG", "at_url": "/"})
+        rb = await _call(
+            m.record_bug,
+            title="ghost bug",
+            severity="high",
+            evidence={"screenshot": "skip"},
+            verify={"expect": "present", "target_text": "GHOST-BUG", "at_url": "/"},
+        )
         assert "CONFIRMED" in rb
         await _call(m.end_session)
 
@@ -76,22 +83,25 @@ async def test_journal_and_regression_roundtrip():
 
 def test_status_receipt_is_journaled_for_regression(monkeypatch, tmp_path):
     monkeypatch.setenv("ARGUS_OUTPUT_DIR", str(tmp_path))
+    m.runtime.settings = replace(m.runtime.settings, output_dir=Path(str(tmp_path)))
     session = m.Session()
     session.url = "https://example.test/"
-    session.bugs = [Bug(
-        type=BugType.BROKEN_LINK,
-        severity=Severity.MEDIUM,
-        title="Missing route",
-        description="Returns 404",
-        url="https://example.test/missing",
-        steps_to_reproduce=[],
-        reproduction_receipt={
-            "attempted": True,
-            "reproduced": True,
-            "expect_status": 404,
-            "at_url": "https://example.test/missing",
-        },
-    )]
+    session.bugs = [
+        Bug(
+            type=BugType.BROKEN_LINK,
+            severity=Severity.MEDIUM,
+            title="Missing route",
+            description="Returns 404",
+            url="https://example.test/missing",
+            steps_to_reproduce=[],
+            reproduction_receipt={
+                "attempted": True,
+                "reproduced": True,
+                "expect_status": 404,
+                "at_url": "https://example.test/missing",
+            },
+        )
+    ]
 
     m._write_journal(session)
 

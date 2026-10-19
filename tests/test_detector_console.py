@@ -1,4 +1,5 @@
 """Detector tests for process_console_errors."""
+
 from __future__ import annotations
 
 

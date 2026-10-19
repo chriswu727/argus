@@ -1,4 +1,5 @@
 """Argus — AI-powered exploratory QA agent."""
+
 from pathlib import Path
 
 
@@ -21,6 +22,7 @@ def _resolve_version() -> str:
         pass
     try:
         from importlib.metadata import PackageNotFoundError, version
+
         try:
             return version("argus-testing")
         except PackageNotFoundError:

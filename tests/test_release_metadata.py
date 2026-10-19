@@ -27,7 +27,10 @@ def test_release_metadata_stays_in_sync():
     assert project["project"]["urls"]["Homepage"] == server["websiteUrl"]
     assert "testing engineer" in project["project"]["description"].lower()
     assert len(server["description"]) <= 100
-    assert all(term in server["description"].lower() for term in ("qa", "mcp", "web", "macos", "bugs", "verifies"))
+    assert all(
+        term in server["description"].lower()
+        for term in ("qa", "mcp", "web", "macos", "bugs", "verifies")
+    )
     assert f"mcp-name: {server['name']}" in (ROOT / "README.md").read_text()
     assert "chriswu727" in glama["maintainers"]
 

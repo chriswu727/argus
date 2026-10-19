@@ -6,6 +6,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from .storage import StorageError, exclusive_file_lock
 
 _REPORT_FILE = re.compile(r"^report_(.+)\.(?:html|json|junit\.xml|sarif)$")
 
@@ -72,12 +73,14 @@ def discover_report_runs(output_dir: str | Path) -> list[ReportRun]:
                 mtimes.append(path.lstat().st_mtime)
             except OSError:
                 pass
-        runs.append(ReportRun(
-            run_id=run_id,
-            paths=tuple(paths),
-            modified_at=max(mtimes, default=0.0),
-            size_bytes=sum(_path_size(path) for path in paths),
-        ))
+        runs.append(
+            ReportRun(
+                run_id=run_id,
+                paths=tuple(paths),
+                modified_at=max(mtimes, default=0.0),
+                size_bytes=sum(_path_size(path) for path in paths),
+            )
+        )
     return sorted(runs, key=lambda run: (run.modified_at, run.run_id), reverse=True)
 
 
@@ -130,16 +133,21 @@ def execute_cleanup(plan: CleanupPlan) -> tuple[int, int]:
     removed_paths = 0
     removed_bytes = 0
     for run in plan.selected:
-        for path in run.paths:
-            try:
-                if path.is_symlink() or path.is_file():
-                    path.unlink()
-                elif path.is_dir():
-                    shutil.rmtree(path)
-                else:
-                    continue
-                removed_paths += 1
-            except FileNotFoundError:
-                continue
-        removed_bytes += run.size_bytes
+        lock = plan.output_dir / ".argus" / "locks" / f"{run.run_id}.lock"
+        try:
+            with exclusive_file_lock(lock, timeout_seconds=0):
+                for path in run.paths:
+                    try:
+                        if path.is_symlink() or path.is_file():
+                            path.unlink()
+                        elif path.is_dir():
+                            shutil.rmtree(path)
+                        else:
+                            continue
+                        removed_paths += 1
+                    except FileNotFoundError:
+                        continue
+                removed_bytes += run.size_bytes
+        except StorageError:
+            continue
     return removed_paths, removed_bytes

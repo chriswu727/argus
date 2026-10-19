@@ -1,11 +1,14 @@
 """Zero-LLM `argus-regression` CLI: re-tests journaled findings against the
 current build and exits non-zero on STILL-PRESENT (CI gate)."""
+
 from __future__ import annotations
 
 import http.server
 import json
 import socketserver
 import threading
+from dataclasses import replace
+from pathlib import Path
 from urllib.parse import urlparse
 
 import pytest
@@ -40,13 +43,24 @@ def _serve():
 async def test_regression_cli_exit_codes(tmp_path, monkeypatch):
     _H.bug_present = True
     monkeypatch.setenv("ARGUS_OUTPUT_DIR", str(tmp_path))
+    m.runtime.settings = replace(m.runtime.settings, output_dir=Path(str(tmp_path)))
     srv, base = _serve()
     origin = urlparse(base + "/").netloc
     jpath = m._journal_path(origin)
     jpath.parent.mkdir(parents=True, exist_ok=True)
-    jpath.write_text(json.dumps([{
-        "fingerprint": "f", "title": "ghost", "severity": "high", "type": "ux_issue",
-        "verify": {"expect": "present", "target_text": "GHOST-BUG", "at_url": "/"}}]))
+    jpath.write_text(
+        json.dumps(
+            [
+                {
+                    "fingerprint": "f",
+                    "title": "ghost",
+                    "severity": "high",
+                    "type": "ux_issue",
+                    "verify": {"expect": "present", "target_text": "GHOST-BUG", "at_url": "/"},
+                }
+            ]
+        )
+    )
     try:
         code = await _run_regression(base + "/", str(tmp_path), headless=True)
         if code == 2:
@@ -62,3 +76,10 @@ async def test_regression_cli_exit_codes(tmp_path, monkeypatch):
 async def test_regression_cli_no_journal_is_clean_exit(tmp_path):
     # An origin with no journal exits 0 (nothing to gate on), never errors.
     assert await _run_regression("http://no-such-host.invalid/", str(tmp_path), headless=True) == 0
+
+
+async def test_corrupt_journal_is_an_error_not_a_clean_regression(tmp_path):
+    path = tmp_path / ".argus" / "journal" / "example.test.json"
+    path.parent.mkdir(parents=True)
+    path.write_text("{broken")
+    assert await _run_regression("http://example.test/", str(tmp_path)) == 2

@@ -37,9 +37,7 @@ class Explorer:
     async def run(self) -> ExplorationResult:
         start = time.time()
 
-        console.print(
-            f"\n[bold blue]Argus[/] starting exploration of [cyan]{self.config.url}[/]"
-        )
+        console.print(f"\n[bold blue]Argus[/] starting exploration of [cyan]{self.config.url}[/]")
         if self.config.focus_areas:
             console.print("[bold]Focus areas:[/]")
             for fa in self.config.focus_areas:
@@ -63,19 +61,13 @@ class Explorer:
                 # Screenshot on new page
                 if state.url != prev_url:
                     page_name = state.url.split("/")[-1] or "index"
-                    await self._take_screenshot(
-                        f"page_{page_name}", f"Visited {state.url}"
-                    )
+                    await self._take_screenshot(f"page_{page_name}", f"Visited {state.url}")
 
                 # Drain and process errors from the browser
                 console_errs, network_errs = self.browser.drain_errors()
-                new_bugs = self.detector.process_console_errors(
-                    console_errs, state.url, self.steps
-                )
+                new_bugs = self.detector.process_console_errors(console_errs, state.url, self.steps)
                 new_bugs.extend(
-                    self.detector.process_network_errors(
-                        network_errs, state.url, self.steps
-                    )
+                    self.detector.process_network_errors(network_errs, state.url, self.steps)
                 )
                 # Argus only auto-captures browser-side events that the agent
                 # cannot see in page state (console + network). Everything
@@ -109,10 +101,17 @@ class Explorer:
                     # Auth failures aren't going to fix themselves on
                     # the next iteration — abort immediately and surface
                     # the cause.
-                    if any(s in msg for s in (
-                        "api key", "api_key", "authentication", "unauthorized",
-                        "401", "did not find",
-                    )):
+                    if any(
+                        s in msg
+                        for s in (
+                            "api key",
+                            "api_key",
+                            "authentication",
+                            "unauthorized",
+                            "401",
+                            "did not find",
+                        )
+                    ):
                         raise RuntimeError(
                             "LLM auth failed. Set the API key for your "
                             "chosen model (e.g. OPENAI_API_KEY, "
@@ -132,9 +131,7 @@ class Explorer:
                     self._consecutive_planner_failures = 0
 
                 if action.type == ActionType.DONE:
-                    console.print(
-                        f"  [dim]Step {step_num + 1}:[/] Agent finished exploration"
-                    )
+                    console.print(f"  [dim]Step {step_num + 1}:[/] Agent finished exploration")
                     break
 
                 # Execute the action
@@ -144,12 +141,8 @@ class Explorer:
 
                 success = await self._execute_action(action, state)
                 status = "[green]+[/]" if success else "[red]x[/]"
-                bug_count = (
-                    f" [red]({len(self.bugs)} bugs)[/]" if self.bugs else ""
-                )
-                console.print(
-                    f"  [dim]Step {step_num + 1}:[/] {status} {step_desc}{bug_count}"
-                )
+                bug_count = f" [red]({len(self.bugs)} bugs)[/]" if self.bugs else ""
+                console.print(f"  [dim]Step {step_num + 1}:[/] {status} {step_desc}{bug_count}")
 
                 # Persistence-verification of delete/edit clicks is the
                 # planner's job in CLI mode; the planner is expected to
@@ -198,10 +191,15 @@ class Explorer:
         ss_dir = Path(self.config.output_dir) / "screenshots" / self.run_id
         path = str(ss_dir / f"{safe_name}.png")
         await self.browser.screenshot(path)
-        url = self.browser._page.url if self.browser._page else ""
-        self.screenshots.append(Screenshot(
-            path=path, name=safe_name, step=step, url=url,
-        ))
+        url = self.browser.current_url
+        self.screenshots.append(
+            Screenshot(
+                path=path,
+                name=safe_name,
+                step=step,
+                url=url,
+            )
+        )
         return path
 
     # -- action execution --
@@ -210,13 +208,8 @@ class Explorer:
         try:
             t = action.type
             if t == ActionType.CLICK:
-                if (
-                    action.element_index is not None
-                    and action.element_index < len(state.elements)
-                ):
-                    return await self.browser.click(
-                        action.element_index, state.elements
-                    )
+                if action.element_index is not None and action.element_index < len(state.elements):
+                    return await self.browser.click(action.element_index, state.elements)
             elif t == ActionType.TYPE:
                 if (
                     action.element_index is not None
@@ -257,10 +250,7 @@ class Explorer:
     def _describe_action(action: Action, state) -> str:
         t = action.type
         if t == ActionType.CLICK:
-            if (
-                action.element_index is not None
-                and action.element_index < len(state.elements)
-            ):
+            if action.element_index is not None and action.element_index < len(state.elements):
                 el = state.elements[action.element_index]
                 label = (
                     el.text

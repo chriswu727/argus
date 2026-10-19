@@ -6,6 +6,7 @@ Covers a cluster of crash/state-drift bugs:
   - get_state dereferenced a None page after all tabs closed (F16);
   - tabs_switch left the resolver pool pointing at the previous tab (F16).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -41,79 +42,82 @@ class _FailingScreen:
 
 # ── F18: teardown handles a screen session with no browser ───────────
 
+
 async def test_teardown_stops_screen_without_browser():
-    orig = m._session
+    orig = m.runtime.session
     try:
         sess = m.Session()
         sess.mode = "screen"
-        sess.screen = _FakeScreen()  # browser stays None
-        m._session = sess
+        screen = sess.screen = _FakeScreen()  # browser stays None
+        m.runtime.session = sess
         await m._teardown_active_session()  # must not raise None.stop()
-        assert sess.screen.stopped is True
+        assert screen.stopped is True
+        assert sess.screen is None
     finally:
-        m._session = orig
+        m.runtime.session = orig
 
 
 async def test_teardown_reports_backend_failure():
-    orig = m._session
+    orig = m.runtime.session
     try:
         sess = m.Session()
         sess.mode = "screen"
         sess.screen = _FailingScreen()
-        m._session = sess
+        m.runtime.session = sess
 
         errors = await m._teardown_active_session()
 
         assert errors and "cannot stop" in errors[0]
     finally:
-        m._session = orig
+        m.runtime.session = orig
 
 
 async def test_session_lifecycle_transitions_do_not_overlap():
     entered = asyncio.Event()
     release = asyncio.Event()
 
-    @m._exclusive_session_transition
     async def transition():
         entered.set()
         await release.wait()
         return "done"
 
-    first = asyncio.create_task(transition())
+    first = asyncio.create_task(m.runtime.execute("first", transition))
     await entered.wait()
-    second = await transition()
+    second = asyncio.create_task(m.runtime.execute("second", transition))
+    await asyncio.sleep(0)
+    assert not second.done()
     release.set()
 
-    assert "another session lifecycle operation" in second
-    assert await first == "done"
+    assert (await first).value == "done"
+    assert (await second).value == "done"
 
 
 async def test_start_refuses_to_leak_backend_after_teardown_failure():
-    orig = m._session
+    orig = m.runtime.session
     start = m.start_session.fn if hasattr(m.start_session, "fn") else m.start_session
     try:
         sess = m.Session()
         sess.mode = "screen"
         sess.screen = _FailingScreen()
-        m._session = sess
+        m.runtime.session = sess
 
         result = await start("https://example.test")
 
         assert "could not close the active session safely" in result
-        assert m._session is sess
+        assert m.runtime.session is sess
     finally:
-        m._session = orig
+        m.runtime.session = orig
 
 
 async def test_end_session_surfaces_report_failure_and_resets(monkeypatch):
-    orig = m._session
+    orig = m.runtime.session
     end = m.end_session.fn if hasattr(m.end_session, "fn") else m.end_session
     try:
         sess = m.Session()
         sess.mode = "screen"
         sess.screen = _FakeScreen()
         sess.start_time = asyncio.get_running_loop().time()
-        m._session = sess
+        m.runtime.session = sess
 
         def fail_report(*args, **kwargs):
             raise RuntimeError("disk unavailable")
@@ -123,20 +127,21 @@ async def test_end_session_surfaces_report_failure_and_resets(monkeypatch):
 
         assert "report could not be saved" in result
         assert "disk unavailable" in result
-        assert not m._session.active
+        assert not m.runtime.session.active
     finally:
-        m._session = orig
+        m.runtime.session = orig
 
 
 # ── F17: web-only tools reject a screen session cleanly ──────────────
 
+
 async def test_web_tools_reject_screen_session():
-    orig = m._session
+    orig = m.runtime.session
     try:
         sess = m.Session()
         sess.mode = "screen"
         sess.screen = _FakeScreen()
-        m._session = sess
+        m.runtime.session = sess
         for tool, kwargs in (
             (m.navigate, {"url": "http://example.test"}),
             (m.go_back, {}),
@@ -146,10 +151,11 @@ async def test_web_tools_reject_screen_session():
             out = await fn(**kwargs)
             assert "web-mode only" in out
     finally:
-        m._session = orig
+        m.runtime.session = orig
 
 
 # ── F16: get_state guards a closed-out page ──────────────────────────
+
 
 async def test_get_state_raises_when_no_open_page():
     drv = BrowserDriver()  # never started -> _page is None
@@ -185,8 +191,9 @@ async def test_tab_recovery_after_closing_all_tabs():
 
 # ── F16: tabs_switch refreshes the resolver pool to the new tab ───────
 
+
 async def test_tabs_switch_refreshes_resolver_pool():
-    orig = m._session
+    orig = m.runtime.session
     start = m.start_session.fn if hasattr(m.start_session, "fn") else m.start_session
     end = m.end_session.fn if hasattr(m.end_session, "fn") else m.end_session
     switch = m.tabs_switch.fn if hasattr(m.tabs_switch, "fn") else m.tabs_switch
@@ -195,7 +202,7 @@ async def test_tabs_switch_refreshes_resolver_pool():
             await start(_file_url("Alpha"))
         except Exception as exc:
             pytest.skip(f"Chromium unavailable: {exc}")
-        s = m._session
+        s = m.runtime.session
         p2 = await s.browser._context.new_page()
         await p2.goto(_file_url("Beta"))
 
@@ -209,4 +216,4 @@ async def test_tabs_switch_refreshes_resolver_pool():
             await end()
         except Exception:
             pass
-        m._session = orig
+        m.runtime.session = orig

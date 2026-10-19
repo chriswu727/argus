@@ -1,4 +1,5 @@
 """State diff engine — compares two PageStates and reports what changed."""
+
 from __future__ import annotations
 
 import re

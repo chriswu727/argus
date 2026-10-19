@@ -9,6 +9,7 @@ Two silent-wrong-action bugs lived between resolution and the actual click:
 
 These exercise the real Playwright path and skip when Chromium is absent.
 """
+
 from __future__ import annotations
 
 import functools

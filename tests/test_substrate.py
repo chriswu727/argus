@@ -1,4 +1,5 @@
 """Unit tests for the oracle substrate: response-body capture + membership diffing."""
+
 from __future__ import annotations
 
 from argus.browser import _capture_body, _redact, _redact_headers
@@ -7,7 +8,10 @@ from tests.conftest import make_page_state
 
 
 def test_capture_body_keeps_json_and_text():
-    assert _capture_body(b'{"error":"nope"}', {"Content-Type": "application/json"}) == '{"error":"nope"}'
+    assert (
+        _capture_body(b'{"error":"nope"}', {"Content-Type": "application/json"})
+        == '{"error":"nope"}'
+    )
     assert _capture_body(b"plain", {"Content-Type": "text/plain"}) == "plain"
 
 

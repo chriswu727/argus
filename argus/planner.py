@@ -128,12 +128,16 @@ class Planner:
         bugs_found: int,
         steps_remaining: int,
     ) -> Action:
-        focus_text = "\n".join(
-            f"- {fa.name}: {fa.description}"
-            + (f" (paths: {', '.join(fa.paths)})" if fa.paths else "")
-            + (f" (try: {', '.join(fa.actions)})" if fa.actions else "")
-            for fa in focus_areas
-        ) if focus_areas else "No specific focus — explore the application broadly and test everything."
+        focus_text = (
+            "\n".join(
+                f"- {fa.name}: {fa.description}"
+                + (f" (paths: {', '.join(fa.paths)})" if fa.paths else "")
+                + (f" (try: {', '.join(fa.actions)})" if fa.actions else "")
+                for fa in focus_areas
+            )
+            if focus_areas
+            else "No specific focus — explore the application broadly and test everything."
+        )
 
         prompt = f"""FOCUS AREAS:
 {focus_text}
@@ -148,9 +152,9 @@ INTERACTIVE ELEMENTS:
 PAGE TEXT (first 500 chars):
 {state.page_text[:500] if state.page_text else "(not extracted)"}
 
-VISIBLE TOASTS: {', '.join(state.toast_messages) if state.toast_messages else "(none)"}
+VISIBLE TOASTS: {", ".join(state.toast_messages) if state.toast_messages else "(none)"}
 
-DISPLAYED COUNTS: {', '.join(f'{v} {k}' for k, v in state.counts.items()) if state.counts else "(none)"}
+DISPLAYED COUNTS: {", ".join(f"{v} {k}" for k, v in state.counts.items()) if state.counts else "(none)"}
 
 ACTION HISTORY (last 20):
 {_format_history(history)}
@@ -203,7 +207,7 @@ Respond with ONLY a JSON object:
         start = text.find("{")
         end = text.rfind("}")
         if start != -1 and end != -1:
-            text = text[start:end + 1]
+            text = text[start : end + 1]
 
         data = json.loads(text)
         return Action(

@@ -1,4 +1,5 @@
 """Tests for argus.screen.permissions."""
+
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -8,7 +9,9 @@ from argus.screen import permissions
 
 def test_render_report_all_ok_on_macos():
     checks = [
-        permissions.PermissionCheck("Screen Recording", True, "captured 100x100 patch (12345 bytes)", "x-apple..."),
+        permissions.PermissionCheck(
+            "Screen Recording", True, "captured 100x100 patch (12345 bytes)", "x-apple..."
+        ),
         permissions.PermissionCheck("Accessibility", True, "sees Finder", "x-apple..."),
     ]
     with patch.object(permissions, "is_macos", return_value=True):
@@ -22,7 +25,8 @@ def test_render_report_all_ok_on_macos():
 def test_render_report_lists_settings_url_on_failure():
     checks = [
         permissions.PermissionCheck(
-            "Screen Recording", False,
+            "Screen Recording",
+            False,
             "capture produced a 100-byte image",
             "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
         ),

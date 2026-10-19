@@ -6,19 +6,28 @@ needed), drives Argus's MCP tools, optionally calls record_bug, and
 returns (caught: bool, method: str). The runner in argus.bench.runner
 wraps these in timing + reporting.
 """
+
 from __future__ import annotations
 
-from typing import Awaitable, Callable, List
+from typing import List
 
-from .runner import (
-    call,
-    reset as _reset,
-    bugs_added_since as _bugs_added_since,
-    records_match as _records_match,
-    receipt_rejected as _receipt_rejected,
-)
 import argus.mcp_server as mcp_module
 
+from .runner import (
+    bugs_added_since as _bugs_added_since,
+)
+from .runner import (
+    call,
+)
+from .runner import (
+    receipt_rejected as _receipt_rejected,
+)
+from .runner import (
+    records_match as _records_match,
+)
+from .runner import (
+    reset as _reset,
+)
 
 BASE_URL = "http://127.0.0.1:5555"
 BASE = BASE_URL  # legacy alias used inside scenario bodies
@@ -134,7 +143,10 @@ async def s06_form_data_lost_on_error(s):
     obs = await call(mcp_module.observe)
     # After mismatch, a real impl re-renders the form with values; BuggyTasks
     # drops the form entirely.
-    if "passwords do not match" in obs.lower() and "username" not in obs.lower().split("interactive elements:")[1][:300]:
+    if (
+        "passwords do not match" in obs.lower()
+        and "username" not in obs.lower().split("interactive elements:")[1][:300]
+    ):
         await call(
             mcp_module.record_bug,
             title="Register: form fields disappear after validation error",
@@ -293,7 +305,11 @@ async def s12_toggle_race(s):
         mcp_module.record_bug,
         title="Task toggle endpoint has no concurrency control (race window)",
         severity="medium",
-        evidence={"bug_type": "form_error", "screenshot": "skip", "description": f"5 parallel toggles against task 1; final state: {res}"},
+        evidence={
+            "bug_type": "form_error",
+            "screenshot": "skip",
+            "description": f"5 parallel toggles against task 1; final state: {res}",
+        },
     )
     new = _bugs_added_since(s, pre)
     return _records_match(new, ["toggle", "concurrency", "race"]), "agent-record"
@@ -350,6 +366,7 @@ async def s16_decimal_dates(s):
     pre = len(s.bugs)
     obs = await call(mcp_module.observe)
     import re as _re
+
     if _re.search(r"\b\d+\.\d+\s+days?\s+ago\b", obs):
         await call(
             mcp_module.record_bug,
@@ -370,8 +387,7 @@ async def s17_settings_false_success(s):
     has_success_toast = "settings saved" in obs.lower()
     # Did any 500 get auto-captured?
     five_hundred_caught = any(
-        b.type.value == "network_error" and b.title.find("500") != -1
-        for b in s.bugs[pre:]
+        b.type.value == "network_error" and b.title.find("500") != -1 for b in s.bugs[pre:]
     )
     if has_success_toast and five_hundred_caught:
         await call(
@@ -471,7 +487,7 @@ async def s20_navbar_after_auth(s):
     obs = await call(mcp_module.observe)
     # If we're "logged in" but the navbar still has a Login link AND no
     # username, that's BUG #20.
-    has_login_link = "\"Login\"" in obs and "->" in obs.split("\"Login\"")[1][:40]
+    has_login_link = '"Login"' in obs and "->" in obs.split('"Login"')[1][:40]
     looks_logged_in = "logged in as" in obs.lower()
     if has_login_link and looks_logged_in:
         await call(
@@ -532,7 +548,9 @@ async def s22_zero_remaining_red(s):
             ),
         )
         # Red-ish if the red channel dominates. dc2626 -> rgb(220, 38, 38).
-        is_red = "rgb(220, 38, 38)" in colour_res or "rgb(255," in colour_res or "rgb(220" in colour_res
+        is_red = (
+            "rgb(220, 38, 38)" in colour_res or "rgb(255," in colour_res or "rgb(220" in colour_res
+        )
         if is_red:
             await call(
                 mcp_module.record_bug,
@@ -559,8 +577,13 @@ async def s22_zero_remaining_red(s):
 
 async def _fp_record_and_check(s, title, severity, verify):
     pre = len(s.bugs)
-    await call(mcp_module.record_bug, title=title, severity=severity,
-               evidence={"screenshot": "skip"}, verify=verify)
+    await call(
+        mcp_module.record_bug,
+        title=title,
+        severity=severity,
+        evidence={"screenshot": "skip"},
+        verify=verify,
+    )
     new = _bugs_added_since(s, pre)
     resisted = bool(new) and _receipt_rejected(new[-1])
     return resisted, "fp-resisted" if resisted else "fp-LEAKED"
@@ -571,7 +594,9 @@ async def fp01_hallucinated_chart(s):
     await _reset("seeded")
     await call(mcp_module.navigate, BASE + "/")
     return await _fp_record_and_check(
-        s, title="(FP bait) Quarterly Revenue Chart renders blank", severity="medium",
+        s,
+        title="(FP bait) Quarterly Revenue Chart renders blank",
+        severity="medium",
         verify={"expect": "present", "target_text": "Quarterly Revenue Chart"},
     )
 
@@ -583,7 +608,8 @@ async def fp02_real_task_claimed_missing(s):
     await _reset("seeded")
     await call(mcp_module.navigate, BASE + "/tasks")
     return await _fp_record_and_check(
-        s, title="(FP bait) Task 'Buy groceries' silently dropped from list",
+        s,
+        title="(FP bait) Task 'Buy groceries' silently dropped from list",
         severity="high",
         verify={"expect": "absent", "target_text": "Buy groceries", "at_url": "/tasks"},
     )
@@ -593,37 +619,43 @@ async def fp03_hallucinated_banner(s):
     # A second hallucinated element on a different surface.
     await call(mcp_module.navigate, BASE + "/login")
     return await _fp_record_and_check(
-        s, title="(FP bait) Premium plan upsell banner overlaps form", severity="low",
+        s,
+        title="(FP bait) Premium plan upsell banner overlaps form",
+        severity="low",
         verify={"expect": "present", "target_text": "Premium plan upsell"},
     )
 
 
 SCENARIOS: List[tuple] = [
-    (1,  "Console ReferenceError on homepage (appConfig)",       s01_console_appconfig),
-    (2,  "Dead nav link /help -> 404",                            s02_dead_help_link),
-    (3,  "POST /api/newsletter -> 500",                           s03_newsletter_500),
-    (4,  "Login accepts ANY credentials",                         s04_auth_bypass),
-    (5,  "Register: mismatched passwords still create account",   s05_pw_mismatch_creates_account),
-    (6,  "Register: form data cleared on validation error",       s06_form_data_lost_on_error),
-    (7,  "Search XSS reflection",                                 s07_xss_reflection),
-    (8,  "Double-submit creates duplicate task",                  s08_double_submit_dup),
-    (9,  "Dashboard task count off-by-one",                       s09_count_off_by_one),
-    (10, "Delete fake-success: still present after refresh",      s10_fake_delete),
-    (11, "Edit silent failure: data not actually updated",        s11_edit_silent_failure),
-    (12, "Toggle race condition (no server lock)",                s12_toggle_race),
-    (13, "Load More: JS init error blocks pagination",            s13_pagination_jsbug),
-    (14, "Empty state shows 'Loading...' forever",                s14_empty_state_loading),
-    (15, "Search is case-sensitive",                              s15_case_sensitive_search),
-    (16, "Date display: '1.0 days ago' decimal format",           s16_decimal_dates),
-    (17, "Settings 'saved!' even when 500",                       s17_settings_false_success),
-    (18, "Long titles silently truncated by CSS",                 s18_long_title_truncation),
-    (19, "Priority field accepts arbitrary values",               s19_priority_unbounded),
-    (20, "Navbar still shows 'Login' after authentication",       s20_navbar_after_auth),
-    (21, "Whitespace-only task title creates empty task",         s21_whitespace_title),
-    (22, "0 tasks remaining shown in alarming red",               s22_zero_remaining_red),
+    (1, "Console ReferenceError on homepage (appConfig)", s01_console_appconfig),
+    (2, "Dead nav link /help -> 404", s02_dead_help_link),
+    (3, "POST /api/newsletter -> 500", s03_newsletter_500),
+    (4, "Login accepts ANY credentials", s04_auth_bypass),
+    (5, "Register: mismatched passwords still create account", s05_pw_mismatch_creates_account),
+    (6, "Register: form data cleared on validation error", s06_form_data_lost_on_error),
+    (7, "Search XSS reflection", s07_xss_reflection),
+    (8, "Double-submit creates duplicate task", s08_double_submit_dup),
+    (9, "Dashboard task count off-by-one", s09_count_off_by_one),
+    (10, "Delete fake-success: still present after refresh", s10_fake_delete),
+    (11, "Edit silent failure: data not actually updated", s11_edit_silent_failure),
+    (12, "Toggle race condition (no server lock)", s12_toggle_race),
+    (13, "Load More: JS init error blocks pagination", s13_pagination_jsbug),
+    (14, "Empty state shows 'Loading...' forever", s14_empty_state_loading),
+    (15, "Search is case-sensitive", s15_case_sensitive_search),
+    (16, "Date display: '1.0 days ago' decimal format", s16_decimal_dates),
+    (17, "Settings 'saved!' even when 500", s17_settings_false_success),
+    (18, "Long titles silently truncated by CSS", s18_long_title_truncation),
+    (19, "Priority field accepts arbitrary values", s19_priority_unbounded),
+    (20, "Navbar still shows 'Login' after authentication", s20_navbar_after_auth),
+    (21, "Whitespace-only task title creates empty task", s21_whitespace_title),
+    (22, "0 tasks remaining shown in alarming red", s22_zero_remaining_red),
     # False-positive baits (kind="fp"): the receipt must refuse to confirm.
-    (101, "(FP) Hallucinated 'Quarterly Revenue Chart' element",   fp01_hallucinated_chart, "fp"),
-    (102, "(FP) Real task 'Buy groceries' falsely reported gone",  fp02_real_task_claimed_missing, "fp"),
-    (103, "(FP) Hallucinated 'Premium plan upsell' banner",        fp03_hallucinated_banner, "fp"),
+    (101, "(FP) Hallucinated 'Quarterly Revenue Chart' element", fp01_hallucinated_chart, "fp"),
+    (
+        102,
+        "(FP) Real task 'Buy groceries' falsely reported gone",
+        fp02_real_task_claimed_missing,
+        "fp",
+    ),
+    (103, "(FP) Hallucinated 'Premium plan upsell' banner", fp03_hallucinated_banner, "fp"),
 ]
-

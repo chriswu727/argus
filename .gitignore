@@ -15,4 +15,7 @@ argus-reports/
 .codex/
 test-reports/
 CLAUDE.md
-docs/
+docs/*
+!docs/architecture.md
+!docs/decisions.md
+!docs/implementation-0.7.md

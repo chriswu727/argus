@@ -5,9 +5,9 @@ end-to-end path (record_bug independently re-confirming a symptom on a clean
 load) runs against a self-contained file:// page and is skipped when Chromium
 isn't installed.
 """
+
 from __future__ import annotations
 
-import functools
 import http.server
 import socketserver
 import tempfile
@@ -18,8 +18,8 @@ import pytest
 
 import argus.mcp_server as m
 
-
 # ── pure verdict logic ───────────────────────────────────────────────
+
 
 def test_verdict_all_runs_match_is_reproduced():
     r = m._receipt_verdict([True, True], "present")
@@ -45,6 +45,7 @@ def test_verdict_absent_claim_confirmed_when_text_gone():
 # A boundary-free substring scan would stamp VERIFIED on a non-bug when the
 # target text appears incidentally (inside a longer word or a longer item).
 
+
 def test_token_present_requires_word_boundaries():
     assert m._token_present("category", "Browse by category here") is True
     assert m._token_present("cat", "Browse by category here") is False
@@ -53,7 +54,8 @@ def test_token_present_requires_word_boundaries():
 
 
 def test_text_in_state_does_not_match_incidental_substrings():
-    from tests.conftest import make_page_state, make_element
+    from tests.conftest import make_element, make_page_state
+
     st = make_page_state(
         page_text="Browse by category. Recently deleted: none.",
         elements=[make_element(text="Deleted")],
@@ -67,6 +69,7 @@ def test_text_in_state_does_not_match_incidental_substrings():
 
 # ── relative-URL resolution ──────────────────────────────────────────
 
+
 class _FakePage:
     def __init__(self, url):
         self.url = url
@@ -74,7 +77,8 @@ class _FakePage:
 
 class _FakeBrowser:
     def __init__(self, url):
-        self._page = _FakePage(url)
+        self.current_url = url
+        self.has_page = True
 
 
 class _FakeSession:
@@ -103,7 +107,9 @@ async def _session_on_page(html: str):
     f.close()
     url = Path(f.name).as_uri()
     try:
-        await m.start_session.fn(url) if hasattr(m.start_session, "fn") else await m.start_session(url)
+        await m.start_session.fn(url) if hasattr(m.start_session, "fn") else await m.start_session(
+            url
+        )
     except Exception as exc:
         pytest.skip(f"Chromium/session unavailable: {exc}")
     return url
@@ -123,11 +129,19 @@ async def test_receipt_confirms_true_symptom_and_flags_false_one():
     await _session_on_page(_PAGE)
     try:
         # Real symptom present on the page -> reproduced.
-        await _record(title="real", severity="low", evidence={"screenshot": "skip"},
-                      verify={"expect": "present", "target_text": "Buy groceries"})
+        await _record(
+            title="real",
+            severity="low",
+            evidence={"screenshot": "skip"},
+            verify={"expect": "present", "target_text": "Buy groceries"},
+        )
         # Claimed present but not on the page -> must NOT reproduce.
-        await _record(title="bogus", severity="low", evidence={"screenshot": "skip"},
-                      verify={"expect": "present", "target_text": "ZZZ-NOT-REAL"})
+        await _record(
+            title="bogus",
+            severity="low",
+            evidence={"screenshot": "skip"},
+            verify={"expect": "present", "target_text": "ZZZ-NOT-REAL"},
+        )
         # No verify clause -> observation-based, receipt stays None.
         await _record(title="visual", severity="low", evidence={"screenshot": "skip"})
 
@@ -197,7 +211,7 @@ async def test_receipt_follows_server_not_stale_client_dom():
     srv, base = _start_server()
     await _start_session_url(base + "/")
     try:
-        page = m._session.browser._page
+        page = m.runtime.session.browser._page
         # Mutate the live DOM away from server truth: drop the persisted item,
         # inject a phantom one. A receipt that scanned the current DOM would be
         # fooled; one that re-GETs the server must not be.
@@ -208,16 +222,28 @@ async def test_receipt_follows_server_not_stale_client_dom():
         )
 
         # Claim it's absent — but the server still serves it -> must NOT confirm.
-        await _record(title="A", severity="low", evidence={"screenshot": "skip"},
-                      verify={"expect": "absent", "target_text": "Persisted Item"})
+        await _record(
+            title="A",
+            severity="low",
+            evidence={"screenshot": "skip"},
+            verify={"expect": "absent", "target_text": "Persisted Item"},
+        )
         # Claim the phantom is present — server never had it -> must NOT confirm.
-        await _record(title="B", severity="low", evidence={"screenshot": "skip"},
-                      verify={"expect": "present", "target_text": "Phantom Item"})
+        await _record(
+            title="B",
+            severity="low",
+            evidence={"screenshot": "skip"},
+            verify={"expect": "present", "target_text": "Phantom Item"},
+        )
         # Sanity: the server-true symptom DOES confirm.
-        await _record(title="C", severity="low", evidence={"screenshot": "skip"},
-                      verify={"expect": "present", "target_text": "Persisted Item"})
+        await _record(
+            title="C",
+            severity="low",
+            evidence={"screenshot": "skip"},
+            verify={"expect": "present", "target_text": "Persisted Item"},
+        )
 
-        by_title = {b.title: b for b in m._session.bugs}
+        by_title = {b.title: b for b in m.runtime.session.bugs}
         assert by_title["A"].reproduction_receipt["reproduced"] is False
         assert by_title["B"].reproduction_receipt["reproduced"] is False
         assert by_title["C"].reproduction_receipt["reproduced"] is True
@@ -231,9 +257,13 @@ async def test_receipt_flags_intermittent_symptom_as_flaky():
     srv, base = _start_server()
     await _start_session_url(base + "/flaky")
     try:
-        await _record(title="flaky", severity="low", evidence={"screenshot": "skip"},
-                      verify={"expect": "present", "target_text": "FlakyText", "at_url": "/flaky"})
-        receipt = m._session.bugs[-1].reproduction_receipt
+        await _record(
+            title="flaky",
+            severity="low",
+            evidence={"screenshot": "skip"},
+            verify={"expect": "present", "target_text": "FlakyText", "at_url": "/flaky"},
+        )
+        receipt = m.runtime.session.bugs[-1].reproduction_receipt
         assert receipt["flaky"] is True
         assert receipt["reproduced"] is False
         assert receipt["runs"] == "1/2"
@@ -252,15 +282,15 @@ async def test_receipt_can_verify_http_status_without_matching_error_copy():
             evidence={"screenshot": "skip", "url": base + "/missing"},
             verify={"expect_status": 404, "at_url": "/missing"},
         )
-        receipt = m._session.bugs[-1].reproduction_receipt
+        receipt = m.runtime.session.bugs[-1].reproduction_receipt
         assert receipt["reproduced"] is True
         assert receipt["expect_status"] == 404
         assert receipt["observed_statuses"] == [404, 404]
         assert "HTTP 404" in out and "unknown" not in out
         errors = await (getattr(m.get_errors, "fn", m.get_errors))()
         assert "0 new finding(s)" in errors
-        assert len(m._session.bugs) == 1
-        assert m._session.bugs[0].network_logs
+        assert len(m.runtime.session.bugs) == 1
+        assert m.runtime.session.bugs[0].network_logs
     finally:
         await _end()
         srv.shutdown()
@@ -280,14 +310,16 @@ class _LoginWallHandler(http.server.BaseHTTPRequestHandler):
 async def test_item_lists_excludes_hidden_rows():
     # observe must report only what a human sees: a display:none row must not
     # appear in item_lists (it already doesn't in page_text / interactive els).
-    page = ('<html><body><ul>'
-            '<li>VisibleAlpha</li>'
-            '<li style="display:none">HiddenBeta</li>'
-            '<li>VisibleGamma</li>'
-            '</ul></body></html>')
+    page = (
+        "<html><body><ul>"
+        "<li>VisibleAlpha</li>"
+        '<li style="display:none">HiddenBeta</li>'
+        "<li>VisibleGamma</li>"
+        "</ul></body></html>"
+    )
     await _session_on_page(page)
     try:
-        st = await m._session.browser.get_state()
+        st = await m.runtime.session.browser.get_state()
         joined = " ".join(v for lst in st.item_lists.values() for v in lst)
         assert "VisibleAlpha" in joined and "VisibleGamma" in joined
         assert "HiddenBeta" not in joined  # hidden row excluded
@@ -307,16 +339,21 @@ class _IframeHandler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.startswith("/frame"):
-            self._send('<html><body><label for="card">Card number</label>'
-                       '<input id="card"><button id="pay">Pay Now</button></body></html>')
+            self._send(
+                '<html><body><label for="card">Card number</label>'
+                '<input id="card"><button id="pay">Pay Now</button></body></html>'
+            )
         else:
-            self._send('<html><body><button id="outer">Outer</button>'
-                       '<iframe id="pay" src="/frame" width="320" height="200"></iframe></body></html>')
+            self._send(
+                '<html><body><button id="outer">Outer</button>'
+                '<iframe id="pay" src="/frame" width="320" height="200"></iframe></body></html>'
+            )
 
 
 async def test_same_origin_iframe_observed_and_interactive():
     class _S(socketserver.ThreadingTCPServer):
         allow_reuse_address = True
+
     srv = _S(("127.0.0.1", 0), _IframeHandler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{srv.server_address[1]}"
@@ -326,11 +363,17 @@ async def test_same_origin_iframe_observed_and_interactive():
         # elements INSIDE the same-origin iframe must be surfaced by observe
         assert "Card number" in obs and "Pay Now" in obs
         # and actually reachable — type_into / click_what land in the frame
-        await (getattr(m.type_into, "fn", m.type_into))(description="Card number field", text="4242")
+        await (getattr(m.type_into, "fn", m.type_into))(
+            description="Card number field", text="4242"
+        )
         r = await (getattr(m.click_what, "fn", m.click_what))(description="Pay Now button")
         assert "Clicked" in r
         # confirm the value truly landed in the IFRAME input (not silently dropped)
-        val = await m._session.browser._page.frame_locator('iframe[id="pay"]').locator("#card").input_value()
+        val = (
+            await m.runtime.session.browser._page.frame_locator('iframe[id="pay"]')
+            .locator("#card")
+            .input_value()
+        )
         assert val == "4242"
     finally:
         await _end()
@@ -340,6 +383,7 @@ async def test_same_origin_iframe_observed_and_interactive():
 async def test_cross_origin_iframe_observed_and_interactive():
     class _S(socketserver.ThreadingTCPServer):
         allow_reuse_address = True
+
     inner = _S(("127.0.0.1", 0), _IframeHandler)  # serves /frame -> card input + Pay
     threading.Thread(target=inner.serve_forever, daemon=True).start()
     inner_port = inner.server_address[1]
@@ -352,10 +396,13 @@ async def test_cross_origin_iframe_observed_and_interactive():
             self.send_response(200)
             self.send_header("Content-Type", "text/html")
             self.end_headers()
-            self.wfile.write((
-                '<html><body><button id="outer">Outer</button>'
-                f'<iframe id="pay" src="http://127.0.0.1:{inner_port}/frame" width="320" height="200">'
-                '</iframe></body></html>').encode())
+            self.wfile.write(
+                (
+                    '<html><body><button id="outer">Outer</button>'
+                    f'<iframe id="pay" src="http://127.0.0.1:{inner_port}/frame" width="320" height="200">'
+                    "</iframe></body></html>"
+                ).encode()
+            )
 
     outer = _S(("127.0.0.1", 0), _OuterHandler)
     threading.Thread(target=outer.serve_forever, daemon=True).start()
@@ -365,8 +412,14 @@ async def test_cross_origin_iframe_observed_and_interactive():
         obs = await (getattr(m.observe, "fn", m.observe))()
         # cross-origin frame CONTENTS are now surfaced (were a "blind spot" marker)
         assert "Card number" in obs and "Pay Now" in obs
-        await (getattr(m.type_into, "fn", m.type_into))(description="Card number field", text="4111")
-        val = await m._session.browser._page.frame_locator('iframe[id="pay"]').locator("#card").input_value()
+        await (getattr(m.type_into, "fn", m.type_into))(
+            description="Card number field", text="4111"
+        )
+        val = (
+            await m.runtime.session.browser._page.frame_locator('iframe[id="pay"]')
+            .locator("#card")
+            .input_value()
+        )
         assert val == "4111"
     finally:
         await _end()
@@ -375,19 +428,21 @@ async def test_cross_origin_iframe_observed_and_interactive():
 
 
 async def test_canvas_surfaced_and_click_at_lands():
-    page = ('<html><body>'
-            '<canvas id="c" width="200" height="150" style="width:200px;height:150px"></canvas>'
-            '<div id="out">none</div>'
-            "<script>document.getElementById('c').addEventListener('click',function(e){"
-            "document.getElementById('out').textContent='CLICKED_CANVAS';});</script>"
-            '</body></html>')
+    page = (
+        "<html><body>"
+        '<canvas id="c" width="200" height="150" style="width:200px;height:150px"></canvas>'
+        '<div id="out">none</div>'
+        "<script>document.getElementById('c').addEventListener('click',function(e){"
+        "document.getElementById('out').textContent='CLICKED_CANVAS';});</script>"
+        "</body></html>"
+    )
     await _session_on_page(page)
     try:
-        st = await m._session.browser.get_state()
+        st = await m.runtime.session.browser.get_state()
         assert st.canvases and st.canvases[0]["w"] >= 40  # canvas region surfaced with its rect
         cx, cy = st.canvases[0]["x"], st.canvases[0]["y"]
         await (getattr(m.click_at, "fn", m.click_at))(x=cx, y=cy)
-        st2 = await m._session.browser.get_state()
+        st2 = await m.runtime.session.browser.get_state()
         assert "CLICKED_CANVAS" in st2.page_text  # the coordinate click landed on the canvas
         obs = await (getattr(m.observe, "fn", m.observe))()
         assert "Canvas regions" in obs and "click_at" in obs  # observe flags it + the escape hatch
@@ -397,59 +452,82 @@ async def test_canvas_surfaced_and_click_at_lands():
 
 async def test_click_at_below_fold_canvas_scrolls_and_lands():
     # click_at on a below-the-fold canvas used to silently miss but report success.
-    page = ('<html><body><div style="height:1600px">spacer</div>'
-            '<canvas id="c" width="200" height="150" style="width:200px;height:150px"></canvas>'
-            '<div id="out">none</div>'
-            "<script>document.getElementById('c').addEventListener('click',function(e){"
-            "document.getElementById('out').textContent='HIT_BELOW';});</script>"
-            '</body></html>')
+    page = (
+        '<html><body><div style="height:1600px">spacer</div>'
+        '<canvas id="c" width="200" height="150" style="width:200px;height:150px"></canvas>'
+        '<div id="out">none</div>'
+        "<script>document.getElementById('c').addEventListener('click',function(e){"
+        "document.getElementById('out').textContent='HIT_BELOW';});</script>"
+        "</body></html>"
+    )
     await _session_on_page(page)
     try:
-        st = await m._session.browser.get_state()
+        st = await m.runtime.session.browser.get_state()
         cv = st.canvases[0]
-        vph = await m._session.browser._page.evaluate("() => window.innerHeight")
+        vph = await m.runtime.session.browser._page.evaluate("() => window.innerHeight")
         assert cv["y"] > vph  # canvas center is below the fold
         ok_msg = await (getattr(m.click_at, "fn", m.click_at))(x=cv["x"], y=cv["y"])
         assert "Clicked" in ok_msg
-        st2 = await m._session.browser.get_state()
+        st2 = await m.runtime.session.browser.get_state()
         assert "HIT_BELOW" in st2.page_text  # it scrolled into view and actually landed
     finally:
         await _end()
 
 
 async def test_record_bug_string_steps_not_char_split():
-    await _session_on_page('<html><body><button>X</button></body></html>')
+    await _session_on_page("<html><body><button>X</button></body></html>")
     try:
         rb = getattr(m.record_bug, "fn", m.record_bug)
         # a newline-joined string (a very common model shape) -> one step per line
-        await rb(title="Newline steps bug", severity="low",
-                 evidence={"steps": "Open the page\nClick X\nSee the error"})
-        assert m._session.bugs[-1].steps_to_reproduce == ["Open the page", "Click X", "See the error"]
+        await rb(
+            title="Newline steps bug",
+            severity="low",
+            evidence={"steps": "Open the page\nClick X\nSee the error"},
+        )
+        assert m.runtime.session.bugs[-1].steps_to_reproduce == [
+            "Open the page",
+            "Click X",
+            "See the error",
+        ]
         # a single string with no newlines -> one step, NOT one <li> per character
-        await rb(title="One-line steps bug", severity="low",
-                 evidence={"steps": "Just one step here"})
-        assert m._session.bugs[-1].steps_to_reproduce == ["Just one step here"]
+        await rb(
+            title="One-line steps bug", severity="low", evidence={"steps": "Just one step here"}
+        )
+        assert m.runtime.session.bugs[-1].steps_to_reproduce == ["Just one step here"]
         # inline-numbered run-on "1. a 2. b 3. c" -> three clean steps (no numbers)
-        await rb(title="Inline numbered bug", severity="low",
-                 evidence={"steps": "1. Open /new 2. Fill title 3. Click Save"})
-        assert m._session.bugs[-1].steps_to_reproduce == ["Open /new", "Fill title", "Click Save"]
+        await rb(
+            title="Inline numbered bug",
+            severity="low",
+            evidence={"steps": "1. Open /new 2. Fill title 3. Click Save"},
+        )
+        assert m.runtime.session.bugs[-1].steps_to_reproduce == [
+            "Open /new",
+            "Fill title",
+            "Click Save",
+        ]
     finally:
         await _end()
 
 
 async def test_observe_shows_invalid_and_selected_state():
     from argus.resolver import describe
-    page = ('<html><body>'
-            '<input type="email" aria-invalid="true" aria-label="Email" value="not-an-email">'
-            '<input type="email" aria-label="Native" value="bad@" required>'
-            '<input type="text" aria-label="Empty" required>'
-            '<div role="tab" aria-selected="true" aria-label="Tab1">Tab1</div></body></html>')
+
+    page = (
+        "<html><body>"
+        '<input type="email" aria-invalid="true" aria-label="Email" value="not-an-email">'
+        '<input type="email" aria-label="Native" value="bad@" required>'
+        '<input type="text" aria-label="Empty" required>'
+        '<div role="tab" aria-selected="true" aria-label="Tab1">Tab1</div></body></html>'
+    )
     await _session_on_page(page)
     try:
-        ds = {e.aria_label: describe(e) for e in (await m._session.browser.get_state()).elements}
-        assert "[invalid]" in ds["Email"]           # explicit aria-invalid
-        assert "[invalid]" in ds["Native"]          # native :invalid on a FILLED field
-        assert "[invalid]" not in ds["Empty"]       # empty required -> not flagged (no noise)
+        ds = {
+            e.aria_label: describe(e)
+            for e in (await m.runtime.session.browser.get_state()).elements
+        }
+        assert "[invalid]" in ds["Email"]  # explicit aria-invalid
+        assert "[invalid]" in ds["Native"]  # native :invalid on a FILLED field
+        assert "[invalid]" not in ds["Empty"]  # empty required -> not flagged (no noise)
         assert "[selected]" in ds["Tab1"]
     finally:
         await _end()
@@ -457,14 +535,20 @@ async def test_observe_shows_invalid_and_selected_state():
 
 async def test_observe_shows_aria_expanded_pressed_current():
     from argus.resolver import describe
-    page = ('<html><body>'
-            '<button aria-expanded="false" aria-label="Filters">Filters</button>'
-            '<button aria-expanded="true" aria-label="Menu">Menu</button>'
-            '<button aria-pressed="true" aria-label="Bold">B</button>'
-            '<a href="#" aria-current="page" aria-label="Home">Home</a></body></html>')
+
+    page = (
+        "<html><body>"
+        '<button aria-expanded="false" aria-label="Filters">Filters</button>'
+        '<button aria-expanded="true" aria-label="Menu">Menu</button>'
+        '<button aria-pressed="true" aria-label="Bold">B</button>'
+        '<a href="#" aria-current="page" aria-label="Home">Home</a></body></html>'
+    )
     await _session_on_page(page)
     try:
-        ds = {e.aria_label: describe(e) for e in (await m._session.browser.get_state()).elements}
+        ds = {
+            e.aria_label: describe(e)
+            for e in (await m.runtime.session.browser.get_state()).elements
+        }
         assert "[collapsed]" in ds["Filters"] and "[expanded]" in ds["Menu"]
         assert "[pressed]" in ds["Bold"] and "[current]" in ds["Home"]
     finally:
@@ -474,19 +558,22 @@ async def test_observe_shows_aria_expanded_pressed_current():
 async def test_emulate_media_dark_mode_applies():
     # Dark-mode testing: emulate prefers-color-scheme:dark and confirm the page's
     # dark @media rule actually takes effect (so theme bugs become observable).
-    page = ('<html><head><style>body{background:#fff}'
-            '@media (prefers-color-scheme: dark){body{background:rgb(17,17,17)}}</style></head>'
-            '<body>x</body></html>')
+    page = (
+        "<html><head><style>body{background:#fff}"
+        "@media (prefers-color-scheme: dark){body{background:rgb(17,17,17)}}</style></head>"
+        "<body>x</body></html>"
+    )
     await _session_on_page(page)
     try:
         em = getattr(m.emulate_media, "fn", m.emulate_media)
         r = await em(color_scheme="dark")
         assert "color_scheme=dark" in r
-        info = await m._session.browser._page.evaluate(
+        info = await m.runtime.session.browser._page.evaluate(
             "() => ({dark: matchMedia('(prefers-color-scheme: dark)').matches, "
-            "bg: getComputedStyle(document.body).backgroundColor})")
-        assert info["dark"] is True and info["bg"] == "rgb(17, 17, 17)"   # dark theme applied
-        assert "pass color_scheme" in await em()                          # empty args -> guidance
+            "bg: getComputedStyle(document.body).backgroundColor})"
+        )
+        assert info["dark"] is True and info["bg"] == "rgb(17, 17, 17)"  # dark theme applied
+        assert "pass color_scheme" in await em()  # empty args -> guidance
     finally:
         await _end()
 
@@ -494,13 +581,15 @@ async def test_emulate_media_dark_mode_applies():
 async def test_click_surfaces_new_tab():
     # A click that opens a new tab (target=_blank / window.open) must be signalled,
     # or multi-tab flows (OAuth, popups) go silently untested.
-    page = ('<html><body><a href="about:blank" target="_blank">Open external</a>'
-            '<button>Normal</button></body></html>')
+    page = (
+        '<html><body><a href="about:blank" target="_blank">Open external</a>'
+        "<button>Normal</button></body></html>"
+    )
     await _session_on_page(page)
     try:
         click = getattr(m.click_what, "fn", m.click_what)
         r0 = await click("Normal")
-        assert "new tab" not in r0.lower()                 # no false signal
+        assert "new tab" not in r0.lower()  # no false signal
         r = await click("Open external")
         assert "new tab opened" in r.lower() and "tabs_switch(1)" in r
     finally:
@@ -514,8 +603,9 @@ async def test_emulate_device_applies_mobile_profile():
     try:
         r = await (getattr(m.emulate_device, "fn", m.emulate_device))("iPhone 13")
         assert "iPhone 13" in r and "touch=True" in r
-        info = await m._session.browser._page.evaluate(
-            "() => ({w: innerWidth, iphone: navigator.userAgent.includes('iPhone'), touch: navigator.maxTouchPoints})")
+        info = await m.runtime.session.browser._page.evaluate(
+            "() => ({w: innerWidth, iphone: navigator.userAgent.includes('iPhone'), touch: navigator.maxTouchPoints})"
+        )
         assert info["w"] == 390 and info["iphone"] is True and info["touch"] >= 1
         # unknown device -> honest error, no crash
         r2 = await (getattr(m.emulate_device, "fn", m.emulate_device))("Nonexistent Phone 9000")
@@ -527,12 +617,14 @@ async def test_emulate_device_applies_mobile_profile():
 async def test_css_only_tab_switches_via_hidden_radio():
     # CSS-only tabs: a visually-hidden radio drives the panel via :checked. Playwright's
     # hit-test can't click the hidden radio; the programmatic-click fallback must toggle it.
-    page = ('<html><head><style>.tabs input{position:absolute;opacity:0;width:1px;height:1px}'
-            '.panel{display:none}#tab2:checked~#panel2{display:block}</style></head>'
-            '<body><div class="tabs"><input type="radio" name="t" id="tab1" checked>'
-            '<input type="radio" name="t" id="tab2"><label for="tab1">Overview</label>'
-            '<label for="tab2">Installation</label>'
-            '<div class="panel" id="panel2">TAB2_CONTENT</div></div></body></html>')
+    page = (
+        "<html><head><style>.tabs input{position:absolute;opacity:0;width:1px;height:1px}"
+        ".panel{display:none}#tab2:checked~#panel2{display:block}</style></head>"
+        '<body><div class="tabs"><input type="radio" name="t" id="tab1" checked>'
+        '<input type="radio" name="t" id="tab2"><label for="tab1">Overview</label>'
+        '<label for="tab2">Installation</label>'
+        '<div class="panel" id="panel2">TAB2_CONTENT</div></div></body></html>'
+    )
     await _session_on_page(page)
     try:
         r = await (getattr(m.click_what, "fn", m.click_what))("Installation")
@@ -546,8 +638,10 @@ async def test_css_only_tab_switches_via_hidden_radio():
 async def test_native_details_summary_disclosure_opens():
     # native <details>/<summary>: summary must be surfaced (with collapsed state) and
     # clickable to reveal the hidden content — it has no tabindex/role/aria-expanded.
-    page = ('<html><body><details><summary>Show more</summary>'
-            '<p>HIDDEN_DETAIL</p></details></body></html>')
+    page = (
+        "<html><body><details><summary>Show more</summary>"
+        "<p>HIDDEN_DETAIL</p></details></body></html>"
+    )
     await _session_on_page(page)
     try:
         obs0 = await (getattr(m.observe, "fn", m.observe))()
@@ -564,37 +658,44 @@ async def test_native_details_summary_disclosure_opens():
 async def test_drag_at_coordinate_drag_fires_mouse_sequence():
     # coordinate drag for mouse-based draggables (Sortable.js/Trello) with no DOM
     # marker: mousedown -> incremental mousemove -> mouseup must all fire.
-    page = ('<html><body>'
-            '<div id="area" style="width:300px;height:200px;border:1px solid #000"></div>'
-            '<div id="out">idle</div>'
-            "<script>var down=false;var a=document.getElementById('area');"
-            "a.addEventListener('mousedown',function(){down=true;});"
-            "document.addEventListener('mousemove',function(){if(down)document.getElementById('out').textContent='DRAGGING';});"
-            "document.addEventListener('mouseup',function(){if(down){document.getElementById('out').textContent='DRAGGED';down=false;}});"
-            '</script></body></html>')
+    page = (
+        "<html><body>"
+        '<div id="area" style="width:300px;height:200px;border:1px solid #000"></div>'
+        '<div id="out">idle</div>'
+        "<script>var down=false;var a=document.getElementById('area');"
+        "a.addEventListener('mousedown',function(){down=true;});"
+        "document.addEventListener('mousemove',function(){if(down)document.getElementById('out').textContent='DRAGGING';});"
+        "document.addEventListener('mouseup',function(){if(down){document.getElementById('out').textContent='DRAGGED';down=false;}});"
+        "</script></body></html>"
+    )
     await _session_on_page(page)
     try:
         await (getattr(m.drag_at, "fn", m.drag_at))(from_x=60, from_y=60, to_x=200, to_y=150)
-        assert await m._session.browser._page.locator("#out").text_content() == "DRAGGED"
+        assert await m.runtime.session.browser._page.locator("#out").text_content() == "DRAGGED"
     finally:
         await _end()
 
 
 async def test_observe_captures_clickable_calendar_day_cells():
     from argus.resolver import resolve_element
+
     # roving-tabindex calendar (react-datepicker): day cells are role=gridcell +
     # cursor:pointer, most tabindex=-1 (only the focused day is 0). All clickable
     # days must be targetable; a data grid's non-clickable cells must NOT flood in.
-    page = ('<html><body>'
-            '<div role="gridcell" aria-label="July 15" tabindex="-1" style="cursor:pointer;width:30px;height:30px">15</div>'
-            '<div role="gridcell" aria-label="July 16" tabindex="0" style="cursor:pointer;width:30px;height:30px">16</div>'
-            '<div role="gridcell" style="width:50px;height:20px">plain data cell</div></body></html>')
+    page = (
+        "<html><body>"
+        '<div role="gridcell" aria-label="July 15" tabindex="-1" style="cursor:pointer;width:30px;height:30px">15</div>'
+        '<div role="gridcell" aria-label="July 16" tabindex="0" style="cursor:pointer;width:30px;height:30px">16</div>'
+        '<div role="gridcell" style="width:50px;height:20px">plain data cell</div></body></html>'
+    )
     await _session_on_page(page)
     try:
-        st = await m._session.browser.get_state()
+        st = await m.runtime.session.browser.get_state()
         gc = [e for e in st.elements if e.role == "gridcell"]
         assert len(gc) == 2  # 2 clickable days (incl the tabindex=-1 one), NOT the data cell
-        assert resolve_element("July 15", st.elements).found is not None  # non-selected day targetable
+        assert (
+            resolve_element("July 15", st.elements).found is not None
+        )  # non-selected day targetable
     finally:
         await _end()
 
@@ -604,15 +705,26 @@ async def test_type_into_contenteditable_rich_text_editor():
     # data-placeholder — must be targetable AND typeable (was an unlabelled div
     # that type_into refused because kind != input).
     from argus.resolver import describe, kind_of
-    page = ('<html><body><div id="ed" class="ql-editor" contenteditable="true" '
-            'style="min-height:80px" data-placeholder="Compose an epic story"></div></body></html>')
+
+    page = (
+        '<html><body><div id="ed" class="ql-editor" contenteditable="true" '
+        'style="min-height:80px" data-placeholder="Compose an epic story"></div></body></html>'
+    )
     await _session_on_page(page)
     try:
-        ed = [e for e in (await m._session.browser.get_state()).elements if e.type == "contenteditable"][0]
-        assert "Compose an epic" in describe(ed)   # data-placeholder becomes the label
-        assert kind_of(ed) == "input"              # so type_into will target it
-        await (getattr(m.type_into, "fn", m.type_into))(description="Compose an epic", text="Hello editor")
-        assert "Hello editor" in (await m._session.browser._page.locator("#ed").text_content())
+        ed = [
+            e
+            for e in (await m.runtime.session.browser.get_state()).elements
+            if e.type == "contenteditable"
+        ][0]
+        assert "Compose an epic" in describe(ed)  # data-placeholder becomes the label
+        assert kind_of(ed) == "input"  # so type_into will target it
+        await (getattr(m.type_into, "fn", m.type_into))(
+            description="Compose an epic", text="Hello editor"
+        )
+        assert "Hello editor" in (
+            await m.runtime.session.browser._page.locator("#ed").text_content()
+        )
     finally:
         await _end()
 
@@ -620,28 +732,43 @@ async def test_type_into_contenteditable_rich_text_editor():
 async def test_observe_labels_custom_combobox_by_control_text():
     # react-select/Downshift pattern: an unlabelled role=combobox input inside a
     # control container whose visible text is the placeholder/selected value.
-    page = ('<html><body>'
-            '<div class="my-select__control"><div class="my-select__value">Ocean</div>'
-            '<input role="combobox" aria-expanded="false"></div></body></html>')
+    page = (
+        "<html><body>"
+        '<div class="my-select__control"><div class="my-select__value">Ocean</div>'
+        '<input role="combobox" aria-expanded="false"></div></body></html>'
+    )
     await _session_on_page(page)
     try:
-        combos = [e for e in (await m._session.browser.get_state()).elements if e.role == "combobox"]
-        assert combos and "Ocean" in (combos[0].aria_label or "")  # control text -> targetable label
+        combos = [
+            e
+            for e in (await m.runtime.session.browser.get_state()).elements
+            if e.role == "combobox"
+        ]
+        assert combos and "Ocean" in (
+            combos[0].aria_label or ""
+        )  # control text -> targetable label
     finally:
         await _end()
 
 
 async def test_observe_select_shows_label_and_selected_option():
     from argus.resolver import describe
-    page = ('<html><body>'
-            '<select aria-label="Sort"><option value="az">Name A-Z</option>'
-            '<option value="za" selected>Name Z-A</option></select>'
-            '<select><option>USA</option><option selected>Canada</option></select></body></html>')
+
+    page = (
+        "<html><body>"
+        '<select aria-label="Sort"><option value="az">Name A-Z</option>'
+        '<option value="za" selected>Name Z-A</option></select>'
+        "<select><option>USA</option><option selected>Canada</option></select></body></html>"
+    )
     await _session_on_page(page)
     try:
-        joined = " | ".join(describe(e) for e in (await m._session.browser.get_state()).elements if e.tag == "select")
-        assert 'select "Sort" = "Name Z-A"' in joined     # labelled: label + current selection
-        assert 'select "Canada"' in joined                # unlabelled: selection is the label
+        joined = " | ".join(
+            describe(e)
+            for e in (await m.runtime.session.browser.get_state()).elements
+            if e.tag == "select"
+        )
+        assert 'select "Sort" = "Name Z-A"' in joined  # labelled: label + current selection
+        assert 'select "Canada"' in joined  # unlabelled: selection is the label
         assert "Name A-Z" not in joined and "USA" not in joined  # NOT all options mashed together
     finally:
         await _end()
@@ -651,16 +778,18 @@ async def test_observe_keeps_opacity0_restyled_checkbox():
     # TodoMVC/Bootstrap/Material pattern: a real checkbox at opacity:0 behind a
     # styled visual — must stay targetable (the opacity filter used to hide it,
     # making the whole widget untargetable on real apps).
-    page = ('<html><body>'
-            '<label><input type="checkbox" style="opacity:0" aria-label="Accept terms" checked>Accept</label>'
-            '<button style="opacity:0">HiddenBtn</button>'
-            '</body></html>')
+    page = (
+        "<html><body>"
+        '<label><input type="checkbox" style="opacity:0" aria-label="Accept terms" checked>Accept</label>'
+        '<button style="opacity:0">HiddenBtn</button>'
+        "</body></html>"
+    )
     await _session_on_page(page)
     try:
-        st = await m._session.browser.get_state()
+        st = await m.runtime.session.browser.get_state()
         labels = " ".join((e.aria_label or e.text or "") for e in st.elements)
-        assert "Accept terms" in labels    # opacity:0 checkbox is KEPT
-        assert "HiddenBtn" not in labels    # opacity:0 non-control button still filtered
+        assert "Accept terms" in labels  # opacity:0 checkbox is KEPT
+        assert "HiddenBtn" not in labels  # opacity:0 non-control button still filtered
         cb = [e for e in st.elements if e.type == "checkbox"]
         assert cb and cb[0].checked is True
     finally:
@@ -669,61 +798,73 @@ async def test_observe_keeps_opacity0_restyled_checkbox():
 
 async def test_observe_distinguishes_checked_checkboxes():
     from argus.resolver import describe
-    page = ('<html><body>'
-            '<label>Remember me<input type="checkbox" checked></label>'
-            '<label>Subscribe<input type="checkbox"></label></body></html>')
+
+    page = (
+        "<html><body>"
+        '<label>Remember me<input type="checkbox" checked></label>'
+        '<label>Subscribe<input type="checkbox"></label></body></html>'
+    )
     await _session_on_page(page)
     try:
-        cbs = [e for e in (await m._session.browser.get_state()).elements if e.type == "checkbox"]
+        cbs = [
+            e
+            for e in (await m.runtime.session.browser.get_state()).elements
+            if e.type == "checkbox"
+        ]
         assert len(cbs) == 2
-        assert {e.checked for e in cbs} == {True, False}   # live checked state captured
+        assert {e.checked for e in cbs} == {True, False}  # live checked state captured
         ds = " ".join(describe(e) for e in cbs)
-        assert "[checked]" in ds and "[unchecked]" in ds    # and shown distinctly
+        assert "[checked]" in ds and "[unchecked]" in ds  # and shown distinctly
     finally:
         await _end()
 
 
 async def test_paste_into_fires_handler_and_default_insert():
-    page = ('<html><body>'
-            '<input id="h" placeholder="Coupon">'
-            '<input id="p" placeholder="Plain">'
-            "<script>document.getElementById('h').addEventListener('paste',function(e){"
-            "e.preventDefault();var t=e.clipboardData.getData('text');this.value='PASTED:'+t.toUpperCase();});"
-            '</script></body></html>')
+    page = (
+        "<html><body>"
+        '<input id="h" placeholder="Coupon">'
+        '<input id="p" placeholder="Plain">'
+        "<script>document.getElementById('h').addEventListener('paste',function(e){"
+        "e.preventDefault();var t=e.clipboardData.getData('text');this.value='PASTED:'+t.toUpperCase();});"
+        "</script></body></html>"
+    )
     await _session_on_page(page)
     try:
         pi = getattr(m.paste_into, "fn", m.paste_into)
         await pi(description="Coupon field", text="save10")
         await pi(description="Plain field", text="hello123")
-        vh = await m._session.browser._page.locator("#h").input_value()
-        vp = await m._session.browser._page.locator("#p").input_value()
-        assert vh == "PASTED:SAVE10"   # onpaste handler fired and transformed the paste
-        assert vp == "hello123"        # no handler -> default insert still worked
+        vh = await m.runtime.session.browser._page.locator("#h").input_value()
+        vp = await m.runtime.session.browser._page.locator("#p").input_value()
+        assert vh == "PASTED:SAVE10"  # onpaste handler fired and transformed the paste
+        assert vp == "hello123"  # no handler -> default insert still worked
     finally:
         await _end()
 
 
 async def test_drop_file_onto_dropzone_with_real_bytes():
-    import tempfile
     import os as _os
+    import tempfile
+
     fd, fpath = tempfile.mkstemp(suffix=".txt")
     _os.write(fd, b"HELLO_DROPZONE_REAL_BYTES_PAYLOAD")
     _os.close(fd)
     real_size = str(_os.path.getsize(fpath))
-    page = ('<html><body>'
-            '<div id="drop" role="button" tabindex="0">Drop files here</div>'
-            '<div id="result">no file</div>'
-            "<script>var d=document.getElementById('drop');"
-            "d.addEventListener('dragover',function(e){e.preventDefault();});"
-            "d.addEventListener('drop',function(e){e.preventDefault();var f=e.dataTransfer.files[0];"
-            "document.getElementById('result').textContent='GOT:'+f.name+':'+f.size;});"
-            '</script></body></html>')
+    page = (
+        "<html><body>"
+        '<div id="drop" role="button" tabindex="0">Drop files here</div>'
+        '<div id="result">no file</div>'
+        "<script>var d=document.getElementById('drop');"
+        "d.addEventListener('dragover',function(e){e.preventDefault();});"
+        "d.addEventListener('drop',function(e){e.preventDefault();var f=e.dataTransfer.files[0];"
+        "document.getElementById('result').textContent='GOT:'+f.name+':'+f.size;});"
+        "</script></body></html>"
+    )
     await _session_on_page(page)
     try:
         await (getattr(m.drop_file, "fn", m.drop_file))(description="Drop files here", path=fpath)
-        pt = (await m._session.browser.get_state()).page_text
-        assert "GOT:" in pt and _os.path.basename(fpath) in pt   # dropzone handler got a real File
-        assert real_size in pt   # the ACTUAL byte size reached the handler (not a fabricated stub)
+        pt = (await m.runtime.session.browser.get_state()).page_text
+        assert "GOT:" in pt and _os.path.basename(fpath) in pt  # dropzone handler got a real File
+        assert real_size in pt  # the ACTUAL byte size reached the handler (not a fabricated stub)
     finally:
         await _end()
         _os.unlink(fpath)
@@ -743,21 +884,24 @@ async def test_click_does_not_fail_on_click_triggered_hang():
             self.send_response(200)
             self.send_header("Content-Type", "text/html")
             self.end_headers()
-            self.wfile.write(b'<html><body><button id="b" onclick="go()">Load data</button>'
-                             b'<div id="r">idle</div>'
-                             b"<script>function go(){document.getElementById('r').textContent='CLICK_DONE';"
-                             b"fetch('/hang');}</script></body></html>")
+            self.wfile.write(
+                b'<html><body><button id="b" onclick="go()">Load data</button>'
+                b'<div id="r">idle</div>'
+                b"<script>function go(){document.getElementById('r').textContent='CLICK_DONE';"
+                b"fetch('/hang');}</script></body></html>"
+            )
 
     class _S(socketserver.ThreadingTCPServer):
         allow_reuse_address = True
         daemon_threads = True
+
     srv = _S(("127.0.0.1", 0), _H)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     await _start_session_url(f"http://127.0.0.1:{srv.server_address[1]}/")
     try:
         res = await (getattr(m.click_what, "fn", m.click_what))(description="Load data button")
         assert "failed" not in res.lower()  # click succeeded despite the hanging fetch it started
-        assert "CLICK_DONE" in (await m._session.browser.get_state()).page_text
+        assert "CLICK_DONE" in (await m.runtime.session.browser.get_state()).page_text
     finally:
         await _end()
         srv.shutdown()
@@ -777,13 +921,16 @@ async def test_goto_survives_never_resolving_fetch():
             self.send_response(200)
             self.send_header("Content-Type", "text/html")
             self.end_headers()
-            self.wfile.write(b'<html><body><div id="s">Loading forever spinner</div>'
-                             b"<script>fetch('/hang').then(r=>r.text()).then(t=>{"
-                             b"document.getElementById('s').textContent=t;});</script></body></html>")
+            self.wfile.write(
+                b'<html><body><div id="s">Loading forever spinner</div>'
+                b"<script>fetch('/hang').then(r=>r.text()).then(t=>{"
+                b"document.getElementById('s').textContent=t;});</script></body></html>"
+            )
 
     class _S(socketserver.ThreadingTCPServer):
         allow_reuse_address = True
         daemon_threads = True
+
     srv = _S(("127.0.0.1", 0), _H)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{srv.server_address[1]}/"
@@ -800,20 +947,26 @@ async def test_goto_survives_never_resolving_fetch():
 
 async def test_receipt_scroll_search_finds_virtualized_row():
     # Window-virtualized list: only rows near window.scrollY are in the DOM.
-    page = ('<html><body><div id="c" style="height:5000px;position:relative"></div>'
-            "<script>var rows=[];for(var i=0;i<100;i++)rows.push(i==80?'ROW_TARGET':('Row '+i));"
-            "function render(){var top=window.scrollY;var start=Math.floor(top/50);"
-            "var end=start+Math.ceil(window.innerHeight/50)+2;var c=document.getElementById('c');c.innerHTML='';"
-            "for(var i=Math.max(0,start);i<end&&i<rows.length;i++){var d=document.createElement('div');"
-            "d.style.position='absolute';d.style.top=(i*50)+'px';d.textContent=rows[i];c.appendChild(d);}}"
-            "window.addEventListener('scroll',render);render();</script></body></html>")
+    page = (
+        '<html><body><div id="c" style="height:5000px;position:relative"></div>'
+        "<script>var rows=[];for(var i=0;i<100;i++)rows.push(i==80?'ROW_TARGET':('Row '+i));"
+        "function render(){var top=window.scrollY;var start=Math.floor(top/50);"
+        "var end=start+Math.ceil(window.innerHeight/50)+2;var c=document.getElementById('c');c.innerHTML='';"
+        "for(var i=Math.max(0,start);i<end&&i<rows.length;i++){var d=document.createElement('div');"
+        "d.style.position='absolute';d.style.top=(i*50)+'px';d.textContent=rows[i];c.appendChild(d);}}"
+        "window.addEventListener('scroll',render);render();</script></body></html>"
+    )
     await _session_on_page(page)
     try:
-        st = await m._session.browser.get_state()
-        assert not m._text_in_state("ROW_TARGET", st)          # row 80 not rendered initially
-        assert await m._present_with_scroll(m._session, "ROW_TARGET", st) is True   # scroll-search finds it
-        st2 = await m._session.browser.get_state()
-        assert await m._present_with_scroll(m._session, "NOPE_NOT_A_ROW", st2) is False  # truly absent stays absent
+        st = await m.runtime.session.browser.get_state()
+        assert not m._text_in_state("ROW_TARGET", st)  # row 80 not rendered initially
+        assert (
+            await m._present_with_scroll(m.runtime.session, "ROW_TARGET", st) is True
+        )  # scroll-search finds it
+        st2 = await m.runtime.session.browser.get_state()
+        assert (
+            await m._present_with_scroll(m.runtime.session, "NOPE_NOT_A_ROW", st2) is False
+        )  # truly absent stays absent
     finally:
         await _end()
 
@@ -827,15 +980,19 @@ async def test_verify_persistence_clear_storage_catches_localonly_save():
             self.send_response(200)
             self.send_header("Content-Type", "text/html")
             self.end_headers()
-            self.wfile.write((
-                '<html><body><input id="v" placeholder="Value">'
-                '<button id="save" onclick="save()">Save</button><div id="disp"></div>'
-                "<script>function save(){localStorage.setItem('val',document.getElementById('v').value);render();}"
-                "function render(){var x=localStorage.getItem('val');document.getElementById('disp').textContent=x?('STORED:'+x):'';}"
-                "render();</script></body></html>").encode())
+            self.wfile.write(
+                (
+                    '<html><body><input id="v" placeholder="Value">'
+                    '<button id="save" onclick="save()">Save</button><div id="disp"></div>'
+                    "<script>function save(){localStorage.setItem('val',document.getElementById('v').value);render();}"
+                    "function render(){var x=localStorage.getItem('val');document.getElementById('disp').textContent=x?('STORED:'+x):'';}"
+                    "render();</script></body></html>"
+                ).encode()
+            )
 
     class _S(socketserver.ThreadingTCPServer):
         allow_reuse_address = True
+
     srv = _S(("127.0.0.1", 0), _H)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{srv.server_address[1]}/"
@@ -858,38 +1015,46 @@ async def test_verify_persistence_clear_storage_catches_localonly_save():
 async def test_download_capture_and_verify_broken_export():
     # "Export CSV" writes ONLY the header (a broken export) — get_downloads must
     # surface it so a tester can catch the missing data rows.
-    page = ('<html><body><button id="exp" onclick="dl()">Export CSV</button>'
-            '<script>function dl(){'
-            "var b=new Blob(['Name,Amount\\n'],{type:'text/csv'});"
-            "var a=document.createElement('a');a.href=URL.createObjectURL(b);"
-            "a.download='report.csv';document.body.appendChild(a);a.click();}"
-            '</script></body></html>')
+    page = (
+        '<html><body><button id="exp" onclick="dl()">Export CSV</button>'
+        "<script>function dl(){"
+        "var b=new Blob(['Name,Amount\\n'],{type:'text/csv'});"
+        "var a=document.createElement('a');a.href=URL.createObjectURL(b);"
+        "a.download='report.csv';document.body.appendChild(a);a.click();}"
+        "</script></body></html>"
+    )
     await _session_on_page(page)
     try:
         await (getattr(m.click_what, "fn", m.click_what))(description="Export CSV button")
         out = await (getattr(m.get_downloads, "fn", m.get_downloads))()
         assert "report.csv" in out
-        assert "Name,Amount" in out    # preview reveals the header-only content
-        assert "SUSPICIOUS" in out     # 12 bytes < 50 -> flagged as likely-broken
+        assert "Name,Amount" in out  # preview reveals the header-only content
+        assert "SUSPICIOUS" in out  # 12 bytes < 50 -> flagged as likely-broken
     finally:
         await _end()
 
 
 async def test_resize_sweeps_responsive_breakpoint():
-    page = ('<html><head><style>'
-            '.mobile{display:none}@media(max-width:768px){.desktop{display:none}.mobile{display:block}}'
-            '</style></head><body>'
-            '<button class="desktop">DesktopNav</button>'
-            '<button class="mobile">Hamburger</button></body></html>')
+    page = (
+        "<html><head><style>"
+        ".mobile{display:none}@media(max-width:768px){.desktop{display:none}.mobile{display:block}}"
+        "</style></head><body>"
+        '<button class="desktop">DesktopNav</button>'
+        '<button class="mobile">Hamburger</button></body></html>'
+    )
     await _session_on_page(page)
     try:
         rz = getattr(m.resize, "fn", m.resize)
         await rz(width=1280, height=800)
-        l1 = " ".join((e.text or "") for e in (await m._session.browser.get_state()).elements)
-        assert "DesktopNav" in l1 and "Hamburger" not in l1     # desktop layout
+        l1 = " ".join(
+            (e.text or "") for e in (await m.runtime.session.browser.get_state()).elements
+        )
+        assert "DesktopNav" in l1 and "Hamburger" not in l1  # desktop layout
         await rz(width=375, height=800)
-        l2 = " ".join((e.text or "") for e in (await m._session.browser.get_state()).elements)
-        assert "Hamburger" in l2 and "DesktopNav" not in l2      # mobile layout after resize
+        l2 = " ".join(
+            (e.text or "") for e in (await m.runtime.session.browser.get_state()).elements
+        )
+        assert "Hamburger" in l2 and "DesktopNav" not in l2  # mobile layout after resize
     finally:
         await _end()
 
@@ -897,12 +1062,14 @@ async def test_resize_sweeps_responsive_breakpoint():
 async def test_observe_excludes_opacity0_ancestor_subtree():
     # opacity is not inherited, so a button inside an opacity:0 fade-menu has its
     # OWN opacity 1 — it used to leak into observe. checkVisibility catches it.
-    page = ('<html><body>'
-            '<div style="opacity:0"><button>HiddenInFade</button></div>'
-            '<button>VisibleBtn2</button></body></html>')
+    page = (
+        "<html><body>"
+        '<div style="opacity:0"><button>HiddenInFade</button></div>'
+        "<button>VisibleBtn2</button></body></html>"
+    )
     await _session_on_page(page)
     try:
-        st = await m._session.browser.get_state()
+        st = await m.runtime.session.browser.get_state()
         labels = " ".join((e.text or "") for e in st.elements)
         assert "VisibleBtn2" in labels
         assert "HiddenInFade" not in labels  # hidden by an ancestor's opacity:0
@@ -912,40 +1079,40 @@ async def test_observe_excludes_opacity0_ancestor_subtree():
 
 async def test_observe_excludes_center_occluded_duplicate_before_resolving_click():
     page = (
-        '<html><body>'
+        "<html><body>"
         '<div style="position:relative;width:220px;height:40px">'
         '<a id="covered" href="#covered" style="display:block;width:220px;height:40px">Duplicate result</a>'
         '<div style="position:absolute;inset:0;background:white">Overlay</div>'
-        '</div>'
+        "</div>"
         '<a id="usable" href="#usable">Duplicate result</a>'
-        '</body></html>'
+        "</body></html>"
     )
     await _session_on_page(page)
     try:
-        state = await m._session.browser.get_state()
+        state = await m.runtime.session.browser.get_state()
         matches = [element for element in state.elements if element.text == "Duplicate result"]
         assert len(matches) == 1 and matches[0].id == "usable"
         await (getattr(m.click_what, "fn", m.click_what))(description="Duplicate result")
-        assert m._session.browser._page.url.endswith("#usable")
+        assert m.runtime.session.browser._page.url.endswith("#usable")
     finally:
         await _end()
 
 
 async def test_screenshot_waits_for_finite_css_transition():
     page = (
-        '<html><head><style>'
-        'body{background-color:rgb(255,255,255);transition:background-color 800ms linear}'
-        'body.dark{background-color:rgb(0,0,0)}'
-        '</style></head><body>'
-        '<button onclick="document.body.classList.add(\'dark\')">Dark mode</button>'
-        '</body></html>'
+        "<html><head><style>"
+        "body{background-color:rgb(255,255,255);transition:background-color 800ms linear}"
+        "body.dark{background-color:rgb(0,0,0)}"
+        "</style></head><body>"
+        "<button onclick=\"document.body.classList.add('dark')\">Dark mode</button>"
+        "</body></html>"
     )
     await _session_on_page(page)
     try:
         await (getattr(m.click_what, "fn", m.click_what))(description="Dark mode")
         target = tempfile.NamedTemporaryFile(suffix=".png", delete=False).name
-        await m._session.browser.screenshot(target)
-        color = await m._session.browser._page.evaluate(
+        await m.runtime.session.browser.screenshot(target)
+        color = await m.runtime.session.browser._page.evaluate(
             "getComputedStyle(document.body).backgroundColor"
         )
         assert color == "rgb(0, 0, 0)"
@@ -954,36 +1121,40 @@ async def test_screenshot_waits_for_finite_css_transition():
 
 
 async def test_observe_fidelity_hidden_widgets_disabled():
-    page = ('<html><body>'
-            '<button id="vis">VisibleBtn</button>'
-            '<button style="opacity:0">TransparentBtn</button>'
-            '<a href="#" style="position:absolute;left:-9999px">OffScreenLink</a>'
-            '<div contenteditable="true">EditableArea</div>'
-            '<div role="switch" aria-checked="false" tabindex="0">ToggleSwitch</div>'
-            '<button disabled>DisabledBtn</button>'
-            '</body></html>')
+    page = (
+        "<html><body>"
+        '<button id="vis">VisibleBtn</button>'
+        '<button style="opacity:0">TransparentBtn</button>'
+        '<a href="#" style="position:absolute;left:-9999px">OffScreenLink</a>'
+        '<div contenteditable="true">EditableArea</div>'
+        '<div role="switch" aria-checked="false" tabindex="0">ToggleSwitch</div>'
+        "<button disabled>DisabledBtn</button>"
+        "</body></html>"
+    )
     await _session_on_page(page)
     try:
-        st = await m._session.browser.get_state()
+        st = await m.runtime.session.browser.get_state()
         labels = " ".join((e.text or e.aria_label or e.name or "") for e in st.elements)
         assert "VisibleBtn" in labels
-        assert "TransparentBtn" not in labels   # opacity:0 -> excluded from interactive els
-        assert "OffScreenLink" not in labels     # left:-9999px -> excluded
-        assert "EditableArea" in labels          # contenteditable now enumerated
-        assert "ToggleSwitch" in labels          # role=switch now enumerated
+        assert "TransparentBtn" not in labels  # opacity:0 -> excluded from interactive els
+        assert "OffScreenLink" not in labels  # left:-9999px -> excluded
+        assert "EditableArea" in labels  # contenteditable now enumerated
+        assert "ToggleSwitch" in labels  # role=switch now enumerated
         assert any(e.disabled and "DisabledBtn" in (e.text or "") for e in st.elements)
         obs = await (getattr(m.observe, "fn", m.observe))()
-        assert "[disabled]" in obs               # disabled state surfaced in observe
+        assert "[disabled]" in obs  # disabled state surfaced in observe
     finally:
         await _end()
 
 
 async def test_press_key_escape_dismisses_modal():
     # The canonical keyboard case click/type can't do: Escape closes a modal.
-    page = ('<html><body><div id="m">MODAL_OPEN</div>'
-            "<script>document.addEventListener('keydown',function(e){"
-            "if(e.key==='Escape'){document.getElementById('m').style.display='none';}});</script>"
-            '</body></html>')
+    page = (
+        '<html><body><div id="m">MODAL_OPEN</div>'
+        "<script>document.addEventListener('keydown',function(e){"
+        "if(e.key==='Escape'){document.getElementById('m').style.display='none';}});</script>"
+        "</body></html>"
+    )
     await _session_on_page(page)
     try:
         pk = getattr(m.press_key, "fn", m.press_key)
@@ -998,9 +1169,11 @@ async def test_press_key_escape_dismisses_modal():
 async def test_click_settles_async_dom_mutation():
     # A click that triggers a DELAYED (setTimeout, no network) DOM update: observe
     # right after must see the update, i.e. click() settled the DOM first.
-    page = ('<html><body><button id="go" onclick="setTimeout(function(){'
-            "var p=document.createElement('p');p.textContent='DELAYED_MARKER';"
-            'document.body.appendChild(p);},150)">Go</button></body></html>')
+    page = (
+        '<html><body><button id="go" onclick="setTimeout(function(){'
+        "var p=document.createElement('p');p.textContent='DELAYED_MARKER';"
+        'document.body.appendChild(p);},150)">Go</button></body></html>'
+    )
     await _session_on_page(page)
     try:
         cw = getattr(m.click_what, "fn", m.click_what)
@@ -1017,10 +1190,11 @@ async def test_record_bug_tolerates_string_evidence():
     # record_bug ('str' has no .get) and silently lose the finding.
     await _session_on_page(_PAGE)
     try:
-        out = await _record(title="strEv", severity="low",
-                            evidence="clicked delete but the item stayed")
+        out = await _record(
+            title="strEv", severity="low", evidence="clicked delete but the item stayed"
+        )
         assert "Recorded bug" in out
-        assert m._session.bugs[-1].description == "clicked delete but the item stayed"
+        assert m.runtime.session.bugs[-1].description == "clicked delete but the item stayed"
     finally:
         await _end()
 
@@ -1030,9 +1204,12 @@ async def test_verify_can_be_carried_in_evidence():
     # (no separate verify dict) and the moat still engages.
     await _session_on_page(_PAGE)
     try:
-        await _record(title="via-evidence", severity="low",
-                      evidence={"screenshot": "skip", "target_text": "Buy groceries", "expect": "present"})
-        r = m._session.bugs[-1].reproduction_receipt
+        await _record(
+            title="via-evidence",
+            severity="low",
+            evidence={"screenshot": "skip", "target_text": "Buy groceries", "expect": "present"},
+        )
+        r = m.runtime.session.bugs[-1].reproduction_receipt
         assert r is not None and r["reproduced"] is True
     finally:
         await _end()
@@ -1050,9 +1227,13 @@ async def test_clean_load_login_wall_is_inconclusive():
     base = f"http://127.0.0.1:{srv.server_address[1]}"
     await _start_session_url(base + "/")
     try:
-        await _record(title="x", severity="low", evidence={"screenshot": "skip"},
-                      verify={"expect": "absent", "target_text": "some-task", "at_url": "/"})
-        r = m._session.bugs[-1].reproduction_receipt
+        await _record(
+            title="x",
+            severity="low",
+            evidence={"screenshot": "skip"},
+            verify={"expect": "absent", "target_text": "some-task", "at_url": "/"},
+        )
+        r = m.runtime.session.bugs[-1].reproduction_receipt
         assert r["reproduced"] is None
         assert "login wall" in r.get("reason", "")
     finally:
@@ -1064,10 +1245,17 @@ async def test_receipt_reports_none_on_navigation_failure():
     srv, base = _start_server()
     await _start_session_url(base + "/")
     try:
-        await _record(title="naverr", severity="low", evidence={"screenshot": "skip"},
-                      verify={"expect": "present", "target_text": "x",
-                              "at_url": "http://127.0.0.1:1/unreachable"})
-        receipt = m._session.bugs[-1].reproduction_receipt
+        await _record(
+            title="naverr",
+            severity="low",
+            evidence={"screenshot": "skip"},
+            verify={
+                "expect": "present",
+                "target_text": "x",
+                "at_url": "http://127.0.0.1:1/unreachable",
+            },
+        )
+        receipt = m.runtime.session.bugs[-1].reproduction_receipt
         assert receipt["reproduced"] is None
         assert "error" in receipt
     finally:

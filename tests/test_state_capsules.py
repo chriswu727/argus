@@ -1,8 +1,11 @@
 """Live tests for state capsules: capture/restore a logged-in state with a
 mandatory liveness check, and flag findings recorded against a stale capsule."""
+
 from __future__ import annotations
 
 import http.server
+import json
+import os
 import socketserver
 import threading
 
@@ -51,13 +54,18 @@ async def test_capsule_live_roundtrip():
     srv, base = _serve()
     await _start(base + "/")
     try:
-        s = m._session
+        s = m.runtime.session
         # "Log in" by setting the cookie the server gates on, then save.
         await s.browser.cookies_set([{"name": "auth", "value": "alice", "url": base}])
         await s.browser.goto(base + "/")
         assert "Welcome Alice" in (await s.browser.get_state()).page_text
-        assert "Saved capsule" in await _call(m.capsule_save, name="acct",
-                                              liveness_marker="Welcome Alice")
+        assert "Saved capsule" in await _call(
+            m.capsule_save, name="acct", liveness_marker="Welcome Alice"
+        )
+        path = next((m.runtime.settings.output_dir / ".argus" / "capsules").glob("*/*.json"))
+        assert json.loads(path.read_text())["schema_version"] == 1
+        if os.name == "posix":
+            assert path.stat().st_mode & 0o777 == 0o600
         # "Log out", confirm the marker is gone, then restore.
         await s.browser.cookies_clear()
         await s.browser.goto(base + "/")
@@ -77,7 +85,7 @@ async def test_restore_is_clean_replace_not_merge():
     srv, base = _serve()
     await _start(base + "/")
     try:
-        s = m._session
+        s = m.runtime.session
         await _call(m.capsule_save, name="empty")  # capsule has no storage
         await s.browser.storage_set("leftover", "from-identity-B", "local")
         assert "leftover" in await s.browser.storage_get("local")
@@ -92,16 +100,15 @@ async def test_stale_capsule_flags_recorded_bug():
     srv, base = _serve()
     await _start(base + "/")  # never logged in -> marker will be absent on restore
     try:
-        s = m._session
+        s = m.runtime.session
         await _call(m.capsule_save, name="ghost", liveness_marker="Welcome Alice")
         res = await _call(m.capsule_restore, name="ghost")
         assert "STALE" in res
         assert s._capsule_marker == "Welcome Alice"
         # Still logged out -> marker absent now -> record_bug flags it (fresh
         # re-check, not a sticky latch).
-        await _call(m.record_bug, title="x", severity="low",
-                    evidence={"screenshot": "skip"})
-        assert "UNRELIABLE" in m._session.bugs[-1].description
+        await _call(m.record_bug, title="x", severity="low", evidence={"screenshot": "skip"})
+        assert "UNRELIABLE" in m.runtime.session.bugs[-1].description
     finally:
         await _call(m.end_session)
         srv.shutdown()

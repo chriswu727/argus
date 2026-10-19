@@ -1,11 +1,9 @@
 """Tests for argus.screen.safety."""
+
 from __future__ import annotations
 
 import asyncio
-import os
 import time
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -91,6 +89,7 @@ async def test_with_timeout_completes_under_budget():
     async def quick():
         await asyncio.sleep(0.01)
         return "done"
+
     res = await safety.with_timeout(quick(), timeout_s=1.0)
     assert res == "done"
 
@@ -100,6 +99,7 @@ async def test_with_timeout_raises_when_over_budget():
     async def slow():
         await asyncio.sleep(2)
         return "never"
+
     with pytest.raises(asyncio.TimeoutError):
         await safety.with_timeout(slow(), timeout_s=0.1)
 
@@ -110,6 +110,7 @@ async def test_with_timeout_runs_sync_callable_in_executor():
         # Fast — should complete.
         time.sleep(0.01)
         return 42
+
     res = await safety.with_timeout(block, timeout_s=1.0)
     assert res == 42
 

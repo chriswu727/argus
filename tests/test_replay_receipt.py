@@ -1,5 +1,6 @@
 """Live tests for the cold-replay receipt: reproduce a multi-step journey from a
 fresh page, with a three-state verdict (reproduced / not / path-diverged)."""
+
 from __future__ import annotations
 
 import http.server
@@ -56,10 +57,14 @@ async def test_replay_reproduces_multistep_journey():
     try:
         await _call(m.observe)
         await _call(m.click_what, description="Go")  # navigates to /b
-        await _call(m.record_bug, title="multistep", severity="medium",
-                    evidence={"screenshot": "skip"},
-                    verify={"replay": True, "expect": "present", "target_text": "BUG-XYZ"})
-        r = m._session.bugs[-1].reproduction_receipt
+        await _call(
+            m.record_bug,
+            title="multistep",
+            severity="medium",
+            evidence={"screenshot": "skip"},
+            verify={"replay": True, "expect": "present", "target_text": "BUG-XYZ"},
+        )
+        r = m.runtime.session.bugs[-1].reproduction_receipt
         assert r["mode"] == "replay"
         assert r["reproduced"] is True
         assert r["steps"] == 1
@@ -76,10 +81,14 @@ async def test_replay_path_divergence_is_inconclusive():
         await _call(m.observe)
         await _call(m.click_what, description="Go")
         _H.serve_go = False  # the "Go" link is gone on a fresh load now
-        await _call(m.record_bug, title="diverged", severity="low",
-                    evidence={"screenshot": "skip"},
-                    verify={"replay": True, "expect": "present", "target_text": "BUG-XYZ"})
-        r = m._session.bugs[-1].reproduction_receipt
+        await _call(
+            m.record_bug,
+            title="diverged",
+            severity="low",
+            evidence={"screenshot": "skip"},
+            verify={"replay": True, "expect": "present", "target_text": "BUG-XYZ"},
+        )
+        r = m.runtime.session.bugs[-1].reproduction_receipt
         assert r["mode"] == "replay"
         assert r["reproduced"] is None  # never certified
         assert r["diverged"] is True
@@ -98,10 +107,14 @@ async def test_replay_preexisting_symptom_is_inconclusive():
     try:
         await _call(m.observe)
         await _call(m.click_what, description="Go")
-        await _call(m.record_bug, title="preexist", severity="low",
-                    evidence={"screenshot": "skip"},
-                    verify={"replay": True, "expect": "present", "target_text": "Step"})
-        r = m._session.bugs[-1].reproduction_receipt
+        await _call(
+            m.record_bug,
+            title="preexist",
+            severity="low",
+            evidence={"screenshot": "skip"},
+            verify={"replay": True, "expect": "present", "target_text": "Step"},
+        )
+        r = m.runtime.session.bugs[-1].reproduction_receipt
         assert r["reproduced"] is None
         assert r.get("symptom_before") is True
     finally:
@@ -114,10 +127,14 @@ async def test_replay_without_steps_is_not_attempted():
     await _start(base + "/a")
     try:
         # no actions recorded -> replay can't run, must not falsely certify
-        await _call(m.record_bug, title="nosteps", severity="low",
-                    evidence={"screenshot": "skip"},
-                    verify={"replay": True, "expect": "present", "target_text": "BUG-XYZ"})
-        r = m._session.bugs[-1].reproduction_receipt
+        await _call(
+            m.record_bug,
+            title="nosteps",
+            severity="low",
+            evidence={"screenshot": "skip"},
+            verify={"replay": True, "expect": "present", "target_text": "BUG-XYZ"},
+        )
+        r = m.runtime.session.bugs[-1].reproduction_receipt
         assert r["attempted"] is False
     finally:
         await _call(m.end_session)

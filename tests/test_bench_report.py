@@ -5,6 +5,7 @@ whether the reproduction receipt refuses tempting-but-false symptoms. A bench
 that only reported recall was structurally blind to the spurious-bug rate the
 differentiation pitch is built on (F10).
 """
+
 from __future__ import annotations
 
 from argus.bench.runner import BenchReport, ScenarioResult, receipt_rejected
@@ -61,18 +62,24 @@ def test_to_json_exposes_precision_fields():
 
 
 def _bug_with_receipt(receipt):
-    return Bug(type=BugType.UX_ISSUE, severity=Severity.LOW, title="t",
-               description="d", url="u", steps_to_reproduce=[],
-               reproduction_receipt=receipt)
+    return Bug(
+        type=BugType.UX_ISSUE,
+        severity=Severity.LOW,
+        title="t",
+        description="d",
+        url="u",
+        steps_to_reproduce=[],
+        reproduction_receipt=receipt,
+    )
 
 
 def test_receipt_rejected_only_for_attempted_unconfirmed():
-    assert receipt_rejected(_bug_with_receipt(
-        {"attempted": True, "reproduced": False})) is True
-    assert receipt_rejected(_bug_with_receipt(
-        {"attempted": True, "reproduced": True})) is False
-    assert receipt_rejected(_bug_with_receipt(
-        {"attempted": True, "reproduced": None})) is False  # nav error, not a clean reject
+    assert receipt_rejected(_bug_with_receipt({"attempted": True, "reproduced": False})) is True
+    assert receipt_rejected(_bug_with_receipt({"attempted": True, "reproduced": True})) is False
+    assert (
+        receipt_rejected(_bug_with_receipt({"attempted": True, "reproduced": None})) is False
+    )  # nav error, not a clean reject
     assert receipt_rejected(_bug_with_receipt(None)) is False
-    assert receipt_rejected(_bug_with_receipt(
-        {"attempted": False, "reason": "bad verify"})) is False
+    assert (
+        receipt_rejected(_bug_with_receipt({"attempted": False, "reason": "bad verify"})) is False
+    )
