@@ -245,6 +245,7 @@ def test_container_only_copies_packaging_inputs():
     assert "COPY . ." not in dockerfile
     assert "COPY pyproject.toml README.md LICENSE ./" in dockerfile
     assert "COPY argus/ ./argus/" in dockerfile
+    assert "'pip>=26.2.1' 'setuptools>=83.0.0'" in dockerfile
     patterns = (root / ".dockerignore").read_text().splitlines()
     assert {".env", ".env.*", "**/.env", "**/.env.*", ".argus", "**/.argus"} <= set(patterns)
 

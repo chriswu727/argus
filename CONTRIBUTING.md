@@ -9,6 +9,7 @@ not call a model provider:
 ```bash
 python -m venv .venv
 source .venv/bin/activate
+python -m pip install --upgrade pip 'setuptools>=83.0.0'
 pip install -e '.[dev]'
 playwright install chromium
 ruff check argus tests
