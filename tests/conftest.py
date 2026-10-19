@@ -3,12 +3,41 @@
 These tests exercise pure-Python logic — no browser, no LLM. Detectors
 are run against synthetic PageState / error / page-content payloads.
 """
+
 from __future__ import annotations
+
+import os
 
 import pytest
 
+from argus.application.context import runtime_scope
+from argus.bootstrap import create_runtime
 from argus.detector import Detector
+from argus.entrypoints.mcp.server import create_server
 from argus.models import InteractiveElement, PageState
+from argus.settings import Settings
+
+
+@pytest.fixture(autouse=True)
+def isolated_runtime(monkeypatch, tmp_path):
+    import argus.mcp_server as m
+
+    runtime = create_runtime(Settings(output_dir=tmp_path / "reports"))
+    monkeypatch.setattr(m, "runtime", runtime)
+    monkeypatch.setattr(m, "mcp", create_server(runtime, "full"))
+    with runtime_scope(runtime):
+        yield runtime
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    report = outcome.get_result()
+    if os.environ.get("ARGUS_REQUIRE_BROWSER") == "1" and report.skipped:
+        reason = str(report.longrepr).lower()
+        if "chromium" in reason or "browser" in reason:
+            report.outcome = "failed"
+            report.longrepr = f"Required browser test was skipped: {report.longrepr}"
 
 
 @pytest.fixture

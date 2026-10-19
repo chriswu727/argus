@@ -1,71 +1,20 @@
-from __future__ import annotations
-
 import asyncio
-import os
-import re
 from datetime import datetime
+from importlib.resources import files
 from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
 from playwright.async_api import Browser, BrowserContext, Page, async_playwright
 
-from typing import Dict, List, Optional, Tuple
+from argus.security import _redact as _redact
+from argus.security import _redact_headers as _redact_headers
 
 from .models import InteractiveElement, PageState
-from .runtime import BoundedEventLog, positive_env_int
-
-# Cap on how much of a (redacted) response body we keep for inspection.
-_BODY_CAP = positive_env_int("ARGUS_MAX_RESPONSE_BODY_BYTES", 16 * 1024)
-_BODY_READ_CAP = positive_env_int("ARGUS_MAX_RESPONSE_READ_BYTES", 256 * 1024)
-_CAPTURE_UNKNOWN_LENGTH_BODY = os.environ.get(
-    "ARGUS_CAPTURE_UNKNOWN_LENGTH_BODY", ""
-).strip().lower() in {"1", "true", "yes", "on"}
-
-# Field-name fragment that marks a secret-bearing key (matched anywhere in the
-# key, so authToken / id_token / sessionId / x-csrf all hit).
-_SECRET_KEY = (
-    r"(?:[\w-]*(?:password|passwd|secret|token|jwt|bearer|auth|api[_-]?key|"
-    r"access[_-]?key|session|sid|csrf|xsrf|credential|cookie)[\w-]*)"
-)
-_RE_JSON_STR = re.compile(r'("' + _SECRET_KEY + r'"\s*:\s*)"[^"]*"', re.IGNORECASE)
-# Non-string secret values (numbers, bare words) — but not objects/arrays/strings.
-_RE_JSON_BARE = re.compile(r'("' + _SECRET_KEY + r'"\s*:\s*)(?!["{\[])([^\s,}\]]+)', re.IGNORECASE)
-_RE_FORM = re.compile(r'(?i)\b(' + _SECRET_KEY + r')=([^&\s]+)')
-_RE_JWT = re.compile(r'eyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]+')
-_RE_BEARER = re.compile(r'(?i)(bearer\s+)[A-Za-z0-9._\-]+')
-
-_SENSITIVE_HEADERS = {
-    "cookie", "set-cookie", "authorization", "proxy-authorization",
-    "x-api-key", "x-auth-token", "x-csrf-token", "x-xsrf-token",
-}
+from .runtime import BoundedEventLog
+from .settings import CaptureSettings
 
 
-def _redact(text: str) -> str:
-    """Mask credentials in a free-text/JSON/form blob before it's surfaced.
-
-    Layered because secrets arrive in many shapes: a generic JWT pattern, JSON
-    string + bare values under secret-named keys, form-encoded pairs, and bare
-    Bearer tokens. Not a guarantee against every exotic encoding, but it kills
-    the common JWT/token/cookie/password leaks.
-    """
-    if not text:
-        return text
-    text = _RE_JWT.sub("[redacted-jwt]", text)
-    text = _RE_JSON_STR.sub(r'\1"[redacted]"', text)
-    text = _RE_JSON_BARE.sub(r"\1[redacted]", text)
-    text = _RE_FORM.sub(r"\1=[redacted]", text)
-    text = _RE_BEARER.sub(r"\1[redacted]", text)
-    return text
-
-
-def _redact_headers(headers: dict) -> dict:
-    """Mask whole values of credential-bearing headers; redact the rest in place."""
-    out = {}
-    for k, v in (headers or {}).items():
-        out[k] = "[redacted]" if k.lower() in _SENSITIVE_HEADERS else _redact(str(v))
-    return out
-
-
-def _capture_body(raw: bytes, headers: dict) -> Optional[str]:
+def _capture_body(raw: bytes, headers: dict, cap: int = 16 * 1024) -> Optional[str]:
     """Decode a response body for the agent — text/json only, redacted, capped.
 
     Redaction runs on the FULL decoded body before truncation, so a secret that
@@ -88,20 +37,24 @@ def _capture_body(raw: bytes, headers: dict) -> Optional[str]:
     except Exception:
         return None
     text = _redact(text)
-    if len(text) > _BODY_CAP:
-        text = text[:_BODY_CAP] + f"\n…[truncated, {len(raw)} bytes total]"
+    if len(text) > cap:
+        text = text[:cap] + f"\n…[truncated, {len(raw)} bytes total]"
     return text
 
 
-def _response_body_capture_reason(headers: dict, resource_type: str, status: int) -> Optional[str]:
+def _response_body_capture_reason(
+    headers: dict, resource_type: str, status: int, limits: CaptureSettings
+) -> Optional[str]:
     ctype = next(
-        (str(value).lower() for key, value in (headers or {}).items()
-         if key.lower() == "content-type"),
+        (
+            str(value).lower()
+            for key, value in (headers or {}).items()
+            if key.lower() == "content-type"
+        ),
         "",
     )
     length = next(
-        (str(value) for key, value in (headers or {}).items()
-         if key.lower() == "content-length"),
+        (str(value) for key, value in (headers or {}).items() if key.lower() == "content-length"),
         "",
     )
     texty = ("json", "text/", "xml", "javascript", "x-www-form-urlencoded")
@@ -112,13 +65,14 @@ def _response_body_capture_reason(headers: dict, resource_type: str, status: int
     ):
         return f"resource type {resource_type or 'unknown'} is not inspectable API content"
     try:
-        if length and int(length) > _BODY_READ_CAP:
-            return f"content-length exceeds {_BODY_READ_CAP} bytes"
+        if length and int(length) > limits.read_bytes:
+            return f"content-length exceeds {limits.read_bytes} bytes"
     except ValueError:
         return "invalid content-length header"
-    if not length and not _CAPTURE_UNKNOWN_LENGTH_BODY:
+    if not length and not limits.unknown_length_body:
         return "missing content-length; set ARGUS_CAPTURE_UNKNOWN_LENGTH_BODY=1 to inspect it"
     return None
+
 
 # JS snippet to extract visible interactive elements from the page.
 # Walks open shadow roots too: querySelectorAll does not cross shadow
@@ -126,626 +80,32 @@ def _response_body_capture_reason(headers: dict, resource_type: str, status: int
 # recurse into every reachable open shadowRoot and tag those elements
 # with shadow:true (the resolver/selector layer needs to know, because
 # Playwright's :has-text engine doesn't pierce shadow — see _build_selector).
-_EXTRACT_ELEMENTS_JS = """
-() => {
-    const sel = 'a, button, input, select, textarea, summary, [contenteditable="true"], [contenteditable=""], [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="checkbox"], [role="radio"], [role="switch"], [role="combobox"], [role="textbox"], [role="slider"], [role="spinbutton"], [role="option"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="gridcell"], [onclick], [tabindex]:not([tabindex="-1"]), [draggable="true"]';
-    const MAX = 400;
-    const out = [];
-    const seen = new Set();
-
-    function record(el, inShadow, frameSel) {
-        if (seen.has(el)) return;
-        seen.add(el);
-        const rect = el.getBoundingClientRect();
-        const style = (el.ownerDocument.defaultView || window).getComputedStyle(el);
-        // Invisible-to-a-human elements must not appear as interactive. Use
-        // checkVisibility so an ANCESTOR's opacity:0 / visibility:hidden hides the
-        // whole subtree (opacity is not inherited, so a button inside an
-        // opacity:0 fade-menu has its own opacity 1 and used to leak through).
-        // Plus zero-size and off-the-left-edge (left:-9999px "sr-only" hack).
-        // EXCEPTION: checkbox/radio/file inputs are overwhelmingly restyled with
-        // opacity:0 behind a visible label/graphic (TodoMVC, Bootstrap, Material,
-        // custom file uploads) yet fully functional — don't let opacity hide them,
-        // or their whole widget becomes untargetable.
-        const _t = (el.type || '').toLowerCase();
-        const _skipOpacity = el.tagName.toLowerCase() === 'input' &&
-                             (_t === 'checkbox' || _t === 'radio' || _t === 'file');
-        const _vis = el.checkVisibility
-            ? el.checkVisibility({opacityProperty: !_skipOpacity, visibilityProperty: true, contentVisibilityAuto: true})
-            : (style.display !== 'none' && style.visibility !== 'hidden' && (_skipOpacity || style.opacity !== '0'));
-        if (!_vis || rect.width === 0 || rect.height === 0 || rect.right <= 0) return;
-        const doc = el.ownerDocument;
-        if (!_skipOpacity) {
-            const cx = rect.left + rect.width / 2;
-            const cy = rect.top + rect.height / 2;
-            if (cx >= 0 && cx < doc.defaultView.innerWidth && cy >= 0 && cy < doc.defaultView.innerHeight) {
-                const root = el.getRootNode();
-                const hitRoot = root && root.elementFromPoint ? root : doc;
-                const top = hitRoot.elementFromPoint(cx, cy);
-                if (top && top !== el && !el.contains(top)) return;
-            }
-        }
-        // role=gridcell is broad (data grids AND calendar days). Keep only the
-        // CLICKABLE ones (cursor:pointer) so a date-picker's day cells — which use
-        // the roving-tabindex pattern (only the selected day is tabindex=0) — are
-        // targetable, without flooding observe with a data grid's display cells.
-        if (el.getAttribute('role') === 'gridcell' && style.cursor !== 'pointer') return;
-        out.push({
-            index: out.length,
-            tag: el.tagName.toLowerCase(),
-            // Tag a contenteditable (rich-text editor) as a text-entry surface so
-            // type_into (kind=input) can target it, not just click_what.
-            type: el.type || (el.isContentEditable ? 'contenteditable' : null),
-            // A <select>'s textContent mashes every option together
-            // ("Name (A to Z)Name (Z to A)Price...") — noise. Leave text null so
-            // the label (aria/associated-<label>) is the name, and put the
-            // SELECTED option's visible text in value below. Result:
-            // labelled -> `select "Sort" = "Name Z-A"`, unlabelled -> the
-            // selection is the label: `select "Name (A to Z)"`.
-            text: (el.tagName === 'SELECT') ? null
-                  : ((el.textContent || '').trim().slice(0, 100) || null),
-            // aria-placeholder / data-placeholder cover contenteditable rich-text
-            // editors (Quill, ProseMirror, Draft) whose empty-state hint isn't a
-            // real <input> placeholder — otherwise the editor is an unlabelled div.
-            placeholder: el.placeholder || el.getAttribute('aria-placeholder') || el.getAttribute('data-placeholder') || null,
-            href: el.href || null,
-            // For a select, value = the SELECTED option's visible text (not its
-            // internal value attr "az"), so describe shows the human-readable
-            // current choice.
-            value: (el.tagName === 'SELECT')
-                   ? (((el.selectedOptions && el.selectedOptions.length ? el.selectedOptions[0].text : el.value) || '').trim().slice(0, 80) || null)
-                   : (el.value || null),
-            // Live checked state for checkbox/radio (and role=switch/checkbox via
-            // aria-checked) — without it, a checked and unchecked box look
-            // identical in observe. null for non-checkable elements.
-            checked: (el.type === 'checkbox' || el.type === 'radio') ? el.checked
-                     : (el.getAttribute('aria-checked') === 'true' ? true
-                        : (el.getAttribute('aria-checked') === 'false' ? false : null)),
-            // Compact ARIA STATE — is a dropdown/accordion open (expanded), a
-            // toggle button pressed, a nav item current? All invisible otherwise:
-            // a collapsed and an expanded disclosure button look identical.
-            aria_state: (function(){
-                var s = [];
-                var e = el.getAttribute('aria-expanded');
-                if (e === 'true') s.push('expanded'); else if (e === 'false') s.push('collapsed');
-                // Native <details>/<summary> uses the `open` property, not
-                // aria-expanded — surface the same expanded/collapsed signal.
-                else if (el.tagName === 'SUMMARY' && el.parentElement && el.parentElement.tagName === 'DETAILS')
-                    s.push(el.parentElement.open ? 'expanded' : 'collapsed');
-                if (el.getAttribute('aria-pressed') === 'true') s.push('pressed');
-                var c = el.getAttribute('aria-current');
-                if (c && c !== 'false') s.push('current');
-                if (el.getAttribute('aria-selected') === 'true') s.push('selected');
-                // Validation error: explicit aria-invalid, OR native HTML5
-                // :invalid but ONLY when the field has a value (a filled-but-bad
-                // field is the signal; an empty required field is not yet a bug).
-                var inv = el.getAttribute('aria-invalid');
-                if (inv === 'true') s.push('invalid');
-                else { try { if (el.value && el.matches && el.matches(':invalid')) s.push('invalid'); } catch(_) {} }
-                return s.length ? s.join(' ') : null;
-            })(),
-            disabled: el.disabled || false,
-            role: el.getAttribute('role') || null,
-            // Fall back to the field's VISIBLE label (a person targets a form
-            // field by the label they see next to it). Prefer the accessible
-            // name (label[for], wrapping <label>, aria-labelledby); then the
-            // common unassociated preceding <label> sibling. The missing `for`
-            // is still flagged separately as an a11y issue.
-            aria_label: el.getAttribute('aria-label') || (function(){
-                var t = el.tagName.toLowerCase();
-                if (t !== 'input' && t !== 'select' && t !== 'textarea') return null;
-                var pick = function(n){ var s = n && n.textContent ? n.textContent.trim() : ''; return s ? s.slice(0,100) : null; };
-                if (el.id) { try { var lf = doc.querySelector('label[for="' + (window.CSS && CSS.escape ? CSS.escape(el.id) : el.id) + '"]'); if (pick(lf)) return pick(lf); } catch (e) {} }
-                var w = el.closest('label'); if (pick(w)) return pick(w);
-                var lb = el.getAttribute('aria-labelledby'); if (lb) { var t2 = doc.getElementById(lb); if (pick(t2)) return pick(t2); }
-                var p = el.previousElementSibling;
-                while (p) { if (p.tagName === 'LABEL' && pick(p)) return pick(p); if (p.tagName === 'INPUT' || p.tagName === 'SELECT' || p.tagName === 'TEXTAREA') break; p = p.previousElementSibling; }
-                // Custom combobox (react-select, Downshift, etc.): the visible
-                // placeholder / selected value lives in a control container div,
-                // not a <label>, so an unlabelled combobox input is otherwise
-                // untargetable. Use the control's visible text ("Select...", or
-                // the current value like "Ocean").
-                if (el.getAttribute('role') === 'combobox' || el.getAttribute('aria-haspopup') === 'listbox') {
-                    var ctrl = el.closest('[class*="control"], [class*="combobox"], [class*="Select"]');
-                    if (ctrl && ctrl !== el) { var ct = ctrl.textContent ? ctrl.textContent.trim() : ''; if (ct) return ct.slice(0, 100); }
-                }
-                return null;
-            })() || el.getAttribute('title') || null,
-            name: el.name || null,
-            id: el.id || null,
-            parent_context: (el.closest('li, tr, .card, .list-item, [class*="item"], [class*="row"]') || {}).textContent?.trim()?.slice(0, 200) || null,
-            shadow: inShadow,
-            frame: frameSel || null,
-        });
-    }
-
-    // A selector for an iframe element, usable by Playwright frame_locator.
-    // JSON.stringify handles the quoting/escaping (no manual regex/backslashes).
-    function ifSel(ifr, i) {
-        if (ifr.id) return 'iframe[id=' + JSON.stringify(ifr.id) + ']';
-        if (ifr.name) return 'iframe[name=' + JSON.stringify(ifr.name) + ']';
-        var src = ifr.getAttribute('src'); if (src) return 'iframe[src=' + JSON.stringify(src) + ']';
-        return 'iframe >> nth=' + i;
-    }
-
-    function walk(root, inShadow, frameSel) {
-        if (out.length >= MAX) return;
-        root.querySelectorAll(sel).forEach(el => { if (out.length < MAX) record(el, inShadow, frameSel); });
-        // Descend into open shadow roots hosted anywhere under this root.
-        root.querySelectorAll('*').forEach(node => {
-            if (out.length < MAX && node.shadowRoot) walk(node.shadowRoot, true, frameSel);
-        });
-        // Descend into iframes. Same-origin: walk the frame document, tagging its
-        // elements with the iframe selector CHAIN (so actions can frame_locator
-        // into it). Cross-origin: contentDocument throws — surface a marker so
-        // the agent knows an untestable embedded region exists instead of being
-        // silently blind to it.
-        root.querySelectorAll('iframe').forEach(function(ifr, i) {
-            if (out.length >= MAX) return;
-            var chain = frameSel ? (frameSel + ' >>> ' + ifSel(ifr, i)) : ifSel(ifr, i);
-            var fdoc = null;
-            try { fdoc = ifr.contentDocument; } catch (e) { fdoc = null; }
-            if (fdoc && fdoc.documentElement) {
-                walk(fdoc, inShadow, chain);
-            } else {
-                var r = ifr.getBoundingClientRect();
-                if (r.width > 0 && r.height > 0) {
-                    out.push({ index: out.length, tag: 'iframe', type: null,
-                        text: '[embedded region (' + (ifr.getAttribute('title') || ifr.getAttribute('name') || ifr.getAttribute('src') || 'iframe') + ') — contents not readable here]',
-                        placeholder: null, href: ifr.getAttribute('src') || null, value: null,
-                        disabled: false, role: null, aria_label: ifr.getAttribute('title') || null,
-                        name: ifr.getAttribute('name') || null, id: ifr.id || null,
-                        parent_context: null, shadow: inShadow, frame: null });
-                }
-            }
-        });
-    }
-
-    walk(document, false, null);
-    return out;
-}
-"""
+_EXTRACT_ELEMENTS_JS = (
+    files("argus.adapters.scripts").joinpath("extract_elements_js.js").read_text()
+)
 
 # JS snippet to extract full page content for smart detection.
-_EXTRACT_PAGE_CONTENT_JS = """
-() => {
-    const result = { pageText: '', toasts: [], counts: {}, cssIndicators: [], itemLists: {},
-                     links: [], images: [], metaTags: {}, headings: [], a11yIssues: [], mixedContent: [],
-                     openModals: [], focused: null, viewport: null, canvases: [] };
-
-    // Canvas regions — pixel-drawn UI (charts/dashboards, maps, whiteboards,
-    // PDF.js, WebGL games) is invisible to DOM extraction. Surface each visible
-    // canvas with its on-screen rect so the agent knows to SCREENSHOT it and
-    // reach it with coordinate actions (click_at / type_at / hover_at).
-    try {
-        document.querySelectorAll('canvas').forEach(c => {
-            const r = c.getBoundingClientRect();
-            const st = window.getComputedStyle(c);
-            if (r.width >= 40 && r.height >= 40 && st.display !== 'none' && st.visibility !== 'hidden') {
-                result.canvases.push({
-                    x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2),
-                    left: Math.round(r.left), top: Math.round(r.top),
-                    w: Math.round(r.width), h: Math.round(r.height),
-                    id: c.id || null, label: c.getAttribute('aria-label') || c.title || null
-                });
-            }
-        });
-    } catch(e) {}
-
-    // 1. Full visible text — simple and robust
-    try {
-        result.pageText = (document.body.innerText || '').slice(0, 5000);
-    } catch(e) {}
-
-    // 1a. Open modals / dialogs / popovers
-    try {
-        const modalSels = '[role="dialog"], [role="alertdialog"], [aria-modal="true"], dialog[open], .modal.show, .modal.open';
-        document.querySelectorAll(modalSels).forEach(el => {
-            const s = window.getComputedStyle(el);
-            if (s.display === 'none' || s.visibility === 'hidden') return;
-            const text = (el.textContent || '').trim().slice(0, 300);
-            if (!text) return;
-            result.openModals.push({
-                role: el.getAttribute('role') || el.tagName.toLowerCase(),
-                ariaLabel: el.getAttribute('aria-label') || '',
-                ariaLabelledby: el.getAttribute('aria-labelledby') || '',
-                text: text,
-                isModal: el.getAttribute('aria-modal') === 'true'
-            });
-        });
-    } catch(e) {}
-
-    // 1b. What's focused right now?
-    try {
-        const f = document.activeElement;
-        if (f && f !== document.body && f.tagName !== 'BODY') {
-            result.focused = {
-                tag: f.tagName.toLowerCase(),
-                type: f.type || null,
-                id: f.id || null,
-                name: f.name || null,
-                ariaLabel: f.getAttribute('aria-label') || null,
-                text: (f.textContent || '').trim().slice(0, 80) || null,
-                placeholder: f.placeholder || null,
-                value: (typeof f.value === 'string' ? f.value.slice(0, 80) : null)
-            };
-        }
-    } catch(e) {}
-
-    // 1c. Viewport vs document height — let the agent know if there's content below the fold
-    try {
-        result.viewport = {
-            scrollY: window.scrollY,
-            scrollX: window.scrollX,
-            innerHeight: window.innerHeight,
-            innerWidth: window.innerWidth,
-            documentHeight: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight),
-            documentWidth: Math.max(document.body.scrollWidth, document.documentElement.scrollWidth),
-            atTop: window.scrollY <= 1,
-            atBottom: (window.scrollY + window.innerHeight) >= (Math.max(document.body.scrollHeight, document.documentElement.scrollHeight) - 1)
-        };
-    } catch(e) {}
-
-    // 2. Toast/notification messages
-    try {
-        const sels = '.toast, [role="alert"], .alert-success, .alert-error, .alert-warning, [class*="toast"]';
-        document.querySelectorAll(sels).forEach(el => {
-            const text = el.textContent.trim();
-            if (text) {
-                const s = window.getComputedStyle(el);
-                result.toasts.push({
-                    text: text.slice(0, 200),
-                    visible: s.display !== 'none' && s.visibility !== 'hidden',
-                    classes: el.className || ''
-                });
-            }
-        });
-    } catch(e) {}
-
-    // 3. Number + label counts
-    try {
-        document.querySelectorAll('.stat, .stat-val, .count, .badge, h1, h2, h3, p, span').forEach(el => {
-            const text = el.textContent.trim();
-            const m = text.match(/^(\\d+)\\s+(.+)$/);
-            if (m) result.counts[m[2].trim()] = parseInt(m[1], 10);
-        });
-    } catch(e) {}
-
-    // 4. Semantic CSS indicators
-    try {
-        ['remaining-zero','task-done','error','loading','spinner','alert-error','alert-success'].forEach(cls => {
-            document.querySelectorAll('.' + cls).forEach(el => {
-                result.cssIndicators.push({
-                    cls: cls,
-                    text: el.textContent.trim().slice(0, 100),
-                    tag: el.tagName.toLowerCase()
-                });
-            });
-        });
-    } catch(e) {}
-
-    // 5. Item lists — report only rows a human can SEE. The page-text,
-    // interactive-element, and counts extractors all skip hidden nodes; this
-    // one used to not, so after a client-side hide (optimistic UI / fake-delete)
-    // it leaked display:none / visibility:hidden rows — content no one sees, and
-    // self-contradictory with the same payload's page-text. It also feeds the
-    // reproduction receipt (_text_in_state), so a stale-invisible row could taint
-    // verification. Filter both the container and its items.
-    try {
-        const _shown = (el) => {
-            const s = window.getComputedStyle(el);
-            if (s.display === 'none' || s.visibility === 'hidden') return false;
-            const r = el.getBoundingClientRect();
-            return r.width > 0 && r.height > 0;
-        };
-        document.querySelectorAll('.card, .list, ul, ol').forEach(container => {
-            if (!_shown(container)) return;
-            const items = Array.from(container.querySelectorAll('.task-item, .list-item, li, tr')).filter(_shown);
-            if (items.length >= 2) {
-                const key = (container.className || container.tagName).slice(0, 50);
-                result.itemLists[key] = items.map(it => it.textContent.trim().slice(0, 200));
-            }
-        });
-    } catch(e) {}
-
-    // 6. All links on page
-    try {
-        document.querySelectorAll('a[href]').forEach(el => {
-            const href = el.href;
-            if (!href || href.startsWith('javascript:') || href === '#') return;
-            result.links.push({
-                href: href,
-                text: (el.textContent || '').trim().slice(0, 100),
-                isInternal: href.startsWith(window.location.origin)
-            });
-        });
-    } catch(e) {}
-
-    // 7. Images
-    try {
-        document.querySelectorAll('img').forEach(el => {
-            result.images.push({
-                src: el.src || el.getAttribute('src') || '',
-                alt: el.alt,
-                hasAlt: el.hasAttribute('alt'),
-                naturalWidth: el.naturalWidth,
-                naturalHeight: el.naturalHeight,
-                complete: el.complete,
-                loaded: el.complete && el.naturalWidth > 0
-            });
-        });
-    } catch(e) {}
-
-    // 8. Meta tags & headings (SEO)
-    try {
-        const gm = (n) => { const e = document.querySelector('meta[name=\"'+n+'\"], meta[property=\"'+n+'\"]'); return e ? (e.content||'') : ''; };
-        result.metaTags = {
-            title: document.title || '',
-            description: gm('description'),
-            ogTitle: gm('og:title'),
-            ogDescription: gm('og:description'),
-            ogImage: gm('og:image'),
-            canonical: (document.querySelector('link[rel=\"canonical\"]') || {}).href || '',
-            viewport: gm('viewport'),
-            htmlLang: document.documentElement.lang || ''
-        };
-        document.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(el => {
-            result.headings.push({ level: parseInt(el.tagName[1]), text: el.textContent.trim().slice(0, 200) });
-        });
-    } catch(e) {}
-
-    // 9. Accessibility basics
-    try {
-        document.querySelectorAll('img').forEach(el => {
-            if (!el.hasAttribute('alt')) {
-                result.a11yIssues.push({type:'img_no_alt', src: (el.src||'').slice(0,100)});
-            }
-        });
-        document.querySelectorAll('input,select,textarea').forEach(el => {
-            if (el.type==='hidden'||el.type==='submit'||el.type==='button') return;
-            const s = window.getComputedStyle(el);
-            if (s.display==='none'||s.visibility==='hidden') return;
-            const has = (el.id && document.querySelector('label[for=\"'+el.id+'\"]')) || el.getAttribute('aria-label') || el.getAttribute('aria-labelledby') || el.title || el.closest('label');
-            if (!has) result.a11yIssues.push({type:'input_no_label', tag:el.tagName.toLowerCase(), inputType:el.type||'', name:el.name||'', placeholder:el.placeholder||''});
-        });
-        document.querySelectorAll('button, a, [role=\"button\"]').forEach(el => {
-            const s = window.getComputedStyle(el);
-            if (s.display==='none'||s.visibility==='hidden') return;
-            if (!(el.textContent||'').trim() && !el.getAttribute('aria-label') && !el.title && !el.querySelector('img[alt]')) {
-                result.a11yIssues.push({type:'no_accessible_name', tag:el.tagName.toLowerCase(), html:el.outerHTML.slice(0,150)});
-            }
-        });
-        if (!document.documentElement.lang) result.a11yIssues.push({type:'no_html_lang'});
-    } catch(e) {}
-
-    // 10. Mixed content
-    try {
-        if (window.location.protocol === 'https:') {
-            const ck = (sel, attr) => { document.querySelectorAll(sel).forEach(el => { const u=el.getAttribute(attr)||''; if(u.startsWith('http://')) result.mixedContent.push({url:u.slice(0,200),tag:el.tagName.toLowerCase(),attr:attr}); }); };
-            ck('img[src]','src'); ck('script[src]','src'); ck('link[href]','href'); ck('iframe[src]','src'); ck('video[src]','src'); ck('audio[src]','src');
-        }
-    } catch(e) {}
-
-    return result;
-}
-"""
+_EXTRACT_PAGE_CONTENT_JS = (
+    files("argus.adapters.scripts").joinpath("extract_page_content_js.js").read_text()
+)
 
 # JS snippet to deeply inspect one element. Returns rendered styles (the
 # things humans actually perceive: colour, contrast, size, position,
 # stacking, truncation), accessibility metadata, and outer HTML. Used by
 # the inspect_element tool when the agent suspects a visual / a11y bug
 # on a specific surface.
-_INSPECT_ELEMENT_JS = """
-(el) => {
-    if (!el) return { found: false };
-    const s = window.getComputedStyle(el);
-    const rect = el.getBoundingClientRect();
-    const truncated =
-        (el.scrollWidth > el.clientWidth + 1 && (s.overflow === 'hidden' || s.overflowX === 'hidden' || s.textOverflow === 'ellipsis')) ||
-        (el.scrollHeight > el.clientHeight + 1 && (s.overflow === 'hidden' || s.overflowY === 'hidden'));
-    const labels = [];
-    if (el.id) {
-        document.querySelectorAll('label[for="' + el.id + '"]').forEach(lab => {
-            labels.push((lab.textContent || '').trim().slice(0, 100));
-        });
-    }
-    return {
-        found: true,
-        tag: el.tagName.toLowerCase(),
-        text: (el.textContent || '').trim().slice(0, 200),
-        outerHtml: el.outerHTML.slice(0, 1500),
-        styles: {
-            color: s.color,
-            backgroundColor: s.backgroundColor,
-            fontSize: s.fontSize,
-            fontWeight: s.fontWeight,
-            display: s.display,
-            visibility: s.visibility,
-            opacity: s.opacity,
-            position: s.position,
-            zIndex: s.zIndex,
-            overflow: s.overflow,
-            textOverflow: s.textOverflow,
-            cursor: s.cursor,
-            border: s.border,
-            padding: s.padding,
-            margin: s.margin
-        },
-        rect: {
-            x: rect.x, y: rect.y,
-            width: rect.width, height: rect.height,
-            inViewport: rect.bottom > 0 && rect.top < window.innerHeight && rect.right > 0 && rect.left < window.innerWidth
-        },
-        truncated: truncated,
-        scrollDimensions: { scrollWidth: el.scrollWidth, clientWidth: el.clientWidth, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight },
-        ariaLabel: el.getAttribute('aria-label'),
-        ariaDescribedby: el.getAttribute('aria-describedby'),
-        ariaHidden: el.getAttribute('aria-hidden'),
-        role: el.getAttribute('role'),
-        title: el.title || null,
-        disabled: !!el.disabled,
-        readonly: !!el.readOnly,
-        labels: labels,
-        focused: document.activeElement === el
-    };
-}
-"""
+_INSPECT_ELEMENT_JS = files("argus.adapters.scripts").joinpath("inspect_element_js.js").read_text()
 
-_FIND_VISIBLE_ELEMENT_JS = r"""
-({query, kind}) => {
-    const norm = value => (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
-    const needle = norm(query);
-    const words = needle.split(' ').filter(Boolean);
-    const visible = el => {
-        const s = getComputedStyle(el);
-        const r = el.getBoundingClientRect();
-        if (s.display === 'none' || s.visibility === 'hidden' || Number(s.opacity) === 0) return false;
-        if (r.width <= 0 || r.height <= 0) return false;
-        try { if (el.checkVisibility && !el.checkVisibility({checkOpacity: true, checkVisibilityCSS: true})) return false; } catch (_) {}
-        return true;
-    };
-    const kindMatches = el => {
-        if (!kind) return true;
-        if (kind === 'heading') return /^H[1-6]$/.test(el.tagName) || el.getAttribute('role') === 'heading';
-        if (kind === 'image') return el.tagName === 'IMG' || el.tagName === 'SVG' || el.getAttribute('role') === 'img';
-        return true;
-    };
-    const roots = [document];
-    const nodes = [];
-    for (let i = 0; i < roots.length; i++) {
-        for (const el of roots[i].querySelectorAll('*')) {
-            nodes.push(el);
-            if (el.shadowRoot) roots.push(el.shadowRoot);
-        }
-    }
-    const ignored = new Set(['HTML', 'BODY', 'SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'HEAD', 'META', 'LINK']);
-    const candidates = [];
-    for (const el of nodes) {
-        if (ignored.has(el.tagName) || !visible(el) || !kindMatches(el)) continue;
-        const text = norm(el.innerText || el.textContent);
-        const directText = norm(Array.from(el.childNodes).filter(n => n.nodeType === Node.TEXT_NODE).map(n => n.textContent).join(' '));
-        const aria = norm(el.getAttribute('aria-label'));
-        const alt = norm(el.getAttribute('alt'));
-        const title = norm(el.getAttribute('title'));
-        const id = norm(el.id);
-        const name = norm(el.getAttribute('name'));
-        const faces = [directText, text, aria, alt, title].filter(Boolean);
-        let score = 0;
-        if (directText === needle) score = 140;
-        else if (text === needle) score = 130;
-        else if (aria === needle || alt === needle || title === needle) score = 125;
-        else if (id === needle || name === needle) score = 100;
-        else if (faces.some(face => face.includes(needle))) score = 82;
-        else if (words.length && words.every(word => faces.some(face => face.includes(word)))) score = 62;
-        if (!score) continue;
-        if (/^H[1-6]$/.test(el.tagName) || ['IMG', 'P', 'LABEL'].includes(el.tagName)) score += 8;
-        if (text.length > Math.max(needle.length * 5, 160)) score -= 15;
-        const rect = el.getBoundingClientRect();
-        candidates.push({el, score, text, aria, alt, rect});
-    }
-    candidates.sort((a, b) => b.score - a.score || a.text.length - b.text.length || (a.rect.width * a.rect.height) - (b.rect.width * b.rect.height));
-    const summarize = c => ({
-        tag: c.el.tagName.toLowerCase(), score: c.score,
-        text: (c.text || c.aria || c.alt || '').slice(0, 120),
-        rect: {x: c.rect.x, y: c.rect.y, width: c.rect.width, height: c.rect.height}
-    });
-    if (!candidates.length || candidates[0].score < 45) return {found: false, candidates: candidates.slice(0, 5).map(summarize)};
-    if (candidates[1] && candidates[1].score >= candidates[0].score - 3) {
-        return {found: false, ambiguous: true, candidates: candidates.slice(0, 5).map(summarize)};
-    }
-    const el = candidates[0].el;
-    const s = getComputedStyle(el);
-    const rect = el.getBoundingClientRect();
-    const truncated =
-        (el.scrollWidth > el.clientWidth + 1 && (s.overflow === 'hidden' || s.overflowX === 'hidden' || s.textOverflow === 'ellipsis')) ||
-        (el.scrollHeight > el.clientHeight + 1 && (s.overflow === 'hidden' || s.overflowY === 'hidden'));
-    const labels = [];
-    if (el.id) document.querySelectorAll('label[for="' + CSS.escape(el.id) + '"]').forEach(label => labels.push(norm(label.textContent).slice(0, 100)));
-    return {
-        found: true, matchScore: candidates[0].score,
-        tag: el.tagName.toLowerCase(), text: (el.textContent || '').trim().slice(0, 200),
-        outerHtml: el.outerHTML.slice(0, 1500),
-        styles: {
-            color: s.color, backgroundColor: s.backgroundColor, fontSize: s.fontSize,
-            fontWeight: s.fontWeight, display: s.display, visibility: s.visibility,
-            opacity: s.opacity, position: s.position, zIndex: s.zIndex,
-            overflow: s.overflow, textOverflow: s.textOverflow, cursor: s.cursor,
-            border: s.border, padding: s.padding, margin: s.margin
-        },
-        rect: {x: rect.x, y: rect.y, width: rect.width, height: rect.height,
-               inViewport: rect.bottom > 0 && rect.top < innerHeight && rect.right > 0 && rect.left < innerWidth},
-        truncated,
-        scrollDimensions: {scrollWidth: el.scrollWidth, clientWidth: el.clientWidth, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight},
-        ariaLabel: el.getAttribute('aria-label'), ariaDescribedby: el.getAttribute('aria-describedby'),
-        ariaHidden: el.getAttribute('aria-hidden'), role: el.getAttribute('role'), title: el.title || null,
-        disabled: !!el.disabled, readonly: !!el.readOnly, labels,
-        focused: document.activeElement === el
-    };
-}
-"""
+_FIND_VISIBLE_ELEMENT_JS = (
+    files("argus.adapters.scripts").joinpath("find_visible_element_js.js").read_text()
+)
 
-_CHECK_LAYOUT_JS = r"""
-() => {
-    const norm = value => (value || '').replace(/\s+/g, ' ').trim();
-    const describe = (el, rect) => ({
-        tag: el.tagName.toLowerCase(),
-        label: norm(el.getAttribute('aria-label') || el.innerText || el.textContent || el.getAttribute('alt') || el.id).slice(0, 100),
-        rect: {x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height)}
-    });
-    const visible = (el, style, rect) => style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) !== 0 && rect.width > 0 && rect.height > 0;
-    const overflow = [], clipped = [], smallTargets = [], overlays = [];
-    const interactive = 'a[href],button,input:not([type="hidden"]),select,textarea,[role="button"],[role="link"],[tabindex]:not([tabindex="-1"])';
-    for (const el of document.body.querySelectorAll('*')) {
-        const style = getComputedStyle(el);
-        const rect = el.getBoundingClientRect();
-        if (!visible(el, style, rect)) continue;
-        if ((rect.right > innerWidth + 1 || rect.left < -1) && !['fixed', 'sticky'].includes(style.position)) overflow.push(describe(el, rect));
-        const hasText = !!norm(el.innerText || el.textContent);
-        const clipsX = el.scrollWidth > el.clientWidth + 1 && ['hidden', 'clip'].includes(style.overflowX);
-        const clipsY = el.scrollHeight > el.clientHeight + 1 && ['hidden', 'clip'].includes(style.overflowY);
-        if (hasText && (clipsX || clipsY || (style.textOverflow === 'ellipsis' && el.scrollWidth > el.clientWidth + 1))) clipped.push(describe(el, rect));
-        if (el.matches(interactive) && (rect.width < 44 || rect.height < 44)) smallTargets.push(describe(el, rect));
-        if (['fixed', 'sticky'].includes(style.position) && rect.bottom > 0 && rect.top < innerHeight) overlays.push(describe(el, rect));
-    }
-    return {
-        viewport: {width: innerWidth, height: innerHeight, devicePixelRatio},
-        document: {width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight},
-        horizontalOverflow: overflow.slice(0, 20), clippedText: clipped.slice(0, 20),
-        smallTargets: smallTargets.slice(0, 20), fixedOrSticky: overlays.slice(0, 20),
-        totals: {horizontalOverflow: overflow.length, clippedText: clipped.length, smallTargets: smallTargets.length, fixedOrSticky: overlays.length}
-    };
-}
-"""
+_CHECK_LAYOUT_JS = files("argus.adapters.scripts").joinpath("check_layout_js.js").read_text()
 
 # JS snippet for performance metrics (on-demand).
-_EXTRACT_PERFORMANCE_JS = """
-() => {
-    const result = { navigation: null, resources: [], summary: {} };
-    try {
-        const nav = performance.getEntriesByType('navigation');
-        if (nav.length > 0) {
-            const n = nav[0];
-            result.navigation = {
-                loadTime: n.loadEventEnd - n.startTime,
-                domContentLoaded: n.domContentLoadedEventEnd - n.startTime,
-                ttfb: n.responseStart - n.startTime,
-                domInteractive: n.domInteractive - n.startTime
-            };
-        }
-    } catch(e) {}
-    try {
-        const resources = performance.getEntriesByType('resource');
-        result.summary.totalRequests = resources.length;
-        result.summary.totalSize = 0;
-        resources.forEach(r => {
-            const sz = r.transferSize || 0;
-            result.summary.totalSize += sz;
-            if (sz > 500 * 1024) result.resources.push({name:r.name.slice(0,200),type:r.initiatorType,size:sz,duration:Math.round(r.duration)});
-        });
-    } catch(e) {}
-    return result;
-}
-"""
+_EXTRACT_PERFORMANCE_JS = (
+    files("argus.adapters.scripts").joinpath("extract_performance_js.js").read_text()
+)
 
 
 class BrowserDriver:
@@ -756,29 +116,27 @@ class BrowserDriver:
         headless: bool = True,
         viewport_width: int = 1280,
         viewport_height: int = 720,
+        capture_settings: Optional[CaptureSettings] = None,
     ):
         self.headless = headless
+        self.capture_settings = capture_settings or CaptureSettings.from_env()
         self.viewport = {"width": viewport_width, "height": viewport_height}
         self._playwright = None
         self._browser: Optional[Browser] = None
         self._context: Optional[BrowserContext] = None
         self._page: Optional[Page] = None
-        error_cap = positive_env_int("ARGUS_MAX_ERROR_EVENTS", 500)
+        error_cap = self.capture_settings.error_events
         self.console_errors = BoundedEventLog[Dict](error_cap)
         self.network_errors = BoundedEventLog[Dict](error_cap)
         # Downloads triggered this session (Export CSV / Download invoice / PDF).
         # Playwright Download objects — resolved to name+bytes lazily on query so
         # the agent can VERIFY an export actually fired and isn't empty/corrupt.
-        self._downloads = BoundedEventLog[object](
-            positive_env_int("ARGUS_MAX_DOWNLOAD_EVENTS", 50)
-        )
+        self._downloads = BoundedEventLog[object](self.capture_settings.download_events)
         # Full request/response log — every HTTP call this session has
         # made, regardless of status. Used by network_requests / network_request
         # tools so the agent can verify "did the right /api/foo get called
         # with the right payload" without manually scraping anything.
-        self.network_log = BoundedEventLog[Dict](
-            positive_env_int("ARGUS_MAX_NETWORK_EVENTS", 2000)
-        )
+        self.network_log = BoundedEventLog[Dict](self.capture_settings.network_events)
         # Request-mock routes registered by the agent. {pattern: {response_dict}}.
         self._mock_routes: Dict[str, Dict] = {}
         # Live route handlers, kept out of _mock_routes (which is surfaced to the
@@ -787,26 +145,67 @@ class BrowserDriver:
         # JS dialog handling — agent queues a response, the handler pops one
         # for each fired alert/confirm/prompt, falls back to auto-dismiss.
         self._dialog_queue: List[Dict] = []
-        self._dialog_log = BoundedEventLog[Dict](
-            positive_env_int("ARGUS_MAX_DIALOG_EVENTS", 100)
-        )
+        self._dialog_log = BoundedEventLog[Dict](self.capture_settings.dialog_events)
 
     # -- lifecycle --
 
     async def start(self):
-        self._playwright = await async_playwright().start()
-        self._browser = await self._playwright.chromium.launch(headless=self.headless)
-        self._context = await self._browser.new_context(
-            viewport=self.viewport, accept_downloads=True)
-        self._context.on("page", self._on_new_page)
-        self._page = await self._context.new_page()
-        self._attach_page_listeners(self._page)
+        try:
+            self._playwright = await async_playwright().start()
+            self._browser = await self._playwright.chromium.launch(headless=self.headless)
+            self._context = await self._browser.new_context(
+                viewport=self.viewport, accept_downloads=True
+            )
+            self._context.on("page", self._on_new_page)
+            self._page = await self._context.new_page()
+            self._attach_page_listeners(self._page)
+        except BaseException:
+            await self.stop()
+            raise
 
     async def stop(self):
-        if self._browser:
-            await self._browser.close()
-        if self._playwright:
-            await self._playwright.stop()
+        try:
+            if self._browser:
+                await self._browser.close()
+        finally:
+            if self._playwright:
+                await self._playwright.stop()
+            self._page = self._context = self._browser = self._playwright = None
+
+    @property
+    def current_url(self) -> str:
+        return self._page.url if self._page else ""
+
+    @property
+    def has_page(self) -> bool:
+        return self._page is not None
+
+    def page_urls(self) -> list[str]:
+        return [page.url for page in self._live_pages()]
+
+    def selector_for(self, element: InteractiveElement) -> str:
+        return self._build_selector(element)
+
+    async def evaluate_js(self, code: str):
+        return await self._page.evaluate(code)
+
+    async def click_resolved(self, index: int, elements: list[InteractiveElement]) -> None:
+        await self._locator(index, elements).click(timeout=5000)
+
+    async def settle(self) -> None:
+        await self._page.wait_for_load_state("networkidle", timeout=10_000)
+
+    async def fill_selector(self, selector: str, value: str, timeout: int = 5000) -> None:
+        await self._page.fill(selector, value, timeout=timeout)
+
+    async def select_selector(self, selector: str, value: str, timeout: int = 5000) -> None:
+        await self._page.select_option(selector, value, timeout=timeout)
+
+    async def click_selector(self, selector: str, timeout: int = 5000) -> None:
+        await self._page.click(selector, timeout=timeout)
+
+    async def keyboard_press(self, key: str) -> None:
+        await self._page.keyboard.press(key)
 
     # -- listeners --
 
@@ -842,13 +241,15 @@ class BrowserDriver:
         spec = self._dialog_queue.pop(0) if self._dialog_queue else None
         action = (spec or {}).get("action", "dismiss")
         text = (spec or {}).get("text", "")
-        self._dialog_log.append({
-            "type": dialog.type,
-            "message": dialog.message,
-            "responded_with": action if spec else "auto-dismiss",
-            "text": text,
-            "timestamp": datetime.now().isoformat(),
-        })
+        self._dialog_log.append(
+            {
+                "type": dialog.type,
+                "message": dialog.message,
+                "responded_with": action if spec else "auto-dismiss",
+                "text": text,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
         try:
             if action == "accept":
                 await dialog.accept(text)
@@ -870,23 +271,25 @@ class BrowserDriver:
     def _on_console(self, msg, page=None):
         if msg.type in ("error", "warning"):
             source_page = getattr(msg, "page", None) or page
-            source_url = getattr(source_page, "url", "") or (
-                self._page.url if self._page else ""
+            source_url = getattr(source_page, "url", "") or (self._page.url if self._page else "")
+            self.console_errors.append(
+                {
+                    "type": msg.type,
+                    "text": msg.text,
+                    "url": source_url,
+                    "timestamp": datetime.now().isoformat(),
+                }
             )
-            self.console_errors.append({
-                "type": msg.type,
-                "text": msg.text,
-                "url": source_url,
-                "timestamp": datetime.now().isoformat(),
-            })
 
     def _on_page_error(self, error, page=None):
-        self.console_errors.append({
-            "type": "exception",
-            "text": str(error),
-            "url": page.url if page is not None else (self._page.url if self._page else ""),
-            "timestamp": datetime.now().isoformat(),
-        })
+        self.console_errors.append(
+            {
+                "type": "exception",
+                "text": str(error),
+                "url": page.url if page is not None else (self._page.url if self._page else ""),
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
 
     def _on_request(self, request):
         try:
@@ -931,20 +334,28 @@ class BrowserDriver:
                         raw_headers,
                         response.request.resource_type,
                         response.status,
+                        self.capture_settings,
                     )
                     if omitted:
                         length = next(
-                            (value for key, value in raw_headers.items()
-                             if key.lower() == "content-length"),
+                            (
+                                value
+                                for key, value in raw_headers.items()
+                                if key.lower() == "content-length"
+                            ),
                             None,
                         )
-                        entry["response_size"] = int(length) if length and str(length).isdigit() else None
+                        entry["response_size"] = (
+                            int(length) if length and str(length).isdigit() else None
+                        )
                         entry["response_body"] = None
                         entry["response_body_omitted"] = omitted
                     else:
                         body = await response.body()
                         entry["response_size"] = len(body) if body else 0
-                        entry["response_body"] = _capture_body(body, raw_headers)
+                        entry["response_body"] = _capture_body(
+                            body, raw_headers, self.capture_settings.body_bytes
+                        )
                 except Exception:
                     entry["response_size"] = None
                     entry["response_body"] = None
@@ -961,13 +372,15 @@ class BrowserDriver:
                 )
             except Exception:
                 page_url = self._page.url if self._page else ""
-            self.network_errors.append({
-                "url": response.url,
-                "status": response.status,
-                "method": response.request.method,
-                "page_url": page_url,
-                "timestamp": datetime.now().isoformat(),
-            })
+            self.network_errors.append(
+                {
+                    "url": response.url,
+                    "status": response.status,
+                    "method": response.request.method,
+                    "page_url": page_url,
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
 
     def _on_request_failed(self, request):
         """A request that errored with NO HTTP response (net::ERR_*, blocked,
@@ -987,15 +400,17 @@ class BrowserDriver:
                 page_url = request.url if request.resource_type == "document" else request.frame.url
             except Exception:
                 page_url = self._page.url if self._page else ""
-            self.network_errors.append({
-                "url": request.url,
-                "status": None,
-                "method": request.method,
-                "page_url": page_url,
-                "failure": failure or "request failed (no response)",
-                "resource_type": getattr(request, "resource_type", None),
-                "timestamp": datetime.now().isoformat(),
-            })
+            self.network_errors.append(
+                {
+                    "url": request.url,
+                    "status": None,
+                    "method": request.method,
+                    "page_url": page_url,
+                    "failure": failure or "request failed (no response)",
+                    "resource_type": getattr(request, "resource_type", None),
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
         except Exception:
             pass
 
@@ -1048,7 +463,8 @@ class BrowserDriver:
         try:
             await self._page.evaluate(
                 "() => { try { localStorage.clear(); } catch(e){} "
-                "try { sessionStorage.clear(); } catch(e){} }")
+                "try { sessionStorage.clear(); } catch(e){} }"
+            )
             return True
         except Exception:
             return False
@@ -1066,6 +482,7 @@ class BrowserDriver:
         """Register a mock for any request matching `pattern` (URL glob or
         regex string). Subsequent matching requests get the canned response
         instead of hitting the network."""
+
         async def _handler(route):
             try:
                 await route.fulfill(
@@ -1151,7 +568,9 @@ class BrowserDriver:
     def error_cursors(self) -> Tuple[int, int]:
         return self.console_errors.cursor(), self.network_errors.cursor()
 
-    def errors_since(self, console_cursor: int, network_cursor: int) -> Tuple[List[Dict], List[Dict]]:
+    def errors_since(
+        self, console_cursor: int, network_cursor: int
+    ) -> Tuple[List[Dict], List[Dict]]:
         return (
             self.console_errors.since(console_cursor),
             self.network_errors.since(network_cursor),
@@ -1226,7 +645,8 @@ class BrowserDriver:
         store = "localStorage" if kind == "local" else "sessionStorage"
         try:
             await self._page.evaluate(
-                f"(k) => {store}.removeItem(k)", key,
+                f"(k) => {store}.removeItem(k)",
+                key,
             )
             return True
         except Exception:
@@ -1264,8 +684,16 @@ class BrowserDriver:
         can warn on a silent shortfall.
         """
         from urllib.parse import urlparse
-        applied = {"cookies": 0, "cookies_expected": 0, "local": 0, "local_expected": 0,
-                   "session": 0, "session_expected": 0, "origin_ok": True}
+
+        applied = {
+            "cookies": 0,
+            "cookies_expected": 0,
+            "local": 0,
+            "local_expected": 0,
+            "session": 0,
+            "session_expected": 0,
+            "origin_ok": True,
+        }
         try:
             await self.cookies_clear()
         except Exception:
@@ -1313,12 +741,14 @@ class BrowserDriver:
                 title = await p.title()
             except Exception:
                 title = ""
-            out.append({
-                "index": i,
-                "url": p.url,
-                "title": title,
-                "active": p is self._page,
-            })
+            out.append(
+                {
+                    "index": i,
+                    "url": p.url,
+                    "title": title,
+                    "active": p is self._page,
+                }
+            )
         return out
 
     async def tabs_switch(self, index: int) -> bool:
@@ -1396,7 +826,7 @@ class BrowserDriver:
             "url": req.url,
             "method": req.method,
             "resource_type": req.resource_type,
-            "post_data": req.post_data,
+            "post_data": _redact(req.post_data or "") or None,
         }
 
     # -- navigation --
@@ -1462,8 +892,7 @@ class BrowserDriver:
             toast_messages=[t["text"] for t in content.get("toasts", []) if t.get("visible")],
             counts=content.get("counts", {}),
             css_indicators=[
-                f"{ind['cls']}:{ind['text']}"
-                for ind in content.get("cssIndicators", [])
+                f"{ind['cls']}:{ind['text']}" for ind in content.get("cssIndicators", [])
             ],
             item_lists=content.get("itemLists", {}),
             links=content.get("links", []),
@@ -1499,7 +928,9 @@ class BrowserDriver:
     async def inspect_visible_element(self, query: str, kind: str = "") -> Dict:
         """Inspect visible content, including headings, text, and images."""
         try:
-            return await self._page.evaluate(_FIND_VISIBLE_ELEMENT_JS, {"query": query, "kind": kind})
+            return await self._page.evaluate(
+                _FIND_VISIBLE_ELEMENT_JS, {"query": query, "kind": kind}
+            )
         except Exception:
             return {"found": False}
 
@@ -1509,7 +940,6 @@ class BrowserDriver:
             return await self._page.evaluate(_CHECK_LAYOUT_JS)
         except Exception:
             return {}
-
 
     async def _extract_elements(self, page=None) -> List[InteractiveElement]:
         pg = page or self._page
@@ -1524,8 +954,9 @@ class BrowserDriver:
         try:
             extra, covered = await self._extract_cross_origin_frames(pg)
             if extra:
-                elements = [e for e in elements
-                            if not (e.tag == "iframe" and (e.href or "") in covered)]
+                elements = [
+                    e for e in elements if not (e.tag == "iframe" and (e.href or "") in covered)
+                ]
                 elements += extra
                 for i, el in enumerate(elements):
                     el.index = i
@@ -1559,7 +990,8 @@ class BrowserDriver:
                     "el => ({sel: el.id ? ('iframe[id='+JSON.stringify(el.id)+']')"
                     " : (el.name ? ('iframe[name='+JSON.stringify(el.name)+']')"
                     " : (el.getAttribute('src') ? ('iframe[src='+JSON.stringify(el.getAttribute('src'))+']') : null)),"
-                    " src: el.getAttribute('src')})")
+                    " src: el.getAttribute('src')})"
+                )
             except Exception:
                 info = None
             if not info or not info.get("sel"):
@@ -1601,7 +1033,8 @@ class BrowserDriver:
         # nth must be scoped to the SAME frame — an identical selector in a
         # different frame is a different element, not an earlier duplicate.
         nth = sum(
-            1 for other in elements[:element_index]
+            1
+            for other in elements[:element_index]
             if other.frame == el.frame and self._build_selector(other) == selector
         )
         base = page or self._page
@@ -1631,6 +1064,14 @@ class BrowserDriver:
         The isolated context is always closed.
         """
         from .resolver import resolve_element
+
+        if any(action.get("requires_input") or action.get("value_ref") for action in actions):
+            return {
+                "steps": [{"ok": False, "reason": "replay inputs must be resolved in memory"}],
+                "diverged": True,
+                "baseline_state": None,
+                "final_state": None,
+            }
         try:
             storage = await self._context.storage_state()
         except Exception:
@@ -1639,8 +1080,14 @@ class BrowserDriver:
         # Count writes the replay re-executes against the backend, so the caller
         # can warn the agent that re-driving the journey re-performs side effects.
         writes: List[str] = []
-        ctx.on("request", lambda req: writes.append(req.method)
-               if (req.method or "").upper() in ("POST", "PUT", "PATCH", "DELETE") else None)
+        ctx.on(
+            "request",
+            lambda req: (
+                writes.append(req.method)
+                if (req.method or "").upper() in ("POST", "PUT", "PATCH", "DELETE")
+                else None
+            ),
+        )
         page = await ctx.new_page()
         steps: List[Dict] = []
         diverged = False
@@ -1651,12 +1098,25 @@ class BrowserDriver:
                     resp = await page.goto(start_url, wait_until="domcontentloaded", timeout=30_000)
                     await self._settle_network(page)
                     if resp is not None and resp.status >= 400:
-                        return {"steps": [{"act": f"goto {start_url}", "ok": False,
-                                           "reason": f"HTTP {resp.status}"}],
-                                "diverged": True, "baseline_state": None, "final_state": None}
+                        return {
+                            "steps": [
+                                {
+                                    "act": f"goto {start_url}",
+                                    "ok": False,
+                                    "reason": f"HTTP {resp.status}",
+                                }
+                            ],
+                            "diverged": True,
+                            "baseline_state": None,
+                            "final_state": None,
+                        }
                 except Exception as e:
-                    return {"steps": [{"act": f"goto {start_url}", "ok": False, "reason": str(e)[:80]}],
-                            "diverged": True, "baseline_state": None, "final_state": None}
+                    return {
+                        "steps": [{"act": f"goto {start_url}", "ok": False, "reason": str(e)[:80]}],
+                        "diverged": True,
+                        "baseline_state": None,
+                        "final_state": None,
+                    }
             baseline = await self.get_state(page)
             for act in actions:
                 tool = act.get("tool")
@@ -1667,7 +1127,13 @@ class BrowserDriver:
                         resp = await page.goto(val, wait_until="domcontentloaded", timeout=30_000)
                         await self._settle_network(page)
                         if resp is not None and resp.status >= 400:
-                            steps.append({"act": f"navigate {val}", "ok": False, "reason": f"HTTP {resp.status}"})
+                            steps.append(
+                                {
+                                    "act": f"navigate {val}",
+                                    "ok": False,
+                                    "reason": f"HTTP {resp.status}",
+                                }
+                            )
                             diverged = True
                             break
                         steps.append({"act": f"navigate {val}", "ok": True})
@@ -1680,7 +1146,9 @@ class BrowserDriver:
                 elements = await self._extract_elements(page)
                 r = resolve_element(desc, elements, kind_filter=kind, strict_kind=bool(kind))
                 if r.reason != "unique" or r.found is None:
-                    steps.append({"act": f"{tool} {desc!r}", "ok": False, "reason": f"re-resolve {r.reason}"})
+                    steps.append(
+                        {"act": f"{tool} {desc!r}", "ok": False, "reason": f"re-resolve {r.reason}"}
+                    )
                     diverged = True
                     break
                 try:
@@ -1693,17 +1161,30 @@ class BrowserDriver:
                     elif tool == "select_into":
                         await loc.select_option(val or "", timeout=5_000)
                     else:
-                        steps.append({"act": f"{tool} {desc!r}", "ok": False, "reason": "unknown tool"})
+                        steps.append(
+                            {"act": f"{tool} {desc!r}", "ok": False, "reason": "unknown tool"}
+                        )
                         diverged = True
                         break
                     steps.append({"act": f"{tool} {desc!r}", "ok": True})
                 except Exception as e:
-                    steps.append({"act": f"{tool} {desc!r}", "ok": False, "reason": str(e)[:80]})
+                    steps.append(
+                        {
+                            "act": f"{tool} {desc!r}",
+                            "ok": False,
+                            "reason": f"{type(e).__name__}: replay action failed",
+                        }
+                    )
                     diverged = True
                     break
             final = None if diverged else await self.get_state(page)
-            return {"steps": steps, "diverged": diverged, "writes": len(writes),
-                    "baseline_state": baseline, "final_state": final}
+            return {
+                "steps": steps,
+                "diverged": diverged,
+                "writes": len(writes),
+                "baseline_state": baseline,
+                "final_state": final,
+            }
         finally:
             try:
                 await ctx.close()
@@ -1774,7 +1255,7 @@ class BrowserDriver:
         try:
             await loc.click(timeout=5_000)
             await self._settle_network()  # best-effort; a click that kicks off a
-            await self._settle_dom()      # hanging fetch must NOT read as failed
+            await self._settle_dom()  # hanging fetch must NOT read as failed
             return True
         except Exception:
             # A visually-hidden checkbox/radio (opacity:0 restyled — CSS-only tabs,
@@ -1822,18 +1303,14 @@ class BrowserDriver:
         except Exception:
             return False
 
-    async def hover(
-        self, element_index: int, elements: List[InteractiveElement]
-    ) -> bool:
+    async def hover(self, element_index: int, elements: List[InteractiveElement]) -> bool:
         try:
             await self._locator(element_index, elements).hover(timeout=5_000)
             return True
         except Exception:
             return False
 
-    async def right_click(
-        self, element_index: int, elements: List[InteractiveElement]
-    ) -> bool:
+    async def right_click(self, element_index: int, elements: List[InteractiveElement]) -> bool:
         try:
             await self._locator(element_index, elements).click(button="right", timeout=5_000)
             return True
@@ -1841,7 +1318,9 @@ class BrowserDriver:
             return False
 
     async def press_key(
-        self, key: str, element_index: Optional[int] = None,
+        self,
+        key: str,
+        element_index: Optional[int] = None,
         elements: Optional[List[InteractiveElement]] = None,
     ) -> bool:
         """Press a keyboard key (Escape, Enter, Tab, ArrowDown, 'Control+a', ...).
@@ -1873,7 +1352,8 @@ class BrowserDriver:
                 sy1 = await self._page.evaluate("() => window.scrollY")
                 y = int(page_y - sy1)  # actual viewport y after the (maybe clamped) scroll
             present = await self._page.evaluate(
-                "(p) => !!document.elementFromPoint(p[0], p[1])", [x, y])
+                "(p) => !!document.elementFromPoint(p[0], p[1])", [x, y]
+            )
             return (x, y) if present else None
         except Exception:
             return (x, y)  # can't verify (rare) — best-effort proceed
@@ -1926,8 +1406,8 @@ class BrowserDriver:
             steps = 12
             for i in range(1, steps + 1):
                 await self._page.mouse.move(
-                    from_x + (to_x - from_x) * i / steps,
-                    from_y + (to_y - from_y) * i / steps)
+                    from_x + (to_x - from_x) * i / steps, from_y + (to_y - from_y) * i / steps
+                )
             await self._page.mouse.up()
             await self._settle_dom()
             return True
@@ -1957,8 +1437,15 @@ class BrowserDriver:
             descriptor = (self._playwright.devices or {}).get(device_name)
             if not descriptor:
                 names = list((self._playwright.devices or {}).keys())
-                return {"ok": False, "reason": f"unknown device {device_name!r}",
-                        "examples": [n for n in ("iPhone 13", "Pixel 5", "iPad Pro 11", "Galaxy S9+") if n in names]}
+                return {
+                    "ok": False,
+                    "reason": f"unknown device {device_name!r}",
+                    "examples": [
+                        n
+                        for n in ("iPhone 13", "Pixel 5", "iPad Pro 11", "Galaxy S9+")
+                        if n in names
+                    ],
+                }
             cfg = {k: v for k, v in descriptor.items() if k != "default_browser_type"}
             url = self._page.url if self._page else None
             try:
@@ -1967,7 +1454,8 @@ class BrowserDriver:
                 storage = None
             old = self._context
             self._context = await self._browser.new_context(
-                accept_downloads=True, storage_state=storage, **cfg)
+                accept_downloads=True, storage_state=storage, **cfg
+            )
             self._context.on("page", self._on_new_page)
             self._page = await self._context.new_page()
             self._attach_page_listeners(self._page)
@@ -1978,13 +1466,19 @@ class BrowserDriver:
             if url and not url.startswith("about:"):
                 await self.goto(url)
             self.viewport = descriptor.get("viewport") or self.viewport
-            return {"ok": True, "device": device_name, "viewport": descriptor.get("viewport"),
-                    "is_mobile": descriptor.get("is_mobile"), "has_touch": descriptor.get("has_touch")}
+            return {
+                "ok": True,
+                "device": device_name,
+                "viewport": descriptor.get("viewport"),
+                "is_mobile": descriptor.get("is_mobile"),
+                "has_touch": descriptor.get("has_touch"),
+            }
         except Exception as e:
             return {"ok": False, "reason": str(e)[:150]}
 
-    async def emulate_media(self, color_scheme: Optional[str] = None,
-                            reduced_motion: Optional[str] = None) -> bool:
+    async def emulate_media(
+        self, color_scheme: Optional[str] = None, reduced_motion: Optional[str] = None
+    ) -> bool:
         """Emulate a CSS media preference on the live page (no context swap needed —
         page.emulate_media is page-level). Lets a tester see the app in dark mode /
         reduced-motion, where theme bugs (invisible text, unreadable contrast, a
@@ -2004,7 +1498,9 @@ class BrowserDriver:
             return False
 
     async def drag(
-        self, source_index: int, target_index: int,
+        self,
+        source_index: int,
+        target_index: int,
         elements: List[InteractiveElement],
     ) -> bool:
         try:
@@ -2017,7 +1513,9 @@ class BrowserDriver:
             return False
 
     async def upload_file(
-        self, element_index: int, paths: List[str],
+        self,
+        element_index: int,
+        paths: List[str],
         elements: List[InteractiveElement],
     ) -> bool:
         try:
@@ -2027,7 +1525,9 @@ class BrowserDriver:
             return False
 
     async def drop_file(
-        self, element_index: int, path: str,
+        self,
+        element_index: int,
+        path: str,
         elements: List[InteractiveElement],
     ) -> bool:
         """Drop a real on-disk file onto a dropzone element (react-dropzone-style
@@ -2036,6 +1536,7 @@ class BrowserDriver:
         and drag_what (element-to-element, no files) can't do."""
         import base64
         import mimetypes
+
         try:
             data = Path(path).read_bytes()
             name = Path(path).name
@@ -2052,14 +1553,17 @@ class BrowserDriver:
                         el.dispatchEvent(new DragEvent(t, {bubbles: true, cancelable: true, dataTransfer: dt}));
                     }
                 }""",
-                {"name": name, "type": mime, "b64": base64.b64encode(data).decode("ascii")})
+                {"name": name, "type": mime, "b64": base64.b64encode(data).decode("ascii")},
+            )
             await self._settle_dom()
             return True
         except Exception:
             return False
 
     async def paste_into(
-        self, element_index: int, text: str,
+        self,
+        element_index: int,
+        text: str,
         elements: List[InteractiveElement],
     ) -> bool:
         """Paste `text` into an element via a synthetic paste ClipboardEvent (so
@@ -2085,7 +1589,9 @@ class BrowserDriver:
                             document.execCommand('insertText', false, text);
                         }
                     }
-                }""", text)
+                }""",
+                text,
+            )
             await self._settle_dom()
             return True
         except Exception:
@@ -2221,7 +1727,7 @@ class BrowserDriver:
             if el.shadow:
                 if len(collapsed) <= 50:
                     return f'{el.tag} >> text="{text_escaped}"'
-                return f'{el.tag} >> text={snippet}'
+                return f"{el.tag} >> text={snippet}"
             return f'{el.tag}:has-text("{text_escaped}")'
         # Last resort: tag + type
         if el.type and el.tag == "input":

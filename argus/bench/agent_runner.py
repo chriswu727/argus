@@ -16,6 +16,7 @@ Honest caveats printed with the result: recall is a fuzzy keyword estimate
 against the selected catalog's seeded signatures; a hard USD cost cap bounds
 the run and ALL trials are reported (no cherry-picking).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -30,48 +31,96 @@ BASE = os.environ.get("BENCH_BASE_URL", "http://127.0.0.1:5555")
 
 
 def _t(name, desc, props=None, required=None):
-    return {"type": "function", "function": {
-        "name": name, "description": desc,
-        "parameters": {"type": "object", "properties": props or {}, "required": required or []}}}
+    return {
+        "type": "function",
+        "function": {
+            "name": name,
+            "description": desc,
+            "parameters": {"type": "object", "properties": props or {}, "required": required or []},
+        },
+    }
 
 
 TOOLS = [
     _t("start_session", "Start a browser session at a URL.", {"url": {"type": "string"}}, ["url"]),
     _t("observe", "Observe the current page (elements, text, feedback). Read after every action."),
-    _t("click_what", "Click the element matching a natural-language description.",
-       {"description": {"type": "string"}}, ["description"]),
-    _t("type_into", "Type text into the field matching a description.",
-       {"description": {"type": "string"}, "text": {"type": "string"}}, ["description", "text"]),
-    _t("select_into", "Select a value in the dropdown matching a description.",
-       {"description": {"type": "string"}, "value": {"type": "string"}}, ["description", "value"]),
+    _t(
+        "click_what",
+        "Click the element matching a natural-language description.",
+        {"description": {"type": "string"}},
+        ["description"],
+    ),
+    _t(
+        "type_into",
+        "Type text into the field matching a description.",
+        {"description": {"type": "string"}, "text": {"type": "string"}},
+        ["description", "text"],
+    ),
+    _t(
+        "select_into",
+        "Select a value in the dropdown matching a description.",
+        {"description": {"type": "string"}, "value": {"type": "string"}},
+        ["description", "value"],
+    ),
     _t("navigate", "Navigate to a URL.", {"url": {"type": "string"}}, ["url"]),
     _t("scroll_down", "Scroll the page down."),
-    _t("verify_persistence", "Force a fresh GET; report whether target_text is present/absent.",
-       {"expect": {"type": "string", "enum": ["present", "absent"]},
-        "target_text": {"type": "string"}, "after_url": {"type": "string"}}, ["expect", "target_text"]),
+    _t(
+        "verify_persistence",
+        "Force a fresh GET; report whether target_text is present/absent.",
+        {
+            "expect": {"type": "string", "enum": ["present", "absent"]},
+            "target_text": {"type": "string"},
+            "after_url": {"type": "string"},
+        },
+        ["expect", "target_text"],
+    ),
     _t("get_errors", "Drain captured console + network events."),
     _t("check_links", "Check internal links for dead ones."),
-    _t("record_bug", "Record a CONFIRMED bug. Pass a verify clause "
-       "({expect, target_text, at_url}) to attach a reproduction receipt.",
-       {"title": {"type": "string"}, "severity": {"type": "string"},
-        "evidence": {"type": "object"},
-        "verify": {"type": "object", "properties": {
-            "expect": {"type": "string"}, "target_text": {"type": "string"}, "at_url": {"type": "string"}}}},
-       ["title", "severity"]),
+    _t(
+        "record_bug",
+        "Record a CONFIRMED bug. Pass a verify clause "
+        "({expect, target_text, at_url}) to attach a reproduction receipt.",
+        {
+            "title": {"type": "string"},
+            "severity": {"type": "string"},
+            "evidence": {"type": "object"},
+            "verify": {
+                "type": "object",
+                "properties": {
+                    "expect": {"type": "string"},
+                    "target_text": {"type": "string"},
+                    "at_url": {"type": "string"},
+                },
+            },
+        },
+        ["title", "severity"],
+    ),
     _t("end_session", "End the session and write the report."),
 ]
 
 # Fuzzy keyword signatures for the 22 seeded BuggyTasks bugs (recall estimate).
 _BUGGYTASKS_CATALOG = {
-    1: ["appconfig", "referenceerror"], 2: ["/help", "dead link", "404"], 3: ["newsletter", "500"],
-    4: ["any cred", "auth bypass", "accepts any", "wrong password"], 5: ["mismatch", "password"],
-    6: ["form", "cleared", "data lost"], 7: ["xss", "script", "reflect"], 8: ["double", "duplicate"],
-    9: ["count", "off-by-one", "off by one"], 10: ["delete", "still present", "fake delete"],
-    11: ["edit", "not updated", "silent"], 12: ["toggle", "race"], 13: ["load more", "pagination"],
-    14: ["loading", "forever", "spinner"], 15: ["case", "search"], 16: ["date", "1.0 days", "decimal"],
-    17: ["saved", "false success", "not persist", "toast lie"], 18: ["truncat", "long title"],
+    1: ["appconfig", "referenceerror"],
+    2: ["/help", "dead link", "404"],
+    3: ["newsletter", "500"],
+    4: ["any cred", "auth bypass", "accepts any", "wrong password"],
+    5: ["mismatch", "password"],
+    6: ["form", "cleared", "data lost"],
+    7: ["xss", "script", "reflect"],
+    8: ["double", "duplicate"],
+    9: ["count", "off-by-one", "off by one"],
+    10: ["delete", "still present", "fake delete"],
+    11: ["edit", "not updated", "silent"],
+    12: ["toggle", "race"],
+    13: ["load more", "pagination"],
+    14: ["loading", "forever", "spinner"],
+    15: ["case", "search"],
+    16: ["date", "1.0 days", "decimal"],
+    17: ["saved", "false success", "not persist", "toast lie"],
+    18: ["truncat", "long title"],
     19: ["priority", "arbitrary", "unbounded"],
-    20: ["navbar", "still shows login", "after auth"], 21: ["whitespace", "empty task"],
+    20: ["navbar", "still shows login", "after auth"],
+    21: ["whitespace", "empty task"],
     22: ["0 tasks", "alarming", "remaining"],
 }
 
@@ -96,10 +145,12 @@ CATALOG = _CATALOGS.get(os.environ.get("BENCH_CATALOG", "buggytasks").lower(), _
 _N = len(CATALOG)
 
 _SYSTEM = mcp.mcp.instructions
-_USER = (f"The app under test is at {BASE}. Call start_session with that URL, then USE the app like a "
-         "real person — sign up / log in, add and manage tasks, search, change settings — and find bugs. "
-         "When you confirm a real bug, call record_bug (attach a verify clause when the symptom is "
-         "text-checkable). Call end_session when you've done a thorough pass.")
+_USER = (
+    f"The app under test is at {BASE}. Call start_session with that URL, then USE the app like a "
+    "real person — sign up / log in, add and manage tasks, search, change settings — and find bugs. "
+    "When you confirm a real bug, call record_bug (attach a verify clause when the symptom is "
+    "text-checkable). Call end_session when you've done a thorough pass."
+)
 
 
 async def _dispatch(name, args):
@@ -115,14 +166,16 @@ async def _dispatch(name, args):
 
 def _reset():
     try:
-        urllib.request.urlopen(urllib.request.Request(
-            BASE + "/api/test/reset?mode=seeded", method="POST"), timeout=5).read()
+        urllib.request.urlopen(
+            urllib.request.Request(BASE + "/api/test/reset?mode=seeded", method="POST"), timeout=5
+        ).read()
     except Exception as e:
         print("reset warn:", e, flush=True)
 
 
 async def run_session(model, max_steps, cost_cap, cost_so_far):
     import litellm
+
     litellm.suppress_debug_info = True
     msgs = [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": _USER}]
     cost = 0.0
@@ -134,9 +187,16 @@ async def run_session(model, max_steps, cost_cap, cost_so_far):
             # Per-call timeout + one retry: a single stalled API call must abort
             # this trial (the except breaks the loop), not hang the whole bench —
             # a pro completion stalled ~5min once and blocked everything.
-            resp = litellm.completion(model=model, messages=msgs, tools=TOOLS,
-                                      tool_choice="auto", temperature=0.4, max_tokens=900,
-                                      timeout=60, num_retries=1)
+            resp = litellm.completion(
+                model=model,
+                messages=msgs,
+                tools=TOOLS,
+                tool_choice="auto",
+                temperature=0.4,
+                max_tokens=900,
+                timeout=60,
+                num_retries=1,
+            )
         except Exception as e:
             print("  completion err:", str(e)[:200], flush=True)
             break
@@ -148,7 +208,12 @@ async def run_session(model, max_steps, cost_cap, cost_so_far):
         msgs.append(msg.model_dump(exclude_none=True) if hasattr(msg, "model_dump") else dict(msg))
         tcs = msg.tool_calls or []
         if not tcs:
-            msgs.append({"role": "user", "content": "Call a tool (observe / click_what / record_bug / end_session)."})
+            msgs.append(
+                {
+                    "role": "user",
+                    "content": "Call a tool (observe / click_what / record_bug / end_session).",
+                }
+            )
             continue
         ended = False
         for tc in tcs:
@@ -169,11 +234,14 @@ async def run_session(model, max_steps, cost_cap, cost_so_far):
 
 def score(bugs):
     hay = [((b.title or "") + " " + (b.description or "")).lower() for b in bugs]
+
     def _matched(h):
         return any(any(k in h for k in kws) for kws in CATALOG.values())
+
     caught = {bid for bid, kws in CATALOG.items() if any(any(k in h for k in kws) for h in hay)}
     verified = sum(1 for b in bugs if (b.reproduction_receipt or {}).get("reproduced") is True)
     unmatched = [b for b, h in zip(bugs, hay) if not _matched(h)]
+
     # An FP candidate is a finding we can't back up: off-catalog AND unverified.
     # Exclude two cases that ARE backed up: a VERIFIED finding (passed a clean-
     # load re-check) and an AUTO-CAPTURED event (a console/network error Argus
@@ -181,13 +249,22 @@ def score(bugs):
     def _fp(b):
         r = b.reproduction_receipt or {}
         return r.get("reproduced") is not True and not r.get("auto_captured")
+
     fp_candidates = sum(1 for b in unmatched if _fp(b))
-    return {"recorded": len(bugs), "recall": len(caught), "caught_ids": sorted(caught),
-            "unmatched": len(unmatched), "fp_candidates": fp_candidates, "verified": verified}
+    return {
+        "recorded": len(bugs),
+        "recall": len(caught),
+        "caught_ids": sorted(caught),
+        "unmatched": len(unmatched),
+        "fp_candidates": fp_candidates,
+        "verified": verified,
+    }
 
 
 async def main():
-    if not any(os.environ.get(k) for k in ("DEEPSEEK_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY")):
+    if not any(
+        os.environ.get(k) for k in ("DEEPSEEK_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY")
+    ):
         print("Set a provider key (e.g. DEEPSEEK_API_KEY).", flush=True)
         return 2
     model = os.environ.get("BENCH_MODEL", "deepseek/deepseek-chat")
@@ -209,24 +286,30 @@ async def main():
             return 2
     if not seeded:
         cat_name = os.environ.get("BENCH_CATALOG", "buggytasks").lower()
-        print(f"[{BASE}: no reset endpoint — state carries across trials. Recall scored "
-              f"against the '{cat_name}' catalog ({_N} bugs); set BENCH_CATALOG to match "
-              "the target, or read the run for footguns.]", flush=True)
+        print(
+            f"[{BASE}: no reset endpoint — state carries across trials. Recall scored "
+            f"against the '{cat_name}' catalog ({_N} bugs); set BENCH_CATALOG to match "
+            "the target, or read the run for footguns.]",
+            flush=True,
+        )
 
     results, cost_total = [], 0.0
     for i in range(trials):
         if cost_total > cost_cap:
-            print(f"[cost cap ${cost_cap} reached before trial {i+1}]", flush=True)
+            print(f"[cost cap ${cost_cap} reached before trial {i + 1}]", flush=True)
             break
         if seeded:
             _reset()
-        print(f"\n=== trial {i+1}/{trials} ({model}) — spent ${cost_total:.4f} ===", flush=True)
+        print(f"\n=== trial {i + 1}/{trials} ({model}) — spent ${cost_total:.4f} ===", flush=True)
         cost_total += await run_session(model, max_steps, cost_cap, cost_total)
-        s = score(list(getattr(mcp._session, "bugs", [])))
+        s = score(list(getattr(mcp.runtime.session, "bugs", [])))
         results.append(s)
-        print(f"  -> recall {s['recall']}/{_N}, recorded {s['recorded']} "
-              f"(verified {s['verified']}, off-catalog {s['unmatched']}, "
-              f"FP-candidates {s['fp_candidates']})", flush=True)
+        print(
+            f"  -> recall {s['recall']}/{_N}, recorded {s['recorded']} "
+            f"(verified {s['verified']}, off-catalog {s['unmatched']}, "
+            f"FP-candidates {s['fp_candidates']})",
+            flush=True,
+        )
         try:
             await (mcp.end_session.fn if hasattr(mcp.end_session, "fn") else mcp.end_session)()
         except Exception:
@@ -238,17 +321,25 @@ async def main():
         var = sum((x - mean) ** 2 for x in recalls) / len(recalls)
         print(f"\n===== REAL-LLM BENCH — {model} =====", flush=True)
         for i, r in enumerate(results, 1):
-            print(f"  trial {i}: recall {r['recall']}/{_N}  recorded {r['recorded']}  "
-                  f"verified {r['verified']}  off-catalog {r['unmatched']}  "
-                  f"FP-candidates {r['fp_candidates']}", flush=True)
+            print(
+                f"  trial {i}: recall {r['recall']}/{_N}  recorded {r['recorded']}  "
+                f"verified {r['verified']}  off-catalog {r['unmatched']}  "
+                f"FP-candidates {r['fp_candidates']}",
+                flush=True,
+            )
         fp_total = sum(r["fp_candidates"] for r in results)
-        print(f"  mean recall {mean:.1f}/{_N}  variance {var:.2f}  FP-candidates {fp_total}  "
-              f"total cost ${cost_total:.4f} (~RMB {cost_total * 7.2:.2f})", flush=True)
-        print(f"  recall = fuzzy keyword estimate vs the {_N} seeded signatures; verified = findings "
-              "that carried a passing reproduction receipt; off-catalog = recorded bugs matching no "
-              "seeded signature; FP-candidates = off-catalog AND unverified AND not auto-captured "
-              "(a verified finding or a captured console/network event is real, not a false positive).",
-              flush=True)
+        print(
+            f"  mean recall {mean:.1f}/{_N}  variance {var:.2f}  FP-candidates {fp_total}  "
+            f"total cost ${cost_total:.4f} (~RMB {cost_total * 7.2:.2f})",
+            flush=True,
+        )
+        print(
+            f"  recall = fuzzy keyword estimate vs the {_N} seeded signatures; verified = findings "
+            "that carried a passing reproduction receipt; off-catalog = recorded bugs matching no "
+            "seeded signature; FP-candidates = off-catalog AND unverified AND not auto-captured "
+            "(a verified finding or a captured console/network event is real, not a false positive).",
+            flush=True,
+        )
     return 0
 
 

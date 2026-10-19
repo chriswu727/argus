@@ -1,6 +1,28 @@
 # Changelog
 
-## Unreleased
+## 0.7.0 - 2026-10-19
+
+- Split MCP adaptation from focused application services, domain contracts and
+  adapters; add explicit runtime composition and injectable browser, journal,
+  verification and report extension points.
+- Serialize all session operations; classify operational errors, validate
+  runtime/capture limits, and clean up on failed startup, cancellation, timeout
+  and shutdown. Do not automatically retry browser writes.
+- Add optional loopback monitoring: dashboard, liveness/readiness, versioned
+  status, bounded SSE with reconnect gaps, and Prometheus metrics. Keep all
+  monitoring payloads free of tool arguments and page contents.
+- Keep input values in a session-local vault and omit them from persisted
+  action steps/replay exports, including bulk form filling and paste paths.
+- Share CLI/MCP regression through application services and a verifier registry;
+  use exit 3 for inconclusive checks and exit 2 for corrupted journals.
+- Replace stale-file lock deletion with OS-backed file locking; coordinate
+  report generation and cleanup and split individual report exporters.
+- Add real stdio MCP and HTTP-monitor integration tests, runtime fault tests,
+  architecture boundaries, Ruff checks and scoped core type checking in CI.
+- Add architecture, decision, extension and interview documentation. Existing
+  public MCP tool names and profiles are retained.
+
+### Also included since 0.6
 
 - Bound browser network, error, download, and dialog capture; avoid loading
   binary or oversized response bodies and redact credentials at capture time.

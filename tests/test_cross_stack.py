@@ -4,6 +4,7 @@ The seam pure-FE tests (never see persistence) and pure-BE tests (never see the
 UI lie) both miss. Flags are observations, raised only for correlation-SAFE
 contradictions; heuristic request attribution is never an auto-verdict.
 """
+
 from __future__ import annotations
 
 import http.server
@@ -28,7 +29,10 @@ def test_nudge_when_message_appeared_with_no_write():
 
 
 def test_nudge_and_error_evidence_on_failed_write():
-    before, after = make_page_state(toast_messages=[]), make_page_state(toast_messages=["Task created"])
+    before, after = (
+        make_page_state(toast_messages=[]),
+        make_page_state(toast_messages=["Task created"]),
+    )
     evidence, check = _reconcile_action([_req("POST", 500)], before, after)
     assert any("HTTP 500" in e for e in evidence)
     assert check and "error" in check
@@ -50,7 +54,10 @@ def test_no_nudge_without_any_message():
 def test_does_not_assert_deception():
     # The nudge is a CHECK, never an assertion — no "[FLAG]"/"deceptive"/"lying
     # toast" verdict baked into the evidence/check strings.
-    before, after = make_page_state(toast_messages=[]), make_page_state(toast_messages=["Filter applied"])
+    before, after = (
+        make_page_state(toast_messages=[]),
+        make_page_state(toast_messages=["Filter applied"]),
+    )
     evidence, check = _reconcile_action([], before, after)
     blob = " ".join(evidence) + " " + (check or "")
     assert "[FLAG]" not in blob and "deceptive" not in blob.lower()

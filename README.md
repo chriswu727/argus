@@ -44,11 +44,16 @@ flowchart LR
     C --> A
     B -->|bug| D["verify_persistence — reload from a clean state"]
     D -->|symptom repeats| E(["VERIFIED"])
-    D -->|symptom gone| F(["dropped — no false positive"])
+    D -->|symptom gone or uncertain| F(["not certified"])
     E --> G[["report: HTML · JSON · JUnit · SARIF"]]
 ```
 
 The agent is the intelligence. Argus supplies concise QA guidance, a description-keyed tool surface (`click_what("Login button")`, not `click(7)`), a goal coverage ledger, and a **reproduction-receipt engine** that turns "the model thinks this is a bug" into "this bug is real, here's the proof."
+
+A receipt confirms the specified observable symptom, not every possible root
+cause. A clean load preserves authentication and browser storage by default;
+replay can repeat real writes. Qualitative observations and inconclusive checks
+remain distinct from verified findings.
 
 ---
 
@@ -167,6 +172,70 @@ limits can be adjusted with `ARGUS_MAX_NETWORK_EVENTS`,
 by default; `ARGUS_CAPTURE_UNKNOWN_LENGTH_BODY=1` opts into reading them. When a
 limit discards old evidence, Argus says so in tool output and the final session
 summary.
+
+### Live monitoring (0.7)
+
+Add a monitor port to the command your MCP client launches:
+
+```bash
+argus-mcp --monitor-port 8765
+# Or choose an available port automatically:
+argus-mcp --monitor-port 0
+```
+
+Open `http://127.0.0.1:8765` for session state, active operation and duration,
+last progress, calls, operational failures, findings and recent events. The
+selected URL is printed to **stderr**, so stdio MCP messages stay intact.
+`ARGUS_MONITOR_PORT` is equivalent; monitoring is off by default.
+
+| Route | Output |
+|---|---|
+| `/` | Local live dashboard |
+| `/healthz` | HTTP process liveness |
+| `/readyz` | Runtime initialized and not shutting down; 503 otherwise |
+| `/api/status` | Versioned state snapshot, counts and capture drops |
+| `/api/events` | Server-Sent Events, `Last-Event-ID` reconnect and gap notices |
+| `/metrics` | Prometheus text counters and operation duration sums/counts |
+
+The monitor binds only to `127.0.0.1`, rejects unrelated Host/Origin headers,
+and has no action endpoints. It emits no page contents, URLs, typed values,
+screenshots or tool arguments. It is **not an authenticated remote service**;
+do not expose it through a public proxy. Event retention is bounded (512 by
+default), with at most 32 simultaneous SSE subscribers.
+
+Runtime settings are validated at startup. Explicit command-line options
+override environment variables, which override defaults:
+
+| Environment variable | Default |
+|---|---:|
+| `ARGUS_OPERATION_TIMEOUT_S` | 120 seconds |
+| `ARGUS_QUEUE_TIMEOUT_S` | 5 seconds |
+| `ARGUS_CLEANUP_TIMEOUT_S` | 10 seconds per backend |
+| `ARGUS_EVENT_CAPACITY` | 512 events |
+| `ARGUS_OUTPUT_DIR` | `./argus-reports` |
+
+One runtime owns one active session. Actions and lifecycle changes are
+serialized; an operation timeout cancels the action and closes the backend.
+Side-effecting actions are never automatically retried. A separate MCP process
+is the supported way to run another independently controlled session.
+
+### Regression gates and evidence privacy
+
+```bash
+argus-regression http://localhost:3000 --output ./argus-reports
+```
+
+Exit codes: `0` no known symptom reproduced (or no journal), `1` a known symptom
+still reproduces, `2` operational/storage failure, `3` inconclusive. An exit of
+zero is not proof of complete application correctness. Automatic regression
+uses built-in text/HTTP checks, never write-performing replay.
+
+Typed, pasted and selected input values are held in a session-local input vault,
+not in action traces or exported replay steps. Exported steps that need input
+are marked `requires_input`; they cannot be replayed as if a redacted value were
+real. Capsules deliberately contain credentials and are saved with owner-only
+file permissions on POSIX. Reports and screenshots can still contain visible
+application data; see [Privacy](PRIVACY.md).
 
 ---
 
@@ -376,17 +445,29 @@ The global instruction is intentionally tiny so it does not repeat a long QA pro
 
 ```
 argus/
-├── mcp_server.py     # tool surface + role instructions + reproduction-receipt engine
-├── browser.py        # Playwright backend: DOM/ARIA extraction, capsule/replay
-├── resolver.py       # description → element (web + screen)
-├── reporter.py       # HTML + JSON + JUnit + SARIF
-├── detector.py       # console + network capture (only)
-├── cli.py            # argus (explore) + argus-regression
-├── bench/            # deterministic ceiling + real-LLM recall harness
-└── screen/           # macOS AX backend, permissions, safety
+├── mcp_server.py      # process entry point and compatibility imports
+├── entrypoints/mcp/   # public tool catalog, profiles and MCP adaptation
+├── application/       # session manager and focused QA use cases
+├── domain/            # models, errors, states, replay and verification contracts
+├── adapters/          # monitoring, logs, file journal, report exporters, JS assets
+├── bootstrap.py       # composition root: injected backend/repository factories
+├── ports.py           # narrow lifecycle, observation, verification and storage protocols
+├── settings.py        # validated, per-runtime configuration
+├── browser.py         # Playwright adapter (public operations; private page ownership)
+├── screen/            # macOS AX adapter, permissions, safety
+├── reporter.py        # atomic report orchestration and exporter registry
+├── resolver.py        # description → element (web + screen)
+├── cli.py             # autonomous exploration and shared regression entry point
+└── bench/             # deterministic capability + optional real-LLM harness
 test-site/            # BuggyTasks  (22 mechanical bugs)
 human-eye-fixture/    # DarkShop    (12 human-eye bugs)
 ```
+
+Start with [Architecture](docs/architecture.md), [design decisions](docs/decisions.md)
+and [Contributing](CONTRIBUTING.md). The [interview guide](docs/interview-guide.md)
+maps design claims to implementation, tests and explicit limitations. The
+autonomous LiteLLM exploration loop remains a separate workflow; shared
+regression does not import or mutate the MCP server.
 
 ---
 

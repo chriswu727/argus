@@ -1,5 +1,6 @@
 """Replay-receipt minimization: narrow a confirmed write-free reproduction to
 its minimal sufficient steps; skip (don't re-run) a journey that does writes."""
+
 from __future__ import annotations
 
 import http.server
@@ -52,14 +53,22 @@ async def test_minimize_drops_unnecessary_step():
     try:
         await _call(m.observe)
         await _call(m.click_what, description="Noop")  # unnecessary
-        await _call(m.click_what, description="Go")     # the one that matters
-        await _call(m.record_bug, title="multi", severity="medium",
-                    evidence={"screenshot": "skip"},
-                    verify={"replay": True, "minimize": True,
-                            "expect": "present", "target_text": "BUG-XYZ"})
-        r = m._session.bugs[-1].reproduction_receipt
+        await _call(m.click_what, description="Go")  # the one that matters
+        await _call(
+            m.record_bug,
+            title="multi",
+            severity="medium",
+            evidence={"screenshot": "skip"},
+            verify={
+                "replay": True,
+                "minimize": True,
+                "expect": "present",
+                "target_text": "BUG-XYZ",
+            },
+        )
+        r = m.runtime.session.bugs[-1].reproduction_receipt
         assert r["reproduced"] is True
-        assert r["minimal_count"] == 1            # 2 steps -> 1 suffices
+        assert r["minimal_count"] == 1  # 2 steps -> 1 suffices
         assert any("Go" in s for s in r["minimal_steps"])
     finally:
         await _call(m.end_session)
@@ -71,11 +80,13 @@ class _Writes(http.server.BaseHTTPRequestHandler):
         pass
 
     def do_GET(self):
-        body = ("<button id=n>Noop</button><button id=s>Save</button>"
-                "<div id=t role=alert style='display:none'>Saved!</div>"
-                "<script>document.getElementById('s').onclick=()=>{"
-                "fetch('/api/save',{method:'POST'});"
-                "document.getElementById('t').style.display='block';};</script>")
+        body = (
+            "<button id=n>Noop</button><button id=s>Save</button>"
+            "<div id=t role=alert style='display:none'>Saved!</div>"
+            "<script>document.getElementById('s').onclick=()=>{"
+            "fetch('/api/save',{method:'POST'});"
+            "document.getElementById('t').style.display='block';};</script>"
+        )
         self.send_response(200)
         self.send_header("Content-Type", "text/html")
         self.end_headers()
@@ -93,14 +104,17 @@ async def test_minimize_skipped_for_write_journey():
         await _call(m.observe)
         await _call(m.click_what, description="Noop")
         await _call(m.click_what, description="Save")  # fires a POST (write)
-        await _call(m.record_bug, title="write", severity="medium",
-                    evidence={"screenshot": "skip"},
-                    verify={"replay": True, "minimize": True,
-                            "expect": "present", "target_text": "Saved"})
-        r = m._session.bugs[-1].reproduction_receipt
+        await _call(
+            m.record_bug,
+            title="write",
+            severity="medium",
+            evidence={"screenshot": "skip"},
+            verify={"replay": True, "minimize": True, "expect": "present", "target_text": "Saved"},
+        )
+        r = m.runtime.session.bugs[-1].reproduction_receipt
         assert r["reproduced"] is True
         assert r.get("writes_replayed", 0) >= 1
-        assert "minimize_skipped" in r       # not minimized — would repeat writes
+        assert "minimize_skipped" in r  # not minimized — would repeat writes
         assert "minimal_count" not in r
     finally:
         await _call(m.end_session)

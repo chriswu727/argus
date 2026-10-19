@@ -1,7 +1,9 @@
 """Tests for argus.resolver — natural-language element resolution."""
+
 from __future__ import annotations
 
-from argus.resolver import resolve_element, split_description, kind_of, describe
+from argus.resolver import describe, kind_of, resolve_element, split_description
+
 from .conftest import make_element
 
 
@@ -24,8 +26,8 @@ def test_exact_text_match_wins():
 
 def test_kind_hint_strips_and_filters():
     els = [
-        make_element(0, tag="a", text="Submit"),         # link with text "Submit"
-        make_element(1, tag="button", text="Submit"),     # button — should win
+        make_element(0, tag="a", text="Submit"),  # link with text "Submit"
+        make_element(1, tag="button", text="Submit"),  # button — should win
     ]
     r = resolve_element("Submit button", els)
     assert r.reason == "unique"
@@ -34,9 +36,10 @@ def test_kind_hint_strips_and_filters():
 
 def test_field_hint_resolves_input():
     els = [
-        make_element(0, tag="a", text="email"),                                  # link labeled "email"
-        make_element(1, tag="input", type="email", placeholder="you@example.com",
-                     name="email"),                                              # actual input
+        make_element(0, tag="a", text="email"),  # link labeled "email"
+        make_element(
+            1, tag="input", type="email", placeholder="you@example.com", name="email"
+        ),  # actual input
     ]
     r = resolve_element("email field", els)
     assert r.reason == "unique"
@@ -175,8 +178,12 @@ def test_quoted_labels_resolve():
 
 def test_next_to_is_row_scoping_like_near():
     # "next to X" == "near X" scaffolding; a standalone "Next" button still resolves.
-    rows = [_row(0, "Buy groceries", "Edit"), _row(1, "Buy groceries", "Delete"),
-            _row(2, "Pay rent", "Edit"), _row(3, "Pay rent", "Delete")]
+    rows = [
+        _row(0, "Buy groceries", "Edit"),
+        _row(1, "Buy groceries", "Delete"),
+        _row(2, "Pay rent", "Edit"),
+        _row(3, "Pay rent", "Delete"),
+    ]
     r = resolve_element('Delete next to "Buy groceries"', rows)
     assert r.reason == "unique" and r.found is rows[1]
     nxt = [make_element(0, tag="button", text="Next"), make_element(1, tag="button", text="Back")]
@@ -184,47 +191,66 @@ def test_next_to_is_row_scoping_like_near():
 
 
 def test_bar_is_region_scaffolding():
-    els = [make_element(0, tag="a", text="Cart (0)"), make_element(1, tag="a", text="Home"),
-           make_element(2, tag="input", type="search", placeholder="Search products")]
+    els = [
+        make_element(0, tag="a", text="Cart (0)"),
+        make_element(1, tag="a", text="Home"),
+        make_element(2, tag="input", type="search", placeholder="Search products"),
+    ]
     assert resolve_element("Cart (0) link in navigation bar", els).found is els[0]
     assert resolve_element("search bar", els).found is els[2]  # "bar" stripped -> the search input
 
 
 def test_label_word_is_scaffolding():
-    els = [make_element(0, tag="input", type="email", name="email", placeholder="you@x"),
-           make_element(1, tag="input", type="password", name="password")]
+    els = [
+        make_element(0, tag="input", type="email", name="email", placeholder="you@x"),
+        make_element(1, tag="input", type="password", name="password"),
+    ]
     # "input near Email label" — "label" is scaffolding, not part of the target
     assert resolve_element('input near "Email" label', els).found is els[0]
 
 
 def test_parenthetical_context_is_stripped():
     def mk(i, name, value):
-        e = make_element(i, tag="input", type="text", name=name); e.value = value; return e
+        e = make_element(i, tag="input", type="text", name=name)
+        e.value = value
+        return e
+
     els = [mk(0, "title", "Buy groceries"), mk(1, "priority", "high")]
     assert resolve_element("Title field (Buy groceries)", els).found is els[0]
     assert resolve_element("Priority field (high)", els).found is els[1]
 
 
 def test_double_kind_word_does_not_pollute_core():
-    els = [make_element(0, tag="input", type="text", name="cvv"),
-           make_element(1, tag="input", type="text", name="card")]
+    els = [
+        make_element(0, tag="input", type="text", name="cvv"),
+        make_element(1, tag="input", type="text", name="card"),
+    ]
     # "input field" is two kind words — "field" must not leak into the core and
     # break the strict type_into path (which cannot fall back).
-    assert resolve_element("card input field", els, kind_filter="input", strict_kind=True).found is els[1]
-    assert resolve_element("the card field input", els).found is els[1]  # two kind words + a stopword
+    assert (
+        resolve_element("card input field", els, kind_filter="input", strict_kind=True).found
+        is els[1]
+    )
+    assert (
+        resolve_element("the card field input", els).found is els[1]
+    )  # two kind words + a stopword
 
 
 def test_underscore_in_description_matches_normalized_name():
-    els = [make_element(0, tag="input", type="number", name="qty_1"),
-           make_element(1, tag="input", type="number", name="qty_2")]
+    els = [
+        make_element(0, tag="input", type="number", name="qty_1"),
+        make_element(1, tag="input", type="number", name="qty_2"),
+    ]
     # agent targets a field by the literal programmatic name it saw in observe
     assert resolve_element("qty_1 input", els).found is els[0]
 
 
 def test_snake_case_name_matches_natural_language():
-    els = [make_element(0, tag="input", type="text", name="first_name"),
-           make_element(1, tag="input", type="text", name="last_name"),
-           make_element(2, tag="input", type="number", name="qty_1", value="2")]
+    els = [
+        make_element(0, tag="input", type="text", name="first_name"),
+        make_element(1, tag="input", type="text", name="last_name"),
+        make_element(2, tag="input", type="number", name="qty_1", value="2"),
+    ]
     assert resolve_element("first name field", els).found is els[0]
     assert resolve_element("last name input", els).found is els[1]
     assert resolve_element("qty field", els).found is els[2]  # underscore no longer joins tokens
@@ -232,39 +258,61 @@ def test_snake_case_name_matches_natural_language():
 
 def test_input_matched_by_current_value():
     # a pre-filled field (e.g. display name showing "Alex") is targetable by value
-    els = [make_element(0, tag="input", type="text", value="Alex"),
-           make_element(1, tag="button", text="Save")]
+    els = [
+        make_element(0, tag="input", type="text", value="Alex"),
+        make_element(1, tag="button", text="Save"),
+    ]
     assert resolve_element("input with Alex", els).found is els[0]  # partial/core via value
-    assert resolve_element("Alex", els).found is els[0]             # exact value (fast path)
+    assert resolve_element("Alex", els).found is els[0]  # exact value (fast path)
 
 
 def test_wrong_kind_hint_falls_back_when_pool_empty():
     # agent calls a link a "button" while real buttons fill the pool -> still found
-    els = [make_element(0, tag="a", text="+ New Task"), make_element(1, tag="button", text="Save"),
-           make_element(2, tag="button", text="Cancel")]
+    els = [
+        make_element(0, tag="a", text="+ New Task"),
+        make_element(1, tag="button", text="Save"),
+        make_element(2, tag="button", text="Cancel"),
+    ]
     assert resolve_element("+ New Task button", els).found is els[0]
     # but a hint that DOES match is still respected (no spurious fallback)
-    e2 = [make_element(0, tag="a", text="email"),
-          make_element(1, tag="input", type="email", name="email", placeholder="you@x")]
+    e2 = [
+        make_element(0, tag="a", text="email"),
+        make_element(1, tag="input", type="email", name="email", placeholder="you@x"),
+    ]
     assert resolve_element("email field", e2).found is e2[1]
 
 
 def test_link_resolves_by_href_and_to_is_scaffolding():
     def mk(i, text, href):
-        e = make_element(i, tag="a", text=text); e.href = href; return e
+        e = make_element(i, tag="a", text=text)
+        e.href = href
+        return e
+
     els = [mk(0, "Wireless Headphones", "/product/1"), mk(1, "USB Cable", "/product/2")]
-    assert resolve_element("Wireless Headphones product link", els).found is els[0]  # 'product' lives in href
-    assert resolve_element("link to /product/1", els).found is els[0]                # target a link by its path
+    assert (
+        resolve_element("Wireless Headphones product link", els).found is els[0]
+    )  # 'product' lives in href
+    assert resolve_element("link to /product/1", els).found is els[0]  # target a link by its path
     # "to" as scaffolding must not break a literal "Add to Cart" label (fast path)
-    cart = [make_element(0, tag="button", text="Add to Cart"), make_element(1, tag="button", text="Remove")]
+    cart = [
+        make_element(0, tag="button", text="Add to Cart"),
+        make_element(1, tag="button", text="Remove"),
+    ]
     assert resolve_element("Add to Cart", cart).found is cart[0]
 
 
 def test_single_char_discriminator_rows():
     def row(i, title, label):
-        e = make_element(i, tag="button", text=label); e.parent_context = f"{title} Edit Delete"; return e
-    rows = [row(0, "Task 1", "Edit"), row(1, "Task 1", "Delete"),
-            row(2, "Task 2", "Edit"), row(3, "Task 2", "Delete")]
+        e = make_element(i, tag="button", text=label)
+        e.parent_context = f"{title} Edit Delete"
+        return e
+
+    rows = [
+        row(0, "Task 1", "Edit"),
+        row(1, "Task 1", "Delete"),
+        row(2, "Task 2", "Edit"),
+        row(3, "Task 2", "Delete"),
+    ]
     # the sole differentiator is a 1-char token — must still disambiguate
     assert resolve_element("Delete Task 1", rows).found is rows[1]
     assert resolve_element("Delete Task 2", rows).found is rows[3]
@@ -272,28 +320,40 @@ def test_single_char_discriminator_rows():
 
 def test_aria_widget_kind_and_targeting():
     from argus.models import InteractiveElement as E
+
     sw = E(index=0, tag="div", role="switch", aria_label="Dark mode")
     sl = E(index=1, tag="div", role="slider", aria_label="Volume")
     assert kind_of(sw) == "switch" and kind_of(sl) == "slider"
     assert "switch" in describe(sw)  # rendered as switch, not generic div
     # targetable by the type word, not only the bare label
-    assert resolve_element("the Dark mode switch", [sw, E(index=2, tag="button", text="Save")]).found is sw
+    assert (
+        resolve_element("the Dark mode switch", [sw, E(index=2, tag="button", text="Save")]).found
+        is sw
+    )
     assert resolve_element("Volume slider", [sl, sw]).found is sl
 
 
 def test_describe_prefers_aria_for_icon_buttons():
     from argus.models import InteractiveElement as E
+
     # a glyph-text icon button shows its descriptive aria-label, not the symbol
-    assert describe(E(index=0, tag="a", text="+", aria_label="Zoom in")).startswith('link "Zoom in"')
-    assert 'Page 2' in describe(E(index=0, tag="button", text="2", aria_label="Page 2"))
+    assert describe(E(index=0, tag="a", text="+", aria_label="Zoom in")).startswith(
+        'link "Zoom in"'
+    )
+    assert "Page 2" in describe(E(index=0, tag="button", text="2", aria_label="Page 2"))
     # a normal text button keeps its visible text (the label a human reads)
-    assert describe(E(index=0, tag="button", text="Save", aria_label="Save changes")).startswith('button "Save"')
+    assert describe(E(index=0, tag="button", text="Save", aria_label="Save changes")).startswith(
+        'button "Save"'
+    )
 
 
 def test_column_is_a_stopword():
     from argus.models import InteractiveElement as E
-    els = [E(index=0, tag="button", aria_label="Salary: Activate to sort"),
-           E(index=1, tag="button", aria_label="Name: Activate to sort")]
+
+    els = [
+        E(index=0, tag="button", aria_label="Salary: Activate to sort"),
+        E(index=1, tag="button", aria_label="Name: Activate to sort"),
+    ]
     # "column"/"header" are table-structure scaffolding (like "row"), not content
     assert resolve_element("Salary column header", els).found is els[0]
     assert resolve_element("the Salary column", els).found is els[0]
@@ -301,9 +361,12 @@ def test_column_is_a_stopword():
 
 def test_kind_word_label_resolves_verbatim_not_wrong_kind():
     from argus.models import InteractiveElement as E
-    page = [E(index=0, tag="button", aria_label="Menu"),
-            E(index=1, tag="a", text="Home", href="/"),
-            E(index=2, tag="select", name="country", text="United States")]
+
+    page = [
+        E(index=0, tag="button", aria_label="Menu"),
+        E(index=1, tag="a", text="Home", href="/"),
+        E(index=2, tag="select", name="country", text="United States"),
+    ]
     # "Menu" is a kind word but here it's a literal label -> the button, NOT the
     # unrelated <select> (which it used to hijack as a confident wrong pick)
     assert resolve_element("Menu", page).found is page[0]
@@ -314,7 +377,10 @@ def test_kind_word_label_resolves_verbatim_not_wrong_kind():
 
 def test_hash_n_identifier_vs_positional():
     def issue(i, num, title):
-        e = make_element(i, tag="button", text="Delete"); e.parent_context = f"#{num} {title}"; return e
+        e = make_element(i, tag="button", text="Delete")
+        e.parent_context = f"#{num} {title}"
+        return e
+
     els = [issue(0, 7, "Fix login"), issue(1, 42, "Broken chart"), issue(2, 3, "Typo")]
     # "#42" is a LITERAL identifier (a row carries it) -> the #42 row, not position 42
     assert resolve_element("Delete issue #42", els).found is els[1]
@@ -326,11 +392,16 @@ def test_hash_n_identifier_vs_positional():
 
 def test_type_noun_and_id_token_no_silent_wrong_action():
     def cb(i):
-        e = make_element(i, tag="input", type="checkbox"); e.id = f"task-{i}"
-        e.parent_context = "Buy groceries high 1.0 days ago Edit Delete"; return e
+        e = make_element(i, tag="input", type="checkbox")
+        e.id = f"task-{i}"
+        e.parent_context = "Buy groceries high 1.0 days ago Edit Delete"
+        return e
+
     def btn(i, label):
         e = make_element(i, tag="button", text=label)
-        e.parent_context = "Buy groceries high 1.0 days ago Edit Delete"; return e
+        e.parent_context = "Buy groceries high 1.0 days ago Edit Delete"
+        return e
+
     els = [cb(1), btn(2, "Edit"), btn(3, "Delete")]
     # "task" (a type-noun) previously matched the id="task-1" checkbox and won as
     # a CONFIDENT wrong pick over the intended Delete button. Must hit Delete now.
@@ -340,11 +411,20 @@ def test_type_noun_and_id_token_no_silent_wrong_action():
 
 def test_row_prefix_overlap_tiebreak():
     def row(i, title, label):
-        e = make_element(i, tag="button", text=label); e.parent_context = f"{title} Edit Delete"; return e
-    rows = [row(0, "Buy groceries", "Edit"), row(1, "Buy groceries", "Delete"),
-            row(2, "Buy groceries supplies", "Edit"), row(3, "Buy groceries supplies", "Delete")]
-    assert resolve_element("Delete Buy groceries", rows).found is rows[1]           # the exact (tighter) row
-    assert resolve_element("Delete Buy groceries supplies", rows).found is rows[3]  # superset still targetable
+        e = make_element(i, tag="button", text=label)
+        e.parent_context = f"{title} Edit Delete"
+        return e
+
+    rows = [
+        row(0, "Buy groceries", "Edit"),
+        row(1, "Buy groceries", "Delete"),
+        row(2, "Buy groceries supplies", "Edit"),
+        row(3, "Buy groceries supplies", "Delete"),
+    ]
+    assert resolve_element("Delete Buy groceries", rows).found is rows[1]  # the exact (tighter) row
+    assert (
+        resolve_element("Delete Buy groceries supplies", rows).found is rows[3]
+    )  # superset still targetable
     # two genuinely identical rows must stay ambiguous (no false tie-break)
     same = [row(0, "Task A", "Delete"), row(1, "Task A", "Delete")]
     assert resolve_element("Delete Task A", same).reason == "ambiguous"
@@ -376,8 +456,10 @@ def test_last_positional_and_last_name_label():
     r = resolve_element("last Delete button", els)
     assert r.reason == "unique" and r.found is els[3]  # last of 4
     # "Last name" must resolve as a LABEL (exact-label fast path), not positional
-    form = [make_element(0, tag="input", placeholder="First name"),
-            make_element(1, tag="input", placeholder="Last name")]
+    form = [
+        make_element(0, tag="input", placeholder="First name"),
+        make_element(1, tag="input", placeholder="Last name"),
+    ]
     r2 = resolve_element("Last name field", form)
     assert r2.reason == "unique" and r2.found is form[1]
 
@@ -405,29 +487,34 @@ def test_whole_word_substring_still_matches():
 
 def test_sign_in_resolves_despite_in_stopword():
     # F7: 'in' is a stopword; 'Sign in' must still beat 'Sign up'.
-    els = [make_element(0, tag="button", text="Sign in"),
-           make_element(1, tag="button", text="Sign up")]
+    els = [
+        make_element(0, tag="button", text="Sign in"),
+        make_element(1, tag="button", text="Sign up"),
+    ]
     assert resolve_element("Sign in", els).found is els[0]
     assert resolve_element("Sign in button", els).found is els[0]
 
-    els2 = [make_element(0, tag="a", text="Log in"),
-            make_element(1, tag="a", text="Log out")]
+    els2 = [make_element(0, tag="a", text="Log in"), make_element(1, tag="a", text="Log out")]
     assert resolve_element("Log in", els2).found is els2[0]
 
 
 def test_literal_hash_label_not_hijacked_as_ordinal():
     # F4: 'Issue #42' is a real label, not "the 42nd Issue".
-    els = [make_element(0, tag="a", text="Issue #1"),
-           make_element(1, tag="a", text="Issue #2"),
-           make_element(2, tag="a", text="Issue #42")]
+    els = [
+        make_element(0, tag="a", text="Issue #1"),
+        make_element(1, tag="a", text="Issue #2"),
+        make_element(2, tag="a", text="Issue #42"),
+    ]
     r = resolve_element("Issue #42", els)
     assert r.reason == "unique" and r.found is els[2]
 
     # ...even when the matching label is not in positional order (the old code
     # silently returned band[0]).
-    els2 = [make_element(0, tag="a", text="Issue #42"),
-            make_element(1, tag="a", text="Issue #2"),
-            make_element(2, tag="a", text="Issue #1")]
+    els2 = [
+        make_element(0, tag="a", text="Issue #42"),
+        make_element(1, tag="a", text="Issue #2"),
+        make_element(2, tag="a", text="Issue #1"),
+    ]
     r2 = resolve_element("Issue #1", els2)
     assert r2.reason == "unique" and r2.found is els2[2]
 
@@ -441,7 +528,10 @@ def test_ordinal_out_of_range_is_ambiguous():
 
 def test_lone_ordinal_word_stays_a_label():
     # "second" alone is the label, not a position selector.
-    els = [make_element(0, tag="button", text="Second"), make_element(1, tag="button", text="First")]
+    els = [
+        make_element(0, tag="button", text="Second"),
+        make_element(1, tag="button", text="First"),
+    ]
     r = resolve_element("Second", els)
     assert r.reason == "unique"
     assert r.found is els[0]
@@ -449,6 +539,7 @@ def test_lone_ordinal_word_stays_a_label():
 
 def test_extract_ordinal_forms():
     from argus.resolver import extract_ordinal
+
     assert extract_ordinal("Delete #2") == ("Delete", 2)
     assert extract_ordinal("the 3rd Edit") == ("the  Edit", 3)
     assert extract_ordinal("second Delete button") == ("Delete button", 2)
@@ -484,8 +575,10 @@ def test_describe_renders_useful_label():
 
 def _screen_element(role, title="", value="", description="", x=0, y=0, w=10, h=10, path=None):
     """Lightweight ScreenElement-shaped object for tests (no PyObjC needed)."""
+
     class _SE:
         pass
+
     se = _SE()
     se.role = role
     se.role_description = role
@@ -505,6 +598,7 @@ def _screen_element(role, title="", value="", description="", x=0, y=0, w=10, h=
 
 def test_screen_resolve_button_via_kind_hint():
     from argus.resolver import resolve_screen_element
+
     elements = [
         _screen_element("AXStaticText", title="Save"),
         _screen_element("AXButton", title="Save"),
@@ -516,6 +610,7 @@ def test_screen_resolve_button_via_kind_hint():
 
 def test_screen_resolve_text_field_via_field_hint():
     from argus.resolver import resolve_screen_element
+
     elements = [
         _screen_element("AXButton", title="email"),
         _screen_element("AXTextField", description="Email", value=""),
@@ -527,6 +622,7 @@ def test_screen_resolve_text_field_via_field_hint():
 
 def test_screen_resolve_uses_path_for_disambiguation():
     from argus.resolver import resolve_screen_element
+
     elements = [
         _screen_element("AXButton", title="Submit", path=["Login dialog"]),
         _screen_element("AXButton", title="Submit", path=["Comment box"]),
@@ -544,6 +640,7 @@ def test_screen_ordinal_selects_nth_identical_control():
     # Parity with the web resolver (F13): ordinal disambiguation in screen mode,
     # scanned in reading order (top-to-bottom).
     from argus.resolver import resolve_screen_element
+
     els = [_screen_element("AXButton", title="Delete", y=10 * i) for i in range(4)]
     r = resolve_screen_element("Delete #2", els)
     assert r.reason == "unique"
@@ -553,8 +650,11 @@ def test_screen_ordinal_selects_nth_identical_control():
 def test_screen_exact_label_survives_stopword():
     # "Sign in" must not collapse to "sign" and tie with "Sign up" (F13 parity).
     from argus.resolver import resolve_screen_element
-    els = [_screen_element("AXButton", title="Sign in"),
-           _screen_element("AXButton", title="Sign up")]
+
+    els = [
+        _screen_element("AXButton", title="Sign in"),
+        _screen_element("AXButton", title="Sign up"),
+    ]
     r = resolve_screen_element("Sign in", els)
     assert r.reason == "unique"
     assert r.found is els[0]
@@ -562,8 +662,10 @@ def test_screen_exact_label_survives_stopword():
 
 def test_describe_screen_includes_role_and_coords():
     from argus.resolver import describe_screen
-    el = _screen_element("AXButton", title="Save", x=120, y=80, w=80, h=30,
-                         path=["Settings", "General"])
+
+    el = _screen_element(
+        "AXButton", title="Save", x=120, y=80, w=80, h=30, path=["Settings", "General"]
+    )
     out = describe_screen(el)
     assert "AXButton" in out
     assert "Save" in out

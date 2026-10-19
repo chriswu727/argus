@@ -16,6 +16,7 @@ Usage:
         --json bench-results/matrix.json \\
         --md   bench-results/matrix.md
 """
+
 from __future__ import annotations
 
 import argparse
@@ -25,14 +26,12 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from .runner import run_scenarios, BenchReport, fixture_healthy, target_to_app_hint
-from . import scenarios_buggytasks
-from . import scenarios_darkshop
-
+from . import scenarios_buggytasks, scenarios_darkshop
+from .runner import BenchReport, fixture_healthy, run_scenarios, target_to_app_hint
 
 _TARGETS = {
     "buggytasks": (scenarios_buggytasks.BASE_URL, scenarios_buggytasks.SCENARIOS),
-    "darkshop":   (scenarios_darkshop.BASE_URL,   scenarios_darkshop.SCENARIOS),
+    "darkshop": (scenarios_darkshop.BASE_URL, scenarios_darkshop.SCENARIOS),
 }
 
 
@@ -65,9 +64,7 @@ def matrix_md(reports: List[BenchReport]) -> str:
     for r in reports:
         recall = f"{r.caught} / {r.total} = {r.recall * 100:.0f} %"
         dur = f"{r.finished_at - r.started_at:.1f} s"
-        lines.append(
-            f"| {r.target:<11} | {recall:<17} | {dur:<8} | `{r.fixture_url}` |"
-        )
+        lines.append(f"| {r.target:<11} | {recall:<17} | {dur:<8} | `{r.fixture_url}` |")
     lines.append("")
     lines.append(
         "Argus's MCP surface is fixture-agnostic — both BuggyTasks (mechanical "
@@ -76,9 +73,11 @@ def matrix_md(reports: List[BenchReport]) -> str:
     )
     lines.append("")
     for r in reports:
-        lines.append(f"## {r.target} — {r.caught} / {r.total} = "
-                     f"{r.recall * 100:.0f} % in "
-                     f"{r.finished_at - r.started_at:.1f} s")
+        lines.append(
+            f"## {r.target} — {r.caught} / {r.total} = "
+            f"{r.recall * 100:.0f} % in "
+            f"{r.finished_at - r.started_at:.1f} s"
+        )
         lines.append("")
         lines.append(_per_target_table(r))
         lines.append("")
@@ -115,10 +114,7 @@ def _per_target_table(r: BenchReport) -> str:
                 f"{mark:<6} | {res.method:<13} | {res.notes[:30]:<30} |"
             )
         else:
-            rows.append(
-                f"| {res.bug_id:>2} | {res.name[:55]:<55} | "
-                f"{mark:<6} | {res.method:<13} |"
-            )
+            rows.append(f"| {res.bug_id:>2} | {res.name[:55]:<55} | {mark:<6} | {res.method:<13} |")
     return "\n".join(rows)
 
 
@@ -132,8 +128,7 @@ def matrix_json(reports: List[BenchReport]) -> dict:
             "total": sum(r.total for r in reports),
             "recall_pct": (
                 round(
-                    sum(r.caught for r in reports) /
-                    max(1, sum(r.total for r in reports)) * 100, 1
+                    sum(r.caught for r in reports) / max(1, sum(r.total for r in reports)) * 100, 1
                 )
             ),
             "fp_resisted": fp_resisted,
@@ -193,7 +188,7 @@ async def run(targets: List[str], out_json: Optional[Path], out_md: Optional[Pat
         print("MATRIX SUMMARY")
         print("=" * 72)
         for r in reports:
-            fp = (f"  FP {r.fp_resisted}/{r.fp_total}" if r.fp_total else "")
+            fp = f"  FP {r.fp_resisted}/{r.fp_total}" if r.fp_total else ""
             print(
                 f"  {r.target:<12} {r.caught:>3} / {r.total:<3} = "
                 f"{r.recall * 100:>3.0f} %  in {r.finished_at - r.started_at:>5.1f}s{fp}"
@@ -221,12 +216,16 @@ async def run(targets: List[str], out_json: Optional[Path], out_md: Optional[Pat
 
 def main() -> int:
     p = argparse.ArgumentParser(prog="python -m argus.bench")
-    p.add_argument("--target", choices=list(_TARGETS) + ["all"], default="buggytasks",
-                   help="Which fixture to run against. 'all' = matrix.")
-    p.add_argument("--json", type=Path, default=None,
-                   help="Write the report (or matrix) as JSON.")
-    p.add_argument("--md", type=Path, default=None,
-                   help="Write the report (or matrix) as Markdown.")
+    p.add_argument(
+        "--target",
+        choices=list(_TARGETS) + ["all"],
+        default="buggytasks",
+        help="Which fixture to run against. 'all' = matrix.",
+    )
+    p.add_argument("--json", type=Path, default=None, help="Write the report (or matrix) as JSON.")
+    p.add_argument(
+        "--md", type=Path, default=None, help="Write the report (or matrix) as Markdown."
+    )
     args = p.parse_args()
 
     if args.target == "all":

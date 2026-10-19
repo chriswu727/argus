@@ -156,6 +156,8 @@ Don't record speculation, polish nits, or static a11y / SEO that
 - `argus-mcp --list-tools` — selected tool profile and exported names.
 - `argus-mcp --tool-profile core|screen|full` — control discovery size.
 - `argus-mcp --unsafe` — turn on `eval_js` (off by default).
+- `argus-mcp --monitor-port 8765` — enable the read-only loopback dashboard,
+  health/readiness endpoints, SSE events and metrics; use `0` for a free port.
 - `argus-cleanup --keep-runs 20` — dry-run report retention; add `--apply`
   to remove complete old run artifacts without touching journals or capsules.
 - `python -m argus.bench --target all` — reproduce the 34 / 34 matrix.
@@ -173,6 +175,23 @@ Don't record speculation, polish nits, or static a11y / SEO that
   (`ARGUS_SCREEN_ABORT_FILE` to relocate).
 - Every `screen_click_what` / `screen_type_into` writes a
   before-and-after screenshot pair to the action trail.
+
+## Runtime boundaries (0.7)
+
+All calls in one runtime are serialized. Defaults are a 5-second queue wait,
+120-second operation deadline and 10-second cleanup deadline per backend.
+Cancellation/timeout closes the backend; do not blindly retry a write because
+the application may already have processed it. Start a new session after a
+failed lifecycle transition. Monitoring contains state/counts only, not inputs.
+
+Input-dependent exported replay steps are marked `requires_input`. Never replay
+redaction placeholders as real values. Capsules contain raw credentials and
+must not be shared. Screenshots and explicit finding evidence can still contain
+application data.
+
+`argus-regression` exits 0 for no reproduced known findings (including no
+journal), 1 for still-present findings, 2 for operational/storage failures and
+3 for inconclusive checks. An empty journal is not proof of app correctness.
 
 ## What changed in 0.5 (if you knew 0.4)
 

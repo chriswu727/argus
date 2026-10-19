@@ -16,6 +16,7 @@ than a headless web browser. This module provides:
 These checks fire in the MCP-tool layer rather than deep in the
 backend so the user-facing error messages stay actionable.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -37,6 +38,7 @@ DEFAULT_ABORT_FILE = str(Path.home() / ".argus" / "abort")
 @dataclass
 class ActionRecord:
     """One entry in the action trail."""
+
     timestamp: float
     tool: str
     target: str
@@ -50,6 +52,7 @@ class ActionRecord:
 @dataclass
 class SafetyState:
     """Per-session safety state. Lives on the Session object."""
+
     started_at: float = field(default_factory=time.time)
     action_count: int = 0
     aborted: bool = False
@@ -189,9 +192,7 @@ def trail_summary(state: SafetyState) -> str:
     for r in state.trail[-30:]:
         mark = "[ok]" if r.success else "[fail]"
         ts = time.strftime("%H:%M:%S", time.localtime(r.timestamp))
-        lines.append(
-            f"  {ts} {mark} {r.tool}({r.target[:40]!r}) via {r.method[:40]}"
-        )
+        lines.append(f"  {ts} {mark} {r.tool}({r.target[:40]!r}) via {r.method[:40]}")
         if r.error:
             lines.append(f"    error: {r.error[:120]}")
     if len(state.trail) > 30:

@@ -20,6 +20,7 @@ Design choices:
   — a thin, battle-tested wrapper around CGEventPost that doesn't
   require us to ship our own event-posting code.
 """
+
 from __future__ import annotations
 
 import platform
@@ -38,6 +39,7 @@ def _is_macos() -> bool:
 @dataclass
 class ScreenElement:
     """One AX element flattened into something the resolver can score."""
+
     role: str
     role_description: str
     title: str
@@ -59,6 +61,7 @@ class ScreenElement:
 @dataclass
 class ScreenObservation:
     """Snapshot of what's on the user's screen right now."""
+
     foreground_app: str
     foreground_pid: int
     foreground_window_title: str
@@ -73,6 +76,17 @@ class ScreenBackend:
     """macOS screen-mode driver. Holds onto the foreground app handle so
     repeated observe/click calls hit the same target.
     """
+
+    @property
+    def app_name(self):
+        return self._app_name
+
+    @property
+    def app_pid(self):
+        return self._app_pid
+
+    def invalidate_target(self):
+        self._app_pid = None
 
     # Attribute names the AX walker reads. Loaded lazily so this module
     # imports cleanly on non-macOS.
@@ -98,16 +112,16 @@ class ScreenBackend:
             return
         try:
             import AppKit  # noqa: F401
-            import Quartz  # noqa: F401
             import ApplicationServices as AX
+            import Quartz  # noqa: F401
         except ImportError as exc:
             raise RuntimeError(
-                "PyObjC frameworks not available. Install with "
-                "`pip install argus-testing[mac]`."
+                "PyObjC frameworks not available. Install with `pip install argus-testing[mac]`."
             ) from exc
 
         self._AX = AX
         from AppKit import NSWorkspace
+
         self._workspace = NSWorkspace.sharedWorkspace()
 
     async def start(
@@ -232,9 +246,19 @@ class ScreenBackend:
 
         identifying_text = title or value or desc_text
         interactive_roles = {
-            "AXButton", "AXLink", "AXTextField", "AXTextArea", "AXCheckBox",
-            "AXRadioButton", "AXPopUpButton", "AXMenuItem", "AXMenuBarItem",
-            "AXTab", "AXSlider", "AXComboBox", "AXStaticText",
+            "AXButton",
+            "AXLink",
+            "AXTextField",
+            "AXTextArea",
+            "AXCheckBox",
+            "AXRadioButton",
+            "AXPopUpButton",
+            "AXMenuItem",
+            "AXMenuBarItem",
+            "AXTab",
+            "AXSlider",
+            "AXComboBox",
+            "AXStaticText",
         }
         is_interactive = role in interactive_roles
         # Record an element if it has text identity OR is intrinsically
@@ -242,18 +266,23 @@ class ScreenBackend:
         # AXOutline, etc.) are skipped from the *output* but we still
         # recurse into their children below.
         if (identifying_text or is_interactive) and (w > 0 and h > 0):
-            out.append(ScreenElement(
-                role=role,
-                role_description=role_desc,
-                title=str(title),
-                value=str(value)[:120],
-                description=str(desc_text),
-                enabled=enabled,
-                focused=focused,
-                x=int(x), y=int(y), width=int(w), height=int(h),
-                path=list(path),
-                _ax_ref=ref,
-            ))
+            out.append(
+                ScreenElement(
+                    role=role,
+                    role_description=role_desc,
+                    title=str(title),
+                    value=str(value)[:120],
+                    description=str(desc_text),
+                    enabled=enabled,
+                    focused=focused,
+                    x=int(x),
+                    y=int(y),
+                    width=int(w),
+                    height=int(h),
+                    path=list(path),
+                    _ax_ref=ref,
+                )
+            )
 
         children = self._ax_get(ref, AX.kAXChildrenAttribute)
         if not children:
@@ -323,6 +352,7 @@ class ScreenBackend:
 
         # Screen size — useful context for resolving coordinates / fold.
         from AppKit import NSScreen
+
         main = NSScreen.mainScreen()
         frame = main.frame() if main else None
         sw = int(frame.size.width) if frame else 0
@@ -340,7 +370,10 @@ class ScreenBackend:
 
     def capture_region(
         self,
-        x: int, y: int, w: int, h: int,
+        x: int,
+        y: int,
+        w: int,
+        h: int,
         screenshot_dir: Optional[str] = None,
     ) -> Optional[str]:
         """Capture a rectangular region of the screen via `screencapture -R`.
@@ -359,11 +392,17 @@ class ScreenBackend:
         try:
             subprocess.run(
                 [
-                    "screencapture", "-t", "png", "-x",
-                    "-R", f"{int(x)},{int(y)},{int(w)},{int(h)}",
+                    "screencapture",
+                    "-t",
+                    "png",
+                    "-x",
+                    "-R",
+                    f"{int(x)},{int(y)},{int(w)},{int(h)}",
                     str(out_path),
                 ],
-                capture_output=True, timeout=5, check=True,
+                capture_output=True,
+                timeout=5,
+                check=True,
             )
             if out_path.exists() and out_path.stat().st_size > 0:
                 return str(out_path)
@@ -381,14 +420,18 @@ class ScreenBackend:
         try:
             subprocess.run(
                 ["screencapture", "-t", "png", "-x", str(out_path)],
-                capture_output=True, timeout=5, check=True,
+                capture_output=True,
+                timeout=5,
+                check=True,
             )
             return str(out_path)
         except Exception:
             return None
 
     def _capture_window(
-        self, pid: int, screenshot_dir: Optional[str],
+        self,
+        pid: int,
+        screenshot_dir: Optional[str],
     ) -> Optional[str]:
         """Capture the largest visible on-screen window owned by `pid`.
 
@@ -399,9 +442,9 @@ class ScreenBackend:
         Returns the saved PNG path on success, None on failure.
         """
         try:
-            import Quartz
-            from Foundation import NSURL, NSData
             import AppKit
+            import Quartz
+            from Foundation import NSURL
         except ImportError:
             return None
 
@@ -411,8 +454,7 @@ class ScreenBackend:
             # another app. CGWindowListCreateImage can capture an off-
             # screen window's contents directly.
             window_list = Quartz.CGWindowListCopyWindowInfo(
-                Quartz.kCGWindowListOptionAll
-                | Quartz.kCGWindowListExcludeDesktopElements,
+                Quartz.kCGWindowListOptionAll | Quartz.kCGWindowListExcludeDesktopElements,
                 Quartz.kCGNullWindowID,
             )
         except Exception:
@@ -471,7 +513,8 @@ class ScreenBackend:
             # CGImage -> NSBitmapImageRep -> PNG bytes -> file
             rep = AppKit.NSBitmapImageRep.alloc().initWithCGImage_(cg_image)
             png_data = rep.representationUsingType_properties_(
-                AppKit.NSBitmapImageFileTypePNG, None,
+                AppKit.NSBitmapImageFileTypePNG,
+                None,
             )
             url = NSURL.fileURLWithPath_(str(out_path))
             ok = png_data.writeToURL_atomically_(url, True)
@@ -507,7 +550,9 @@ class ScreenBackend:
         try:
             subprocess.run(
                 ["cliclick", f"c:{cx},{cy}"],
-                capture_output=True, timeout=3, check=True,
+                capture_output=True,
+                timeout=3,
+                check=True,
             )
             return True, f"cliclick-coord:{cx},{cy}"
         except FileNotFoundError:
@@ -530,7 +575,9 @@ class ScreenBackend:
         # Path 1: AX value set. Works for most native text controls.
         try:
             err = AX.AXUIElementSetAttributeValue(
-                el._ax_ref, AX.kAXValueAttribute, text,
+                el._ax_ref,
+                AX.kAXValueAttribute,
+                text,
             )
             if err == 0:
                 return True, "ax-value"
@@ -540,14 +587,18 @@ class ScreenBackend:
         # Path 2: focus + cliclick keystrokes.
         try:
             AX.AXUIElementSetAttributeValue(
-                el._ax_ref, AX.kAXFocusedAttribute, True,
+                el._ax_ref,
+                AX.kAXFocusedAttribute,
+                True,
             )
         except Exception:
             pass
         try:
             subprocess.run(
                 ["cliclick", f"t:{text}"],
-                capture_output=True, timeout=10, check=True,
+                capture_output=True,
+                timeout=10,
+                check=True,
             )
             return True, "cliclick-keystrokes"
         except FileNotFoundError:
@@ -564,7 +615,9 @@ class ScreenBackend:
         try:
             subprocess.run(
                 ["cliclick", f"kp:{key}"],
-                capture_output=True, timeout=3, check=True,
+                capture_output=True,
+                timeout=3,
+                check=True,
             )
             return True, f"cliclick-kp:{key}"
         except Exception as exc:
@@ -598,7 +651,8 @@ class ScreenBackend:
             try:
                 subprocess.run(
                     ["cliclick", f"dd:{x},{y}", f"w:{int(hold_ms)}", f"du:{x},{y}"],
-                    capture_output=True, timeout=max(5, int(hold_ms / 1000) + 5),
+                    capture_output=True,
+                    timeout=max(5, int(hold_ms / 1000) + 5),
                     check=True,
                 )
                 return True, f"cliclick-hold:{x},{y},{hold_ms}ms"
@@ -624,7 +678,9 @@ class ScreenBackend:
                 return True, f"cliclick-{verb}:{x},{y} x{count}"
             subprocess.run(
                 ["cliclick", f"{verb}:{x},{y}"],
-                capture_output=True, timeout=3, check=True,
+                capture_output=True,
+                timeout=3,
+                check=True,
             )
             return True, f"cliclick-{verb}:{x},{y}"
         except FileNotFoundError:
@@ -640,7 +696,9 @@ class ScreenBackend:
         try:
             subprocess.run(
                 ["cliclick", f"m:{x},{y}"],
-                capture_output=True, timeout=3, check=True,
+                capture_output=True,
+                timeout=3,
+                check=True,
             )
             return True, f"cliclick-m:{x},{y}"
         except Exception as exc:
@@ -669,8 +727,10 @@ class ScreenBackend:
                 f"du:{to_x},{to_y}",
             ]
             subprocess.run(
-                args, capture_output=True,
-                timeout=max(5, int(duration_ms / 1000) + 5), check=True,
+                args,
+                capture_output=True,
+                timeout=max(5, int(duration_ms / 1000) + 5),
+                check=True,
             )
             return True, f"cliclick-drag:{from_x},{from_y}->{to_x},{to_y}"
         except FileNotFoundError:
@@ -744,7 +804,9 @@ class ScreenBackend:
         try:
             subprocess.run(
                 ["cliclick", f"t:{text}"],
-                capture_output=True, timeout=10, check=True,
+                capture_output=True,
+                timeout=10,
+                check=True,
             )
             return True, f"cliclick-c:{x},{y}+t:({len(text)} chars)"
         except FileNotFoundError:
@@ -836,22 +898,32 @@ class ScreenBackend:
             if last_diff_pct < threshold_pct:
                 stable_for_ms += poll_ms
                 if stable_for_ms >= stable_window_ms:
-                    return True, "settled", new_path, {
-                        "frames": frames,
-                        "last_diff_pct": round(last_diff_pct, 3),
-                        "elapsed_s": round(time.time() - (deadline - timeout_s), 2),
-                    }
+                    return (
+                        True,
+                        "settled",
+                        new_path,
+                        {
+                            "frames": frames,
+                            "last_diff_pct": round(last_diff_pct, 3),
+                            "elapsed_s": round(time.time() - (deadline - timeout_s), 2),
+                        },
+                    )
             else:
                 stable_for_ms = 0
 
             last_path = new_path
             last_image = new_image
 
-        return False, "timeout", last_path, {
-            "frames": frames,
-            "last_diff_pct": round(last_diff_pct, 3),
-            "stable_for_ms": stable_for_ms,
-        }
+        return (
+            False,
+            "timeout",
+            last_path,
+            {
+                "frames": frames,
+                "last_diff_pct": round(last_diff_pct, 3),
+                "stable_for_ms": stable_for_ms,
+            },
+        )
 
     # ── app lifecycle ──────────────────────────────────────────────
 
@@ -903,7 +975,11 @@ class ScreenBackend:
         cmd = ["open", "-b", target] if looks_like_bundle else ["open", "-a", target]
         try:
             subprocess.run(
-                cmd, capture_output=True, timeout=10, check=True, text=True,
+                cmd,
+                capture_output=True,
+                timeout=10,
+                check=True,
+                text=True,
             )
         except subprocess.CalledProcessError as exc:
             return False, f"{' '.join(cmd)} failed: {exc.stderr.strip()[:160]}", None
@@ -916,9 +992,7 @@ class ScreenBackend:
             # Pump the run loop briefly so NSWorkspace processes the
             # app-launched notification. Without this, runningApplications()
             # returns a stale snapshot inside a long-lived process.
-            loop.runUntilDate_(
-                Foundation.NSDate.dateWithTimeIntervalSinceNow_(0.2)
-            )
+            loop.runUntilDate_(Foundation.NSDate.dateWithTimeIntervalSinceNow_(0.2))
             app = self._running_app_matching(target)
             if app is not None and app.isFinishedLaunching():
                 return True, "launched", int(app.processIdentifier())
@@ -956,12 +1030,11 @@ class ScreenBackend:
             return False, f"quit-error: {exc}"
 
         import Foundation
+
         loop = Foundation.NSRunLoop.currentRunLoop()
         deadline = time.time() + wait_s
         while time.time() < deadline:
-            loop.runUntilDate_(
-                Foundation.NSDate.dateWithTimeIntervalSinceNow_(0.2)
-            )
+            loop.runUntilDate_(Foundation.NSDate.dateWithTimeIntervalSinceNow_(0.2))
             if self._running_app_matching(target) is None:
                 return True, method
         return False, f"{method} sent but app still running after {wait_s}s"

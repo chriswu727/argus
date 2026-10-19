@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import replace
+from pathlib import Path
+
 import argus.mcp_server as m
 
 
@@ -23,6 +26,7 @@ async def test_visible_text_inspection_and_safe_layout_signals(tmp_path, monkeyp
         """
     )
     monkeypatch.setenv("ARGUS_OUTPUT_DIR", str(tmp_path / "reports"))
+    m.runtime.settings = replace(m.runtime.settings, output_dir=Path(str(tmp_path / "reports")))
     start = getattr(m.start_session, "fn", m.start_session)
     inspect = getattr(m.inspect_element, "fn", m.inspect_element)
     layout = getattr(m.check_layout, "fn", m.check_layout)
@@ -41,5 +45,5 @@ async def test_visible_text_inspection_and_safe_layout_signals(tmp_path, monkeyp
         assert "This sentence is visibly clipped" in signals
         assert "Targets below 44px" in signals and "'Go'" in signals
     finally:
-        if m._session.active:
+        if m.runtime.session.active:
             await end()

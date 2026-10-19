@@ -7,19 +7,26 @@ scenario hinges on the agent (a) observing the right surface and
 (b) reasoning that what it observed is wrong. Static analysis catches
 roughly none of these.
 """
+
 from __future__ import annotations
 
 import re
 from typing import Awaitable, Callable, List, Tuple
 
 import argus.mcp_server as mcp_module
+
+from .runner import (
+    bugs_added_since as _bugs_added_since,
+)
 from .runner import (
     call,
-    reset as _reset,
-    bugs_added_since as _bugs_added_since,
+)
+from .runner import (
     records_match as _records_match,
 )
-
+from .runner import (
+    reset as _reset,
+)
 
 BASE_URL = "http://127.0.0.1:5556"
 BASE = BASE_URL
@@ -45,7 +52,8 @@ async def d01_hardcoded_stock(s):
         code="() => fetch('/api/test/state').then(r => r.json()).then(d => d.products[0].stock_label)",
     )
     # Hit /api/cart/add twice
-    await call(mcp_module.eval_js,
+    await call(
+        mcp_module.eval_js,
         code=(
             "async () => { const body = new URLSearchParams({product_id:1}); "
             "for (let i=0; i<2; i++) await fetch('/api/cart/add', {method:'POST', "
@@ -63,8 +71,11 @@ async def d01_hardcoded_stock(s):
             mcp_module.record_bug,
             title="Stock label 'Only 3 left!' is hardcoded — never changes with cart actions",
             severity="medium",
-            evidence={"bug_type": "ux_issue", "screenshot": "skip",
-                      "description": f"before: {state_before}; after 2 adds: {state_after}"},
+            evidence={
+                "bug_type": "ux_issue",
+                "screenshot": "skip",
+                "description": f"before: {state_before}; after 2 adds: {state_after}",
+            },
         )
     new = _bugs_added_since(s, pre)
     return _records_match(new, ["stock", "hardcoded", "never changes"]), "agent-record"
@@ -87,18 +98,25 @@ async def d02_fake_sale_badge(s):
     obs = await call(mcp_module.observe)
     has_sale_badge = "-50%" in obs or "sale" in obs.lower()
     # Verify same prices via state
-    fake_sale = "p" in state_json and "op" in state_json and (
-        # simple substring check — every product carries identical p and op
-        # pattern visible in JSON (e.g. {"p": 89.99, "op": 89.99})
-        bool(re.search(r'\{"p":\s*([\d.]+),\s*"op":\s*\1\}', state_json))
+    fake_sale = (
+        "p" in state_json
+        and "op" in state_json
+        and (
+            # simple substring check — every product carries identical p and op
+            # pattern visible in JSON (e.g. {"p": 89.99, "op": 89.99})
+            bool(re.search(r'\{"p":\s*([\d.]+),\s*"op":\s*\1\}', state_json))
+        )
     )
     if has_sale_badge and fake_sale:
         await call(
             mcp_module.record_bug,
             title="-50% sale badge is fake — original_price equals sale_price for every product",
             severity="medium",
-            evidence={"bug_type": "ux_issue", "screenshot": "skip",
-                      "description": state_json[:300]},
+            evidence={
+                "bug_type": "ux_issue",
+                "screenshot": "skip",
+                "description": state_json[:300],
+            },
         )
     new = _bugs_added_since(s, pre)
     return _records_match(new, ["sale", "fake", "original_price"]), "agent-record"
@@ -126,8 +144,11 @@ async def d03_free_shipping_lie(s):
                 mcp_module.record_bug,
                 title="'Free shipping over $50' banner contradicted by flat shipping fee in checkout",
                 severity="medium",
-                evidence={"bug_type": "ux_issue", "screenshot": "skip",
-                          "description": f"banner present; subtotal {sub_v} vs total {total_v}"},
+                evidence={
+                    "bug_type": "ux_issue",
+                    "screenshot": "skip",
+                    "description": f"banner present; subtotal {sub_v} vs total {total_v}",
+                },
             )
     new = _bugs_added_since(s, pre)
     return _records_match(new, ["free shipping", "shipping fee", "contradicted"]), "agent-record"
@@ -136,6 +157,7 @@ async def d03_free_shipping_lie(s):
 async def d04_visual_hierarchy_inverted(s):
     """BUG #4: 'Subscribe Newsletter' is btn-primary; 'Add to Cart' is btn-secondary."""
     import json as _json
+
     await _reset("seeded")
     pre = len(s.bugs)
     await call(mcp_module.navigate, BASE + "/product/1")
@@ -162,8 +184,11 @@ async def d04_visual_hierarchy_inverted(s):
             mcp_module.record_bug,
             title="Product page visual hierarchy inverted — newsletter button is primary, Add to Cart is secondary",
             severity="medium",
-            evidence={"bug_type": "ux_issue", "screenshot": "skip",
-                      "description": f"add-to-cart cls={add_cls!r}; newsletter cls={sub_cls!r}"},
+            evidence={
+                "bug_type": "ux_issue",
+                "screenshot": "skip",
+                "description": f"add-to-cart cls={add_cls!r}; newsletter cls={sub_cls!r}",
+            },
         )
     new = _bugs_added_since(s, pre)
     return _records_match(new, ["hierarchy", "newsletter", "inverted"]), "agent-record"
@@ -199,8 +224,11 @@ async def d05_misleading_rating(s):
                     mcp_module.record_bug,
                     title="Rating prominence misleading — 4.8 stars huge, '1 review' in tiny grey text",
                     severity="low",
-                    evidence={"bug_type": "ux_issue", "screenshot": "skip",
-                              "description": info[:300]},
+                    evidence={
+                        "bug_type": "ux_issue",
+                        "screenshot": "skip",
+                        "description": info[:300],
+                    },
                 )
     new = _bugs_added_since(s, pre)
     return _records_match(new, ["rating", "review", "misleading"]), "agent-record"
@@ -229,8 +257,11 @@ async def d06_cvv_before_card_number(s):
             mcp_module.record_bug,
             title="Checkout form orders CVV before card number — cognitively wrong",
             severity="low",
-            evidence={"bug_type": "ux_issue", "screenshot": "skip",
-                      "description": f"input order: {order}"},
+            evidence={
+                "bug_type": "ux_issue",
+                "screenshot": "skip",
+                "description": f"input order: {order}",
+            },
         )
     new = _bugs_added_since(s, pre)
     return _records_match(new, ["cvv", "card number", "before"]), "agent-record"
@@ -252,8 +283,11 @@ async def d07_subtotal_vs_total_mismatch(s):
                 mcp_module.record_bug,
                 title="Checkout side-panel subtotal disagrees with main-area total — confusing on the same screen",
                 severity="medium",
-                evidence={"bug_type": "ux_issue", "screenshot": "skip",
-                          "description": f"side: ${sv}; main: ${tv}"},
+                evidence={
+                    "bug_type": "ux_issue",
+                    "screenshot": "skip",
+                    "description": f"side: ${sv}; main: ${tv}",
+                },
             )
     new = _bugs_added_since(s, pre)
     return _records_match(new, ["subtotal", "total", "disagree"]), "agent-record"
@@ -318,7 +352,9 @@ async def d09_optional_required_contradiction(s):
             evidence={"bug_type": "ux_issue", "screenshot": "skip"},
         )
     new = _bugs_added_since(s, pre)
-    return _records_match(new, ["legal", "optional", "contradicts", "contradictory"]), "agent-record"
+    return _records_match(
+        new, ["legal", "optional", "contradicts", "contradictory"]
+    ), "agent-record"
 
 
 async def d10_cross_page_stale_nav_name(s):
@@ -336,8 +372,11 @@ async def d10_cross_page_stale_nav_name(s):
             mcp_module.record_bug,
             title="Account name change does not update nav greeting — cross-page state inconsistency",
             severity="medium",
-            evidence={"bug_type": "ux_issue", "screenshot": "skip",
-                      "description": "Form has 'Alex-Renamed' but navbar still says 'Hi, Alex' on /account"},
+            evidence={
+                "bug_type": "ux_issue",
+                "screenshot": "skip",
+                "description": "Form has 'Alex-Renamed' but navbar still says 'Hi, Alex' on /account",
+            },
         )
     new = _bugs_added_since(s, pre)
     return _records_match(new, ["nav", "stale", "cross-page", "name"]), "agent-record"
@@ -384,24 +423,27 @@ async def d12_silent_discount_code(s):
             mcp_module.record_bug,
             title="Discount code field clears silently after submit — no success or error feedback",
             severity="medium",
-            evidence={"bug_type": "ux_issue", "screenshot": "skip",
-                      "description": "Submitted SAVE10; page rerendered with no toast / inline message."},
+            evidence={
+                "bug_type": "ux_issue",
+                "screenshot": "skip",
+                "description": "Submitted SAVE10; page rerendered with no toast / inline message.",
+            },
         )
     new = _bugs_added_since(s, pre)
     return _records_match(new, ["silent", "discount", "feedback"]), "agent-record"
 
 
 SCENARIOS: List[Tuple[int, str, Callable[[object], Awaitable[Tuple[bool, str]]]]] = [
-    (1,  "Hardcoded 'Only 3 left!' stock label",                  d01_hardcoded_stock),
-    (2,  "Fake -50% sale badge (original_price == price)",        d02_fake_sale_badge),
-    (3,  "Free-shipping banner contradicted by checkout fee",      d03_free_shipping_lie),
-    (4,  "Visual hierarchy inverted on product page",              d04_visual_hierarchy_inverted),
-    (5,  "Misleading rating — 4.8★ huge, '1 review' tiny",        d05_misleading_rating),
-    (6,  "CVV field ordered before card number",                   d06_cvv_before_card_number),
-    (7,  "Side-panel subtotal vs main-area total mismatch",        d07_subtotal_vs_total_mismatch),
-    (8,  "Place Order demoted to a link; Edit Cart is the CTA",    d08_place_order_demoted),
-    (9,  "Legal checkbox '(optional)' carries required-mark",      d09_optional_required_contradiction),
-    (10, "Account rename does not update nav greeting",            d10_cross_page_stale_nav_name),
-    (11, "Nav cart-count badge stale vs cart contents",            d11_cart_count_badge_stale),
-    (12, "Discount code field clears silently with no feedback",   d12_silent_discount_code),
+    (1, "Hardcoded 'Only 3 left!' stock label", d01_hardcoded_stock),
+    (2, "Fake -50% sale badge (original_price == price)", d02_fake_sale_badge),
+    (3, "Free-shipping banner contradicted by checkout fee", d03_free_shipping_lie),
+    (4, "Visual hierarchy inverted on product page", d04_visual_hierarchy_inverted),
+    (5, "Misleading rating — 4.8★ huge, '1 review' tiny", d05_misleading_rating),
+    (6, "CVV field ordered before card number", d06_cvv_before_card_number),
+    (7, "Side-panel subtotal vs main-area total mismatch", d07_subtotal_vs_total_mismatch),
+    (8, "Place Order demoted to a link; Edit Cart is the CTA", d08_place_order_demoted),
+    (9, "Legal checkbox '(optional)' carries required-mark", d09_optional_required_contradiction),
+    (10, "Account rename does not update nav greeting", d10_cross_page_stale_nav_name),
+    (11, "Nav cart-count badge stale vs cart contents", d11_cart_count_badge_stale),
+    (12, "Discount code field clears silently with no feedback", d12_silent_discount_code),
 ]
