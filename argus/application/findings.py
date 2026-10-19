@@ -195,7 +195,12 @@ async def record_bug(
         screenshot_path = await _auto_screenshot(s, label, f"record_bug: {_short(title, 60)}")
     elif "/" in screenshot_directive or screenshot_directive.endswith(".png"):
         # Treat as an existing path
-        screenshot_path = screenshot_directive
+        runtime = current_runtime()
+        screenshot_path = str(
+            runtime.settings.access.check_file(
+                screenshot_directive, extra_roots=(runtime.settings.output_dir,)
+            )
+        )
     else:
         # Treat as a label for a fresh screenshot
         label = "".join(c if c.isalnum() else "_" for c in screenshot_directive.lower())[:40]
@@ -407,7 +412,12 @@ async def record_observation(
             s, label, f"record_observation: {_short(title, 60)}"
         )
     elif Path(screenshot).expanduser().exists():
-        screenshot_path = str(Path(screenshot).expanduser().resolve())
+        runtime = current_runtime()
+        screenshot_path = str(
+            runtime.settings.access.check_file(
+                screenshot, extra_roots=(runtime.settings.output_dir,)
+            )
+        )
     else:
         label = "".join(char if char.isalnum() else "_" for char in screenshot.lower())[:40]
         screenshot_path = await _auto_screenshot(

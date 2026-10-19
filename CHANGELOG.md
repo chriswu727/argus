@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- Parse structured credentials before redaction, omit multipart bodies, and
+  redact captured request URLs and custom credential-bearing headers.
+- Apply one redaction policy to all report formats without altering live state
+  or executable journal conditions. Screenshots still require manual review.
+- Compare full normalized origins before restoring capsule storage.
+- Require approved local directories for file inputs and evidence imports;
+  hide cookie/storage values unless enabled at startup. Add optional tool-target
+  origin restrictions with explicit network-isolation limitations.
+- Restrict Docker copy inputs, exclude local secrets and capsules, raise security
+  dependency minimums, audit dependencies in CI/releases, and pin Actions and the
+  checksum-verified MCP publisher. Add adversarial security regression tests.
+
 ## 0.7.0 - 2026-10-19
 
 - Split MCP adaptation from focused application services, domain contracts and

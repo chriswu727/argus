@@ -12,6 +12,7 @@ argus-reports/
 **/.argus/
 *.png
 .env
+.env.*
 .codex/
 test-reports/
 CLAUDE.md

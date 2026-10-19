@@ -17,3 +17,13 @@ tests
 test-site
 docs
 .DS_Store
+.env
+.env.*
+**/.env
+**/.env.*
+.argus
+**/.argus
+*.pem
+*.key
+**/*.pem
+**/*.key

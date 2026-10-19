@@ -9,6 +9,7 @@ from argus.domain.models import (
     Screenshot,
 )
 
+from .context import current_runtime
 from .evidence import _screenshot_dir
 from .observation import _resolve_or_error
 from .session import _require_session
@@ -117,7 +118,10 @@ async def screenshot_diff(
             candidates.append(Path("argus-reports/screenshots") / Path(p).name)
         for c in candidates:
             if c.exists():
-                return c
+                runtime = current_runtime()
+                return runtime.settings.access.check_file(
+                    c, extra_roots=(runtime.settings.output_dir,)
+                )
         return None
 
     before_path = _resolve(before)
