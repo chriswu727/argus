@@ -3,7 +3,7 @@
   "name": "io.github.chriswu727/argus",
   "title": "Argus Testing — Agent-first Testing MCP",
   "description": "Testing MCP for web and macOS: evidence-backed coverage, persistence checks and live progress.",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "repository": {
     "url": "https://github.com/chriswu727/argus",
     "source": "github"
@@ -13,7 +13,7 @@
     {
       "registryType": "pypi",
       "identifier": "argus-testing",
-      "version": "0.8.0",
+      "version": "0.9.0",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"

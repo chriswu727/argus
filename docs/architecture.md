@@ -174,6 +174,19 @@ visible-state fingerprint. It imports no model provider and executes no actions.
 operator setting interpreted only by the presentation adapter. The monitor gets
 numeric summaries, not free-text goals or evidence.
 
+`entrypoints/mcp/snapshots.py` owns the optional one-observation delta cache; it
+operates only on redacted presentation data and never changes domain verdicts,
+browser state, coverage accounting or report persistence. Its explicit base IDs,
+bounded retention and full-observation recovery keep cache loss visible. The
+default compatible output and application APIs are unchanged.
+
+`measurement.py` provides request-local, framework-independent timing scopes.
+Browser/report adapters instrument fixed categories; the MCP boundary aggregates
+numeric measurements in the runtime. `entrypoints/mcp/overhead.py` measures
+serialized transport content without retaining it. Monitoring exposes those
+numbers only. Discovery measurements and reproducible encoding comparisons
+belong to the separate evaluation package, not the production testing workflow.
+
 The opt-in evaluation collector is a separate POSIX process supervisor. Its MCP
 gateway enforces the tool budget; its host subprocess has no shell or web tools.
 Fixture state and oracle events stay in the supervising process. Collection and

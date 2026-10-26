@@ -8,6 +8,7 @@ from playwright.async_api import Browser, BrowserContext, Page, async_playwright
 
 from argus.access import AccessPolicy
 from argus.domain.contracts import OperationError
+from argus.measurement import timed
 from argus.security import _redact as _redact
 from argus.security import _redact_headers as _redact_headers
 from argus.security import redact_body
@@ -205,6 +206,7 @@ class BrowserDriver:
     async def click_resolved(self, index: int, elements: list[InteractiveElement]) -> None:
         await self._locator(index, elements).click(timeout=5000)
 
+    @timed("browser_wait")
     async def settle(self) -> None:
         await self._page.wait_for_load_state("networkidle", timeout=10_000)
 
@@ -807,6 +809,7 @@ class BrowserDriver:
 
     # -- waits --
 
+    @timed("browser_wait")
     async def wait_for_text(self, text: str, timeout_s: float = 10.0) -> bool:
         """Poll until the given text appears anywhere in the page body."""
         try:
@@ -819,6 +822,7 @@ class BrowserDriver:
         except Exception:
             return False
 
+    @timed("browser_wait")
     async def wait_for_request(
         self,
         url_substring: str,
@@ -854,6 +858,7 @@ class BrowserDriver:
 
     # -- navigation --
 
+    @timed("browser_wait")
     async def _settle_network(self, page=None, timeout: int = 6_000):
         """Best-effort wait for network to go idle. A never-resolving fetch (a
         stuck 'Loading…' spinner) means networkidle NEVER fires, so this must
@@ -885,6 +890,7 @@ class BrowserDriver:
 
     # -- state extraction --
 
+    @timed("observation")
     async def get_state(self, page=None) -> PageState:
         page = page or self._page
         if page is None:
@@ -1222,6 +1228,7 @@ class BrowserDriver:
             except Exception:
                 pass
 
+    @timed("browser_wait")
     async def _settle_dom(self, cap_ms: int = 1500, quiet_ms: int = 300) -> None:
         """Wait until the DOM stops mutating for `quiet_ms` (capped at `cap_ms`).
         networkidle doesn't cover pure-JS DOM updates that fire after a click —
@@ -1245,6 +1252,7 @@ class BrowserDriver:
         except Exception:
             pass  # navigation destroyed the context, eval blocked, etc. — best-effort
 
+    @timed("browser_wait")
     async def _settle_visual(self, cap_ms: int = 1200) -> None:
         try:
             await self._page.evaluate(
@@ -1652,12 +1660,14 @@ class BrowserDriver:
         await self._page.evaluate("(d) => window.scrollBy(0, d)", int(px))
         await asyncio.sleep(0.4)
 
+    @timed("screenshot")
     async def screenshot(self, path: str, full_page: bool = False) -> str:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         await self._settle_visual()
         await self._page.screenshot(path=path, full_page=full_page)
         return path
 
+    @timed("screenshot")
     async def element_screenshot(self, selector: str, path: str) -> Optional[str]:
         """Capture just the bounds of one element (Playwright crops natively)."""
         Path(path).parent.mkdir(parents=True, exist_ok=True)

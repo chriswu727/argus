@@ -12,6 +12,7 @@ from mcp.types import CallToolResult, TextContent
 
 from argus.access import AccessPolicy
 from argus.bootstrap import create_runtime
+from argus.entrypoints.mcp.overhead import discovery_bytes, response_bytes
 from argus.entrypoints.mcp.server import create_server
 from argus.security import redacted_copy
 from argus.settings import Settings
@@ -50,7 +51,11 @@ async def serve(arm: str, origin: str, output: Path, limit: int = 60):
 
     @outer.list_tools()
     async def list_tools():
-        return await inner.list_tools()
+        tools = await inner.list_tools()
+        (output / "discovery.json").write_text(
+            json.dumps(discovery_bytes(tools, inner.instructions or ""))
+        )
+        return tools
 
     @outer.call_tool(validate_input=False)
     async def call_tool(name, arguments):
@@ -77,6 +82,8 @@ async def serve(arm: str, origin: str, output: Path, limit: int = 60):
                 "data": result.structuredContent,
                 "text": [block.text[:20000] for block in result.content if block.type == "text"],
                 "images": sum(block.type == "image" for block in result.content),
+                "response_bytes": response_bytes(result),
+                "runtime_overhead": runtime.snapshot()["overhead"] if arm == "argus" else None,
             }
             with (output / "tools.jsonl").open("a") as trace:
                 trace.write(json.dumps(entry) + "\n")

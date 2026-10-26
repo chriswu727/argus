@@ -56,8 +56,8 @@ class Settings:
     def __post_init__(self) -> None:
         import math
 
-        if self.response_mode not in {"compatible", "compact"}:
-            raise ValueError("response_mode must be compatible or compact")
+        if self.response_mode not in {"compatible", "compact", "delta"}:
+            raise ValueError("response_mode must be compatible, compact, or delta")
 
         for name in ("operation_timeout", "queue_timeout", "cleanup_timeout"):
             value = getattr(self, name)

@@ -2,6 +2,47 @@
 
 Available in 0.8.0 and newer.
 
+## Response overhead
+
+Version 0.9 provides an offline, deterministic encoding benchmark:
+
+```bash
+python -m argus.evaluation.overhead
+```
+
+It encodes the same 24 synthetic observations in compatible, compact and delta
+modes, checks lossless reconstruction, and measures tool discovery separately.
+The compact encoder retains 0.8 semantics; there are no model calls, browser
+actions or timing claims in this benchmark. Repeated catalog content deliberately
+exercises the deduplication opportunity, while navigation is a negative control.
+The [checked-in result](../examples/response-overhead.json) records the method,
+versions and byte-category definitions.
+
+| Workload (6 responses each) | Compact JSON bytes | Delta JSON bytes | Reduction |
+|---|---:|---:|---:|
+| Repeated catalog observation | 31,494 | 8,406 | 73.31% |
+| Catalog with changing feedback | 31,590 | 8,572 | 72.86% |
+| Navigation on every step | 31,494 | 31,716 | -0.70% |
+| Small repeated page | 4,992 | 3,989 | 20.09% |
+| Total | 99,570 | 52,683 | 47.09% |
+
+Removing redundant display titles from output schemas reduces agent-profile
+tool-definition JSON from 28,812 to 23,891 bytes (17.08%) with the same validation
+constraints. Tool display titles remain intact. These counts exclude server
+instructions; delta mode adds decoding instructions at initialization.
+
+These are **encoding results, not a new agent evaluation**. They do not show
+token savings, coverage gains, fewer false positives, lower billed costs or faster
+end-to-end work. Snapshot resynchronization may add calls when a host loses context.
+The 0.8 model evaluation remains the evidence for that earlier version, including
+its higher measured token usage. A future model comparison needs a separately
+approved budget and matched controls; do not substitute bytes for unknown tokens.
+
+The evaluation gateway writes numeric `discovery.json` and per-call byte counts
+alongside its private trace, plus cumulative runtime component timings for the
+Argus arm. Baseline component timing is unknown, not zero. Production monitoring
+exposes only counts/timings and does not persist trace payloads.
+
 The evaluation package is separate from the MCP runtime. Its default CLI only
 runs local protocol smoke checks and offline scoring. A separate, explicit opt-in
 Codex collector consumes the operator's subscription; it is never invoked by the

@@ -33,6 +33,7 @@ jobs:
         run: |
           python -m pip check
           python -c "from argus.mcp_server import mcp; assert mcp is not None"
+          python -m argus.install_check
       - name: Audit installed dependencies
         run: python -m pip_audit --vulnerability-service osv --progress-spinner off --skip-editable
       - name: Static checks

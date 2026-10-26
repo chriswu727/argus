@@ -48,6 +48,9 @@ class SessionManager:
         self.calls: Counter[str] = Counter()
         self.failures: Counter[str] = Counter()
         self.durations: dict[str, float] = defaultdict(float)
+        self.response_totals: Counter[str] = Counter()
+        self.component_seconds: Counter[str] = Counter()
+        self.component_calls: Counter[str] = Counter()
         self.current_operation: str | None = None
         self.operation_started: float | None = None
         self.started = time.monotonic()
@@ -262,6 +265,11 @@ class SessionManager:
             "screenshots": len(session.screenshots),
             "capture_drops": drops,
             "events_dropped": self.events.dropped,
+            "overhead": {
+                "response_totals": dict(self.response_totals),
+                "component_seconds": dict(self.component_seconds),
+                "component_calls": dict(self.component_calls),
+            },
         }
 
     async def shutdown(self) -> None:

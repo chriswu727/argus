@@ -27,6 +27,15 @@ argus-mcp --doctor        # macOS Screen Recording + Accessibility check
 
 The default profile is `core`. For structured-result-aware hosts, use
 `--tool-profile agent --response-mode compact` for 19 focused tools.
+
+`--response-mode delta` is opt-in for snapshot-aware clients. Only observation
+fields listed in the protocol may be inherited from an exact `base_id`; action
+and verification results are current-call-only. If context or a base is missing,
+call `observe` for full state. Never infer a passing check from unchanged fields.
+Use `python -m argus.install_check` to verify installed versions and stdio without
+a browser or model, and `python -m argus.evaluation.overhead` for deterministic
+byte measurements. Bytes are not model tokens. Monitoring retains numeric
+overhead only; do not add page content or arguments to metrics.
 Use `--tool-profile screen` for native
 macOS review and `--tool-profile full` only when the broader network,
 storage, tabs, crawl, and coordinate surface is needed. The
