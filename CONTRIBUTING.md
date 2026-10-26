@@ -1,7 +1,9 @@
 # Contributing
 
-Keep public repository content in English and focused on product usage,
-implementation, verification and contribution guidance.
+Keep the primary README, code, documentation and release notes in English and
+focused on product usage, implementation, verification and contribution guidance.
+`README.zh-CN.md` is the dedicated translation exception; keep its version,
+commands, capabilities and limitations synchronized with the English README.
 
 Use Python 3.11 or newer. CI runs 3.11 and 3.12. Browser checks are local and do
 not call a model provider:
@@ -28,7 +30,7 @@ separate macOS manual check; Linux CI does not claim to test that integration.
 
 - Tool arguments, MCP metadata and profile selection: `entrypoints/mcp/`.
 - A new QA operation: the appropriate `application/` service and `OPERATIONS`
-  registry; add catalog metadata, README documentation and a protocol test.
+  registry; add catalog metadata, both README versions and a protocol test.
 - Pure rules and typed data: `domain/`; no browser, MCP or HTTP imports here.
 - New verification: register an async strategy on `runtime.verifiers`. Return
   an explicit receipt with `attempted` and a three-state `reproduced` result.

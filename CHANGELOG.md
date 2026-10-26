@@ -1,7 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.10.0 - 2026-10-26
 
+- Synchronize the English README, protocol, architecture, installation and
+  privacy guidance; add a dedicated Simplified Chinese README while keeping
+  English primary. Refresh the deterministic encoding result for this version.
 - Capture fresh-load finding screenshots before returning to the caller's page,
   and default the finding URL to the checked page. Preserve explicit URLs and
   screenshot opt-outs; report unavailable or mismatched evidence without

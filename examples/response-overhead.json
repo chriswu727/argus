@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "argus_version": "0.9.0",
+  "argus_version": "0.10.0",
   "mcp_sdk_version": "1.30.0",
   "method": "synthetic-identical-input-encoding-v1",
   "baseline": "0.8-compatible compact encoder semantics; same structured evidence",
@@ -13,34 +13,34 @@
   "discovery": {
     "agent": {
       "tools": 19,
-      "tools_json_bytes": 23891,
+      "tools_json_bytes": 24163,
       "instructions_utf8_bytes": 223,
-      "description_utf8_bytes": 2844,
-      "input_schema_json_bytes": 4396,
+      "description_utf8_bytes": 3055,
+      "input_schema_json_bytes": 4457,
       "output_schema_json_bytes": 12673
     },
     "core": {
       "tools": 30,
-      "tools_json_bytes": 54482,
+      "tools_json_bytes": 51509,
       "instructions_utf8_bytes": 223,
-      "description_utf8_bytes": 21718,
-      "input_schema_json_bytes": 5835,
+      "description_utf8_bytes": 19358,
+      "input_schema_json_bytes": 5333,
       "output_schema_json_bytes": 20010
     },
     "screen": {
       "tools": 14,
-      "tools_json_bytes": 26589,
+      "tools_json_bytes": 24417,
       "instructions_utf8_bytes": 223,
-      "description_utf8_bytes": 11129,
-      "input_schema_json_bytes": 2810,
+      "description_utf8_bytes": 8598,
+      "input_schema_json_bytes": 3282,
       "output_schema_json_bytes": 9338
     },
     "full": {
       "tools": 77,
-      "tools_json_bytes": 123369,
+      "tools_json_bytes": 117342,
       "instructions_utf8_bytes": 223,
-      "description_utf8_bytes": 40502,
-      "input_schema_json_bytes": 14164,
+      "description_utf8_bytes": 38142,
+      "input_schema_json_bytes": 10608,
       "output_schema_json_bytes": 51359
     }
   },
@@ -58,21 +58,21 @@
           "images": 0
         },
         "compact": {
-          "result_json_bytes": 31494,
-          "text_utf8_bytes": 591,
-          "structured_json_bytes": 30447,
+          "result_json_bytes": 30897,
+          "text_utf8_bytes": 402,
+          "structured_json_bytes": 30039,
           "image_base64_bytes": 0,
           "images": 0
         },
         "delta": {
-          "result_json_bytes": 8406,
-          "text_utf8_bytes": 591,
-          "structured_json_bytes": 7359,
+          "result_json_bytes": 7809,
+          "text_utf8_bytes": 402,
+          "structured_json_bytes": 6951,
           "image_base64_bytes": 0,
           "images": 0
         }
       },
-      "delta_vs_compact_reduction_percent": 73.31
+      "delta_vs_compact_reduction_percent": 74.73
     },
     {
       "case": "changed-page",
@@ -87,21 +87,21 @@
           "images": 0
         },
         "compact": {
-          "result_json_bytes": 31590,
-          "text_utf8_bytes": 591,
-          "structured_json_bytes": 30543,
+          "result_json_bytes": 30993,
+          "text_utf8_bytes": 402,
+          "structured_json_bytes": 30135,
           "image_base64_bytes": 0,
           "images": 0
         },
         "delta": {
-          "result_json_bytes": 8572,
-          "text_utf8_bytes": 591,
-          "structured_json_bytes": 7525,
+          "result_json_bytes": 7975,
+          "text_utf8_bytes": 402,
+          "structured_json_bytes": 7117,
           "image_base64_bytes": 0,
           "images": 0
         }
       },
-      "delta_vs_compact_reduction_percent": 72.86
+      "delta_vs_compact_reduction_percent": 74.27
     },
     {
       "case": "navigation",
@@ -116,21 +116,21 @@
           "images": 0
         },
         "compact": {
-          "result_json_bytes": 31494,
-          "text_utf8_bytes": 591,
-          "structured_json_bytes": 30447,
+          "result_json_bytes": 30897,
+          "text_utf8_bytes": 402,
+          "structured_json_bytes": 30039,
           "image_base64_bytes": 0,
           "images": 0
         },
         "delta": {
-          "result_json_bytes": 31716,
-          "text_utf8_bytes": 591,
-          "structured_json_bytes": 30669,
+          "result_json_bytes": 31119,
+          "text_utf8_bytes": 402,
+          "structured_json_bytes": 30261,
           "image_base64_bytes": 0,
           "images": 0
         }
       },
-      "delta_vs_compact_reduction_percent": -0.7
+      "delta_vs_compact_reduction_percent": -0.72
     },
     {
       "case": "small-page",
@@ -145,26 +145,26 @@
           "images": 0
         },
         "compact": {
-          "result_json_bytes": 4992,
-          "text_utf8_bytes": 591,
-          "structured_json_bytes": 3945,
+          "result_json_bytes": 4395,
+          "text_utf8_bytes": 402,
+          "structured_json_bytes": 3537,
           "image_base64_bytes": 0,
           "images": 0
         },
         "delta": {
-          "result_json_bytes": 3989,
-          "text_utf8_bytes": 591,
-          "structured_json_bytes": 2942,
+          "result_json_bytes": 3392,
+          "text_utf8_bytes": 402,
+          "structured_json_bytes": 2534,
           "image_base64_bytes": 0,
           "images": 0
         }
       },
-      "delta_vs_compact_reduction_percent": 20.09
+      "delta_vs_compact_reduction_percent": 22.82
     }
   ],
   "aggregate": {
-    "compact_result_json_bytes": 99570,
-    "delta_result_json_bytes": 52683,
-    "reduction_percent": 47.09
+    "compact_result_json_bytes": 97182,
+    "delta_result_json_bytes": 50295,
+    "reduction_percent": 48.25
   }
 }

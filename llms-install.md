@@ -15,6 +15,11 @@ Install the Playwright Chromium browser once:
 uvx --from playwright playwright install chromium
 ```
 
+After an upgrade, a missing browser executable can mean the installed Chromium
+does not match Argus's resolved Playwright version. Install the matching browser
+with `uvx --from argus-testing python -m playwright install chromium`, then restart
+the MCP host.
+
 ## MCP configuration
 
 Use this server entry in any client that accepts the standard `mcpServers`
@@ -42,6 +47,10 @@ For Cursor, use the standard JSON above or the one-click button in the project
 README.
 
 ## Verify the installation
+
+The current release is 0.10.0. For reproducible setup, replace `argus-testing`
+with `argus-testing==0.10.0` in the launch arguments. Restart the MCP host after
+upgrading; a running server retains its loaded version and tool schema.
 
 Run:
 

@@ -134,7 +134,7 @@ needed. Machine-readable JSON also contains complete reproduction receipts,
 goal evidence, user constraints, page coverage, time-budget status, review mode,
 observations, tool-call counts, step counts, and screenshot metadata.
 
-On development main, persistence mismatches may include `suggested_verify` for
+Since 0.10.0, persistence mismatches may include `suggested_verify` for
 a fresh-load recheck without repeating writes. Do not use replay for an
 unrecorded refresh. Supplement an existing finding with
 `record_bug(title, severity, verify=..., finding_id=...)`, omitting evidence and
@@ -145,7 +145,7 @@ those references before judging coverage. See the protocol for exact semantics.
 Successful compact/delta envelopes may omit empty recovery and zero/false
 progress metadata; use their documented defaults. Verdicts remain explicit.
 
-On development main, a new `in_progress` goal group freezes the previous group's
+Since 0.10.0, a new `in_progress` goal group freezes the previous group's
 evidence window without changing its status. Batch only genuinely shared
 journeys. Reopening a goal starts a new window. For a deferred bug, provide
 `evidence.goal` or `evidence.goals` from the declared goals and `expected`/`actual`.

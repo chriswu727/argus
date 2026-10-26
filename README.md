@@ -21,6 +21,8 @@ Argus is an [MCP](https://modelcontextprotocol.io/) server that gives your codin
 
 [Product page](https://yichenwu.dev/projects/argus) · [Quick start](#quick-start) · [Why Argus](#why-argus-is-different) · [Compared](#how-it-compares) · [Tools](#tool-surface) · [Benchmarks](#benchmarks)
 
+English (primary) · [Simplified Chinese](https://github.com/chriswu727/argus/blob/main/README.zh-CN.md)
+
 </div>
 
 ---
@@ -60,12 +62,26 @@ Does installing Argus improve an agent? Measure it with the
 initial state and budget, with both arms and failures retained. The local scripted smoke
 suite validates the harness; it is **not evidence of agent performance gains**.
 
-Development main (not yet in 0.9.1) adds read-only persistence-verification
-guidance, bounded rechecks by finding ID, shared coverage evidence in compact
-responses, and text/value-aware change summaries. It also supports final
-coverage updates inside `end_session`, smaller input schemas, and compact
-envelopes that omit empty optional metadata. See the
-[protocol](docs/agent-protocol.md#bounded-verification-recovery-unreleased).
+### What's new in 0.10.0
+
+- **Verify without repeating writes:** persistence mismatches can suggest a
+  fresh-load symptom check; existing findings allow at most two explicit
+  rechecks with receipt history, instead of duplicating the finding or journey.
+- **Keep evidence on the right page:** fresh-load findings capture the checked
+  page before restoring the caller. Expected/actual outcomes survive every
+  report format; missing or mismatched screenshots produce explicit warnings.
+- **Keep coverage focused:** switching goal groups closes the previous evidence
+  window without completing it. Revisited pages and explicitly goal-linked
+  deferred findings remain attributable to the right journey.
+- **Finish with fewer bookkeeping calls:** `end_session(coverage_updates=[...])`
+  validates final goals atomically before closing. Compact/delta output shares
+  identical coverage evidence and omits empty optional metadata; text/value-aware
+  diffs make post-action changes easier to interpret without exporting inputs.
+
+See the [0.10 protocol](docs/agent-protocol.md#bounded-verification-recovery)
+and [changelog](CHANGELOG.md). The default profile, response mode and version-1
+result envelope remain unchanged. These changes do not establish a new model
+quality or token-cost benchmark.
 
 The [0.8 Codex evaluation](docs/evaluation-0.8.md) includes ten matched pairs:
 Argus found 6/6 defect opportunities versus 5/6 for the browser baseline, including
@@ -76,8 +92,8 @@ synthetic sample does not establish general superiority.
 
 The no-model [response encoding benchmark](docs/evaluation.md#response-overhead)
 compares identical synthetic evidence, including navigation invalidation. Delta
-mode reduces aggregate result JSON by 47.09% versus compact mode across those
-24 responses; this measures bytes, **not agent token usage or testing quality**.
+mode reduces aggregate result JSON by 48.25% versus compact mode across those
+24 responses in 0.10.0; this measures bytes, **not agent token usage or testing quality**.
 
 <details>
 <summary><b>Live monitoring from a real local fixture run</b></summary>
@@ -141,6 +157,13 @@ With [`uv`](https://docs.astral.sh/uv/) installed, no global Python package inst
 
 ```bash
 uvx --from playwright playwright install chromium
+```
+
+If an upgrade reports a missing browser executable, install the browser matching
+Argus's own Playwright environment, then restart the MCP host:
+
+```bash
+uvx --from argus-testing python -m playwright install chromium
 ```
 
 Then connect Argus to your MCP client.
@@ -213,12 +236,12 @@ That's it. The agent drives; Argus keeps it honest and writes the report.
 
 For a scoped review, the host can give `start_session` explicit `goals`, `constraints`, and an advisory `time_budget_minutes`. Argus returns the full testing protocol once and keeps outstanding goals and discovered pages visible in later observations. Mark a goal `in_progress` before its journey; when `coverage_update` marks it `exercised` or `blocked`, Argus requires a concrete explanation and automatically links the URLs, value-redacted actions, screenshots, persistence checks, bugs, and observations produced in that testing window. The final HTML and JSON reports preserve both completed and unfinished coverage instead of implying that an incomplete pass was comprehensive.
 
-On development main, switching to another goal group freezes the previous
+Since 0.10.0, switching to another goal group freezes the previous
 evidence window without completing those goals. Deferred findings can name
 `evidence.goal` or `evidence.goals`; their expected/actual outcomes are preserved
 in reports. Fresh-load findings capture the checked page before returning to the
 agent's current page, so recording a bug later does not attach an unrelated
-screenshot. See the [evidence contract](docs/agent-protocol.md#finding-evidence-provenance-unreleased).
+screenshot. See the [evidence contract](docs/agent-protocol.md#finding-evidence-provenance).
 
 <details>
 <summary><b>pip installation</b></summary>
@@ -470,7 +493,7 @@ uvx --from argus-testing argus-mcp --tool-profile full --list-tools
 | `check_links` · `check_performance` | Probe current-page internal links and expose raw browser performance metrics without auto-certifying generic audit findings. |
 | `regression_check` | Re-test journaled findings for the current origin without requiring another discovery pass. |
 | `record_bug` · `record_observation` | Record a finding with evidence and its recheck outcome, or keep a qualitative review note separate. Inspect the receipt rather than treating recording as confirmation. |
-| `end_session` | Close the active session and emit HTML, JSON, JUnit, and SARIF reports. |
+| `end_session` | Atomically apply optional final `coverage_updates`, close the active session, and emit HTML, JSON, JUnit, and SARIF reports. Invalid updates keep the session open. |
 
 </details>
 

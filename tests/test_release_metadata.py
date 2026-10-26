@@ -62,6 +62,44 @@ def test_readme_covers_every_public_tool_profile():
     assert "uvx --from argus-testing argus-mcp" in readme
 
 
+def test_release_documentation_and_translation_are_current():
+    version = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
+    readme = (ROOT / "README.md").read_text()
+    translation = (ROOT / "README.zh-CN.md").read_text()
+    assert f"What's new in {version}" in readme
+    assert f"**{version}**" in translation
+    assert f"## {version} - " in (ROOT / "CHANGELOG.md").read_text()
+    overhead = json.loads((ROOT / "examples/response-overhead.json").read_text())
+    assert overhead["argus_version"] == version
+    measured_reduction = f"{overhead['aggregate']['reduction_percent']:.2f}%"
+    assert measured_reduction in readme and measured_reduction in translation
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    assert (
+        "README.zh-CN.md" in project["tool"]["hatch"]["build"]["targets"]["sdist"]["only-include"]
+    )
+    assert "README.zh-CN.md" in readme and "README.md" in translation
+    assert "uvx --from argus-testing argus-mcp" in translation
+    assert re.search(r"[\u3400-\u9fff]", translation)
+    for path in (
+        "README.md",
+        "AGENTS.md",
+        "CHANGELOG.md",
+        "CONTRIBUTING.md",
+        "PRIVACY.md",
+        "SECURITY.md",
+        "llms-install.md",
+        "docs/architecture.md",
+        "docs/agent-protocol.md",
+        "docs/decisions.md",
+        "docs/evaluation.md",
+    ):
+        content = (ROOT / path).read_text()
+        assert not re.search(r"[\u3400-\u9fff]", content), path
+    for path in ("README.md", "AGENTS.md", "docs/agent-protocol.md"):
+        content = (ROOT / path).read_text().lower()
+        assert "development main" not in content and "unreleased" not in content
+
+
 def test_client_install_examples_start_the_published_stdio_server():
     readme = (ROOT / "README.md").read_text()
     agent_install = (ROOT / "llms-install.md").read_text()

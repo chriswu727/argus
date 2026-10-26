@@ -1,6 +1,6 @@
 # Agent result and progress protocol
 
-Available in 0.8.0 and newer.
+Available in 0.8.0 and newer; updated for 0.10.0. The result envelope remains version 1.
 
 Existing tool names and scalar arguments remain compatible; `coverage_update.goal`
 also accepts a list of related goals. MCP responses retain text and
@@ -27,7 +27,7 @@ data, never by parsing the rendered text.
 `[error_code]` prefix. SDK-level argument/schema validation and unknown-tool
 errors remain standard MCP errors and may not contain this envelope.
 
-On development main, successful compact/delta responses omit empty `recovery`,
+Since 0.10.0, successful compact/delta responses omit empty `recovery`,
 zero `progress_omitted`, and false `progress_delivery_failed`. Their defaults
 remain `[]`, `0`, and `false` in envelope version 1. Nondefault values, actual
 stages, verdicts, images and error responses remain explicit. Compatible mode
@@ -73,7 +73,7 @@ not that a root cause or defect interpretation has been proven.
 - `end_session`: original run ID, report path, warnings, coverage and counts.
   A null report path or nonempty warnings must not be treated as clean export.
 
-## Final coverage in one call (unreleased)
+## Final coverage in one call
 
 Instead of a final `coverage_update` followed by `end_session`, submit explicit
 final updates while ending:
@@ -106,7 +106,7 @@ text retains each tool's disclosure policy, including explicitly enabled sensiti
 reads. Screenshots and arbitrary application prose may still contain private data.
 No payload is permission to expand the operator's configured access policy.
 
-## Bounded verification recovery (unreleased)
+## Bounded verification recovery
 
 `verify_persistence` reports whether the expected state held before reload and
 whether the loaded page is conclusive (not an HTTP error or login wall). For an
@@ -127,7 +127,7 @@ Replay rechecks use the original finding's trace and still repeat its writes;
 they require the same authority as any replay. A limit or inconclusive receipt
 is a reason to preserve uncertainty, not to create a duplicate and force a pass.
 
-## Finding evidence provenance (unreleased)
+## Finding evidence provenance
 
 `record_bug.evidence` declares optional `expected`, `actual`, `steps`, `url`,
 `screenshot`, `bug_type`, `goal`/`goals` and `evidence_calls`, in addition to
@@ -183,7 +183,7 @@ Unmigrated tools and errors retain their text; image blocks are unchanged.
 compact mode; measure actual host token usage rather than equating fewer bytes
 with guaranteed savings. Direct Python calls keep their original text behavior.
 
-In the unreleased compact/delta encoder, identical coverage evidence bundles
+Since 0.10.0, identical coverage evidence bundles in compact/delta output
 shared by two or more goals are returned once in `coverage.evidence`. Each such
 goal has `evidence_ref: "e1"` instead of inline `evidence_refs`; resolve it in that
 same coverage object's evidence map. IDs are local to the coverage snapshot, not

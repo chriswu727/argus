@@ -10,7 +10,8 @@ console and network events, testing goals and constraints, verification targets,
 cookies or storage when the corresponding tools are called, screenshots,
 downloaded-file metadata, and native macOS accessibility information in screen
 mode. Coverage reports omit typed and pasted input values from action references,
-but goals, constraints, verification targets, finding titles, and screenshots are
+but goals, constraints, verification targets, finding titles, expected/actual
+outcomes, caller-supplied evidence references, and screenshots are
 evidence and may contain application data; do not put secrets in those fields.
 
 Reports, screenshots, reproduction receipts, state capsules, and regression

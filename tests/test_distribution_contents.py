@@ -24,6 +24,11 @@ def test_source_archive_accepts_product_files(tmp_path):
     CHECK["check"](path)
 
 
+def test_translation_is_allowed_only_in_source_distribution():
+    assert CHECK["allowed"]("README.zh-CN.md", wheel=False)
+    assert not CHECK["allowed"]("README.zh-CN.md", wheel=True)
+
+
 @pytest.mark.parametrize("name", ["../README.md", "argus_testing-1.0/docs/local-notes.md"])
 def test_source_archive_rejects_unexpected_entries(tmp_path, name):
     path = tmp_path / "argus_testing-1.0.tar.gz"
