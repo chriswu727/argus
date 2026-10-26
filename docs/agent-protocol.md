@@ -72,6 +72,27 @@ text retains each tool's disclosure policy, including explicitly enabled sensiti
 reads. Screenshots and arbitrary application prose may still contain private data.
 No payload is permission to expand the operator's configured access policy.
 
+## Bounded verification recovery (unreleased)
+
+`verify_persistence` reports whether the expected state held before reload and
+whether the loaded page is conclusive (not an HTTP error or login wall). For an
+observed match-to-mismatch transition it supplies `suggested_verify`: the inverse
+text predicate at the checked URL, carrying the same storage policy. Review the
+user requirement before passing it to `record_bug`. This is a fresh-load symptom
+check, not an independent replay of the original journey or automatic proof of
+a semantic bug. It does not repeat Save/Delete. Plain replay ends at the recorded
+actions; it cannot stand in for an unrecorded persistence refresh.
+
+To supplement an existing finding, call `record_bug` with its `finding_id`,
+unchanged title/severity, a `verify` clause and no `evidence`. This returns
+`updated: true`, `recorded: false`, the same ID, the new receipt and remaining
+rechecks. It does not add a bug or advance the new-finding action cursor. A
+finding allows at most two recheck attempts; already verified findings are not
+rechecked. Earlier receipts remain in the exported `verification_history`.
+Replay rechecks use the original finding's trace and still repeat its writes;
+they require the same authority as any replay. A limit or inconclusive receipt
+is a reason to preserve uncertainty, not to create a duplicate and force a pass.
+
 ## Guidance and compact output
 
 The optional `agent` profile exposes 19 common browser-testing tools with concise
@@ -94,6 +115,15 @@ Unmigrated tools and errors retain their text; image blocks are unchanged.
 `compatible` remains the default. A host must consume `structuredContent` to use
 compact mode; measure actual host token usage rather than equating fewer bytes
 with guaranteed savings. Direct Python calls keep their original text behavior.
+
+In the unreleased compact/delta encoder, identical coverage evidence bundles
+shared by two or more goals are returned once in `coverage.evidence`. Each such
+goal has `evidence_ref: "e1"` instead of inline `evidence_refs`; resolve it in that
+same coverage object's evidence map. IDs are local to the coverage snapshot, not
+global or cross-response IDs. Unique bundles remain inline. Delta snapshots retain
+or replace the entire coverage object, including its map. Compatible responses,
+application state and exported reports retain inline evidence. No evidence is
+discarded, and redaction precedes deduplication.
 
 Count deltas require both measurements on the same URL. Invalid booleans,
 fractional count deltas, empty text markers and malformed predicates produce

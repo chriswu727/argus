@@ -132,6 +132,7 @@ class Bug:
     # replay engine can re-drive (tool + description + value), parallel to the
     # human-readable steps_to_reproduce.
     replay_steps: List[Dict] = field(default_factory=list)
+    verification_history: List[Dict] = field(default_factory=list)
 
     def to_dict(self) -> Dict:
         """Machine-readable finding — for JSON/JUnit/SARIF export so Argus can be
@@ -152,6 +153,7 @@ class Bug:
             # consumer should be able to gate on PROVEN, not on say-so.
             "verified": verdict is True,
             "reproduction": dict(r) if r else None,
+            "verification_history": list(self.verification_history),
             "console_logs": list(self.console_logs or []),
             "network_logs": list(self.network_logs or []),
             "timestamp": self.timestamp.isoformat()

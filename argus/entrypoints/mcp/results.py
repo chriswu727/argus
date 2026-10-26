@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any, Literal
 
 from mcp.server.fastmcp.utilities.types import Image
@@ -47,6 +48,28 @@ _RECOVERY = {
 }
 
 
+def _share_coverage_evidence(data: dict) -> None:
+    for container in (data, data.get("observation", {})):
+        coverage = container.get("coverage", {}) if isinstance(container, dict) else {}
+        groups: dict[str, list[dict]] = {}
+        for goal in coverage.get("goals", []):
+            refs = goal.get("evidence_refs")
+            if isinstance(refs, dict):
+                key = json.dumps(refs, sort_keys=True, separators=(",", ":"))
+                groups.setdefault(key, []).append(goal)
+        shared = {}
+        for goals in groups.values():
+            if len(goals) < 2:
+                continue
+            ref = f"e{len(shared) + 1}"
+            shared[ref] = goals[0]["evidence_refs"]
+            for goal in goals:
+                goal.pop("evidence_refs")
+                goal["evidence_ref"] = ref
+        if shared:
+            coverage["evidence"] = shared
+
+
 @timed("response_encode")
 def to_mcp_result(
     name: str,
@@ -72,6 +95,8 @@ def to_mcp_result(
     ]
     if artifacts:
         data["artifacts"] = artifacts
+    if mode in {"compact", "delta"} and not code:
+        _share_coverage_evidence(data)
     if mode in {"compact", "delta"} and not code and isinstance(value, ToolText) and data:
         content = [
             TextContent(
