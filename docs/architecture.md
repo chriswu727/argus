@@ -167,3 +167,16 @@ and offline scoring. The production runtime never imports it. Real model drivers
 and independent adjudication remain external inputs; scripted controls are
 explicitly not agent-effectiveness evidence. See [protocol](agent-protocol.md)
 and [evaluation](evaluation.md) for compatibility and measurement limits.
+
+`application/guidance.py` owns deterministic next-check hints and a per-session
+visible-state fingerprint. It imports no model provider and executes no actions.
+`payloads.py` joins post-action state, coverage and hints; MCP response mode is an
+operator setting interpreted only by the presentation adapter. The monitor gets
+numeric summaries, not free-text goals or evidence.
+
+The opt-in evaluation collector is a separate POSIX process supervisor. Its MCP
+gateway enforces the tool budget; its host subprocess has no shell or web tools.
+Fixture state and oracle events stay in the supervising process. Collection and
+adjudication are separate steps, so model self-certification cannot directly
+become a benchmark true positive. This is a synthetic evaluation boundary, not a
+general-purpose sandbox for hostile web content.

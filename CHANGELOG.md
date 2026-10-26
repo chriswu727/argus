@@ -1,6 +1,19 @@
 # Changelog
 
-## Unreleased
+## 0.8.0 - 2026-10-25
+
+- Add an optional 19-tool agent profile with concise discovery descriptions,
+  compact structured responses, post-action/check observations and atomic batch
+  coverage updates. Keep core as the backward-compatible default.
+- Add bounded next-check guidance, persistence reminders and stalled-exploration
+  signals. Do not automatically mark goals complete or findings confirmed.
+- Treat missing counts and malformed expectations as unknown, not guessed
+  matches. Preserve partial form outcomes and stable finding references.
+- Show real testing phases, goal/check counts and separate finding outcomes in
+  the read-only loopback dashboard, without exposing goal text or inputs.
+- Add opt-in, budget-bounded Codex subscription collection, synthetic browser
+  fixtures, conventional-browser controls and independent evidence adjudication.
+  Model calls are never part of import, normal MCP usage or CI.
 
 - Add versioned structured MCP results alongside compatible text/image content,
   including structured evidence for core observation, coverage, verification, findings

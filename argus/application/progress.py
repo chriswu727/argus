@@ -33,7 +33,7 @@ class Progress:
     omitted: int = 0
     delivery_failed: bool = False
 
-    async def emit(self, stage: Stage) -> None:
+    async def emit(self, stage: Stage, counts: dict | None = None) -> None:
         if len(self.stages) >= 64:
             self.omitted += 1
             return
@@ -41,7 +41,14 @@ class Progress:
         if self.sink is not None and not self.delivery_failed:
             try:
                 async with asyncio.timeout(0.25):
-                    await self.sink(len(self.stages), stage.value)
+                    message = stage.value
+                    if counts and (sum(counts["goals"].values()) or counts["checks"]):
+                        total = sum(counts["goals"].values())
+                        pending = (
+                            counts["verdicts"]["inconclusive"] + counts["verdicts"]["observed"]
+                        )
+                        message += f" · goals exercised {counts['goals']['exercised']}/{total} · checks {counts['checks']} · pending findings {pending}"
+                    await self.sink(len(self.stages), message)
             except Exception:
                 self.delivery_failed = True
 
@@ -59,7 +66,7 @@ def progress_scope(sink: ProgressSink | None = None):
         _progress.reset(token)
 
 
-async def emit(stage: Stage) -> None:
+async def emit(stage: Stage, counts: dict | None = None) -> None:
     progress = _progress.get()
     if progress is not None:
-        await progress.emit(stage)
+        await progress.emit(stage, counts)

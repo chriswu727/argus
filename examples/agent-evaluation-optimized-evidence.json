@@ -1,0 +1,4008 @@
+{
+  "cohort": "optimized",
+  "review_method": "Implementation assistant reviewed tool observations and server oracle, not a blinded third-party review. Call numbering was corrected explicitly where necessary.",
+  "ground_truth_correction": "The historical form-fixed case retains a missing-local-part defect; form-localpart is post-hoc corrected ground truth in both arms. Original case IDs and model answers are preserved.",
+  "source_manifest": {
+    "model": "gpt-6-astra",
+    "effort": "high",
+    "host": "codex-cli 0.155.0-alpha.16.4",
+    "fixture": "d1aa615b9c97518ebe5a1e1f5163861bdaf9710eff4bde104484ceeabc5e3574",
+    "task": "9bc46b4bc2b59cca8eb7ca1598c8d462232a7e5591b122ec546849801809bc06",
+    "max_runs": 20,
+    "implementation": "bceea4ab3956c3784312731f43d133181e19743ddc0bf32e7a583d2188979b80"
+  },
+  "runs": {
+    "run-000": {
+      "case_id": "profile-buggy",
+      "arm": "baseline",
+      "original_model_report": {
+        "findings": [
+          {
+            "summary": "Saved display name is lost after reload.",
+            "expected": "The saved name \u201cTest Rowan 742\u201d remains after reloading.",
+            "observed": "Saving displayed \u201cTest Rowan 742\u201d and \u201cSaved\u201d. Reloading reverted both the displayed name and input to \u201cAlex\u201d.",
+            "evidence_calls": [
+              3,
+              4
+            ]
+          }
+        ],
+        "covered_goals": [
+          {
+            "goal": "edit-name",
+            "evidence_calls": [
+              2,
+              3
+            ]
+          },
+          {
+            "goal": "reload-name",
+            "evidence_calls": [
+              3,
+              4
+            ]
+          }
+        ],
+        "limitations": []
+      },
+      "review": {
+        "findings": [
+          {
+            "claim_index": 0,
+            "matched_bug": "profile-contract",
+            "evidence_calls": [
+              3,
+              4
+            ],
+            "rationale": "Saved name reverted to Alex after GET reload."
+          }
+        ],
+        "goals": [
+          {
+            "goal": "edit-name",
+            "evidence_calls": [
+              2,
+              3
+            ],
+            "rationale": "Saved name reverted to Alex after GET reload."
+          },
+          {
+            "goal": "reload-name",
+            "evidence_calls": [
+              3,
+              4
+            ],
+            "rationale": "Saved name reverted to Alex after GET reload."
+          }
+        ]
+      },
+      "tool_excerpts": [
+        {
+          "call": 2,
+          "tool": "browser_fill",
+          "arguments": {
+            "label": "Display name",
+            "value": "Test Rowan 742"
+          },
+          "visible": "- heading \"Profile\" [level=1]\n- paragraph: \"Display name: Alex\"\n- text: Display name\n- textbox \"Display name\": Test Rowan 742\n- button \"Save\"\n- status",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 3,
+          "tool": "browser_click",
+          "arguments": {
+            "role": "button",
+            "name": "Save"
+          },
+          "visible": "- heading \"Profile\" [level=1]\n- paragraph: \"Display name: Test Rowan 742\"\n- text: Display name\n- textbox \"Display name\": Test Rowan 742\n- button \"Save\"\n- status: Saved",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 4,
+          "tool": "browser_reload",
+          "arguments": {},
+          "visible": "- heading \"Profile\" [level=1]\n- paragraph: \"Display name: Alex\"\n- text: Display name\n- textbox \"Display name\": Alex\n- button \"Save\"\n- status: Saved",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        }
+      ],
+      "server_oracle": [
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "name": [
+              "Test Rowan 742"
+            ]
+          },
+          "state": {
+            "name": "Test Rowan 742",
+            "deleted": false,
+            "message": "Saved",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Test Rowan 742",
+            "deleted": false,
+            "message": "Saved"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Saved"
+          }
+        }
+      ],
+      "raw_trace_sha256": "318e78d60ce704e9d706d40d04ec685bbe15d10d887b7ea087e1ad1efb4c343c"
+    },
+    "run-001": {
+      "case_id": "profile-buggy",
+      "arm": "argus",
+      "original_model_report": {
+        "findings": [
+          {
+            "summary": "Saved display name reverts after reload.",
+            "expected": "After saving \u201cTest Nova 4827\u201d, the name remains after reload.",
+            "observed": "Saving displayed \u201cTest Nova 4827\u201d and \u201cSaved\u201d. Reloading without clearing storage reverted the profile and input to \u201cAlex\u201d. An independent recheck confirmed the saved name was absent.",
+            "evidence_calls": [
+              4,
+              5,
+              6
+            ]
+          }
+        ],
+        "covered_goals": [
+          {
+            "goal": "edit-name",
+            "evidence_calls": [
+              4
+            ]
+          },
+          {
+            "goal": "reload-name",
+            "evidence_calls": [
+              5,
+              6
+            ]
+          }
+        ],
+        "limitations": []
+      },
+      "review": {
+        "findings": [
+          {
+            "claim_index": 0,
+            "matched_bug": "profile-contract",
+            "evidence_calls": [
+              3,
+              4,
+              5
+            ],
+            "rationale": "Save then fresh load lost the name; independent receipt agrees. Corrected model citations by one call."
+          }
+        ],
+        "goals": [
+          {
+            "goal": "edit-name",
+            "evidence_calls": [
+              3
+            ],
+            "rationale": "Save then fresh load lost the name; independent receipt agrees. Corrected model citations by one call."
+          },
+          {
+            "goal": "reload-name",
+            "evidence_calls": [
+              4,
+              5
+            ],
+            "rationale": "Save then fresh load lost the name; independent receipt agrees. Corrected model citations by one call."
+          }
+        ]
+      },
+      "tool_excerpts": [
+        {
+          "call": 3,
+          "tool": "test_form",
+          "arguments": {
+            "form_fields": {
+              "Display name": "Test Nova 4827"
+            },
+            "submit": "Save"
+          },
+          "visible": "Profile\n\nDisplay name: Test Nova 4827\n\nDisplay nameSave\n\nSaved",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 4,
+          "tool": "verify_persistence",
+          "arguments": {
+            "expect": "present",
+            "target_text": "Test Nova 4827",
+            "after_url": "http://fixture.test/"
+          },
+          "visible": "Profile\n\nDisplay name: Alex\n\nDisplay nameSave\n\nSaved",
+          "verification": {
+            "expect": "present",
+            "target_text": "Test Nova 4827",
+            "url": "/",
+            "present": false,
+            "matches": false,
+            "clear_storage": false
+          },
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 5,
+          "tool": "record_bug",
+          "arguments": {
+            "title": "Saved display name reverts after reload",
+            "severity": "HIGH",
+            "evidence": {
+              "steps": [
+                "Enter synthetic display name Test Nova 4827 and click Save.",
+                "Confirm profile displays Test Nova 4827 and Saved.",
+                "Reload the same page without clearing storage."
+              ],
+              "expected": "Saved display name Test Nova 4827 remains after reload.",
+              "observed": "Profile and input revert to Alex after reload, although Saved remains visible."
+            },
+            "verify": {
+              "expect": "absent",
+              "target_text": "Test Nova 4827",
+              "at_url": "http://fixture.test/"
+            }
+          },
+          "visible": null,
+          "verification": null,
+          "verdict": "verified",
+          "recorded": true,
+          "receipt": {
+            "attempted": true,
+            "reproduced": true,
+            "flaky": false,
+            "runs": "2/2",
+            "expect": "absent",
+            "method": "fresh-load symptom re-check (server truth, no fixture reset)",
+            "target_text": "Test Nova 4827",
+            "at_url": "http://fixture.test/",
+            "observed_present": [
+              false,
+              false
+            ]
+          },
+          "reason": null
+        }
+      ],
+      "server_oracle": [
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "name": [
+              "Test Nova 4827"
+            ]
+          },
+          "state": {
+            "name": "Test Nova 4827",
+            "deleted": false,
+            "message": "Saved",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Test Nova 4827",
+            "deleted": false,
+            "message": "Saved"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Saved"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Saved"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Saved"
+          }
+        }
+      ],
+      "raw_trace_sha256": "caeb6ed89cc32b06750cb77c3efe3ec5a44b98ed050e2addd28bf8e38d0b9049"
+    },
+    "run-002": {
+      "case_id": "profile-fixed",
+      "arm": "argus",
+      "original_model_report": {
+        "findings": [],
+        "covered_goals": [
+          {
+            "goal": "edit-name",
+            "evidence_calls": [
+              3
+            ]
+          },
+          {
+            "goal": "reload-name",
+            "evidence_calls": [
+              3,
+              4
+            ]
+          }
+        ],
+        "limitations": []
+      },
+      "review": {
+        "findings": [],
+        "goals": [
+          {
+            "goal": "edit-name",
+            "evidence_calls": [
+              3
+            ],
+            "rationale": "Saved name remained after a fresh GET."
+          },
+          {
+            "goal": "reload-name",
+            "evidence_calls": [
+              4
+            ],
+            "rationale": "Saved name remained after a fresh GET."
+          }
+        ]
+      },
+      "tool_excerpts": [
+        {
+          "call": 3,
+          "tool": "test_form",
+          "arguments": {
+            "form_fields": {
+              "Display name": "Test Comet 731"
+            },
+            "submit": "Save"
+          },
+          "visible": "Profile\n\nDisplay name: Test Comet 731\n\nDisplay nameSave\n\nSaved",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 4,
+          "tool": "verify_persistence",
+          "arguments": {
+            "expect": "present",
+            "target_text": "Test Comet 731"
+          },
+          "visible": "Profile\n\nDisplay name: Test Comet 731\n\nDisplay nameSave\n\nSaved",
+          "verification": {
+            "expect": "present",
+            "target_text": "Test Comet 731",
+            "url": "/",
+            "present": true,
+            "matches": true,
+            "clear_storage": false
+          },
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        }
+      ],
+      "server_oracle": [
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "name": [
+              "Test Comet 731"
+            ]
+          },
+          "state": {
+            "name": "Test Comet 731",
+            "deleted": false,
+            "message": "Saved",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Test Comet 731",
+            "deleted": false,
+            "message": "Saved"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Test Comet 731",
+            "deleted": false,
+            "message": "Saved"
+          }
+        }
+      ],
+      "raw_trace_sha256": "0f52bcc31ad9695d22c9c4e80e77e2170668f3e30e7aa8c97856e9e567949b6a"
+    },
+    "run-003": {
+      "case_id": "profile-fixed",
+      "arm": "baseline",
+      "original_model_report": {
+        "findings": [],
+        "covered_goals": [
+          {
+            "goal": "edit-name",
+            "evidence_calls": [
+              2,
+              3
+            ]
+          },
+          {
+            "goal": "reload-name",
+            "evidence_calls": [
+              3,
+              4
+            ]
+          }
+        ],
+        "limitations": []
+      },
+      "review": {
+        "findings": [],
+        "goals": [
+          {
+            "goal": "edit-name",
+            "evidence_calls": [
+              2,
+              3
+            ],
+            "rationale": "Saved name remained after browser reload."
+          },
+          {
+            "goal": "reload-name",
+            "evidence_calls": [
+              3,
+              4
+            ],
+            "rationale": "Saved name remained after browser reload."
+          }
+        ]
+      },
+      "tool_excerpts": [
+        {
+          "call": 2,
+          "tool": "browser_fill",
+          "arguments": {
+            "label": "Display name",
+            "value": "Test Willow 731"
+          },
+          "visible": "- heading \"Profile\" [level=1]\n- paragraph: \"Display name: Alex\"\n- text: Display name\n- textbox \"Display name\": Test Willow 731\n- button \"Save\"\n- status",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 3,
+          "tool": "browser_click",
+          "arguments": {
+            "role": "button",
+            "name": "Save"
+          },
+          "visible": "- heading \"Profile\" [level=1]\n- paragraph: \"Display name: Test Willow 731\"\n- text: Display name\n- textbox \"Display name\": Test Willow 731\n- button \"Save\"\n- status: Saved",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 4,
+          "tool": "browser_reload",
+          "arguments": {},
+          "visible": "- heading \"Profile\" [level=1]\n- paragraph: \"Display name: Test Willow 731\"\n- text: Display name\n- textbox \"Display name\": Test Willow 731\n- button \"Save\"\n- status: Saved",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        }
+      ],
+      "server_oracle": [
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "name": [
+              "Test Willow 731"
+            ]
+          },
+          "state": {
+            "name": "Test Willow 731",
+            "deleted": false,
+            "message": "Saved",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Test Willow 731",
+            "deleted": false,
+            "message": "Saved"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Test Willow 731",
+            "deleted": false,
+            "message": "Saved"
+          }
+        }
+      ],
+      "raw_trace_sha256": "08ff7a69b15be07c09d4cdd59fb73ec41b7e60494dc6d44f68e527c400098d10"
+    },
+    "run-004": {
+      "case_id": "form-buggy",
+      "arm": "baseline",
+      "original_model_report": {
+        "findings": [
+          {
+            "summary": "Newsletter signup accepts invalid email addresses.",
+            "expected": "Invalid addresses are rejected without reporting success.",
+            "observed": "Submitting \u201cnot-an-email\u201d displayed \u201cSubscribed\u201d and cleared the input. Submitting \u201cnewsletter-test@\u201d also cleared the input and showed \u201cSubscribed\u201d.",
+            "evidence_calls": [
+              2,
+              3,
+              4,
+              5
+            ]
+          }
+        ],
+        "covered_goals": [
+          {
+            "goal": "invalid-email",
+            "evidence_calls": [
+              2,
+              3,
+              4,
+              5
+            ]
+          },
+          {
+            "goal": "valid-email",
+            "evidence_calls": [
+              7,
+              8,
+              9,
+              10,
+              11
+            ]
+          }
+        ],
+        "limitations": [
+          "Evidence numbers refer to testing MCP calls, starting with navigation as call 1.",
+          "Valid submissions showed \u201cSubscribed\u201d; after reloading, the form remained usable for another submission. Backend delivery was not verified."
+        ]
+      },
+      "review": {
+        "findings": [
+          {
+            "claim_index": 0,
+            "matched_bug": "form-contract",
+            "evidence_calls": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "rationale": "Invalid input introduced success feedback; valid inputs could still be submitted and resubmitted."
+          }
+        ],
+        "goals": [
+          {
+            "goal": "invalid-email",
+            "evidence_calls": [
+              2,
+              3,
+              4,
+              5
+            ],
+            "rationale": "Invalid input introduced success feedback; valid inputs could still be submitted and resubmitted."
+          },
+          {
+            "goal": "valid-email",
+            "evidence_calls": [
+              7,
+              8,
+              10,
+              11
+            ],
+            "rationale": "Invalid input introduced success feedback; valid inputs could still be submitted and resubmitted."
+          }
+        ]
+      },
+      "tool_excerpts": [
+        {
+          "call": 1,
+          "tool": "browser_navigate",
+          "arguments": {
+            "url": "http://fixture.test"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\"\n- button \"Subscribe\"\n- status",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 2,
+          "tool": "browser_fill",
+          "arguments": {
+            "label": "Email",
+            "value": "not-an-email"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\": not-an-email\n- button \"Subscribe\"\n- status",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 3,
+          "tool": "browser_click",
+          "arguments": {
+            "role": "button",
+            "name": "Subscribe"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\"\n- button \"Subscribe\"\n- status: Subscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 4,
+          "tool": "browser_fill",
+          "arguments": {
+            "label": "Email",
+            "value": "newsletter-test@"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\": newsletter-test@\n- button \"Subscribe\"\n- status: Subscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 5,
+          "tool": "browser_click",
+          "arguments": {
+            "role": "button",
+            "name": "Subscribe"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\"\n- button \"Subscribe\"\n- status: Subscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 7,
+          "tool": "browser_fill",
+          "arguments": {
+            "label": "Email",
+            "value": "newsletter-test-20261025@example.com"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\": newsletter-test-20261025@example.com\n- button \"Subscribe\"\n- status: Subscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 8,
+          "tool": "browser_click",
+          "arguments": {
+            "role": "button",
+            "name": "Subscribe"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\"\n- button \"Subscribe\"\n- status: Subscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 10,
+          "tool": "browser_fill",
+          "arguments": {
+            "label": "Email",
+            "value": "newsletter-recovery-20261025@example.com"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\": newsletter-recovery-20261025@example.com\n- button \"Subscribe\"\n- status: Subscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 11,
+          "tool": "browser_click",
+          "arguments": {
+            "role": "button",
+            "name": "Subscribe"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\"\n- button \"Subscribe\"\n- status: Subscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        }
+      ],
+      "server_oracle": [
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "not-an-email"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "newsletter-test@"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "newsletter-test-20261025@example.com"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "newsletter-recovery-20261025@example.com"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        }
+      ],
+      "raw_trace_sha256": "7333beed2503ebc02c7c658e5bd465c640ea494f9301396425eeda20c7bfa6c3"
+    },
+    "run-005": {
+      "case_id": "form-buggy",
+      "arm": "argus",
+      "original_model_report": {
+        "findings": [
+          {
+            "summary": "Invalid email produces a persistent success confirmation.",
+            "expected": "Reject malformed email addresses with validation feedback.",
+            "observed": "Submitting `not-an-email` displayed \u201cSubscribed,\u201d which remained after reload and independent verification.",
+            "evidence_calls": [
+              4,
+              5,
+              6
+            ]
+          }
+        ],
+        "covered_goals": [
+          {
+            "goal": "invalid-email",
+            "evidence_calls": [
+              4,
+              5,
+              6,
+              7
+            ]
+          },
+          {
+            "goal": "valid-email",
+            "evidence_calls": [
+              8,
+              9,
+              10
+            ]
+          }
+        ],
+        "limitations": [
+          "The valid address was submitted and the form remained editable after reload, but the existing success message prevented independent confirmation that this address was saved."
+        ]
+      },
+      "review": {
+        "findings": [
+          {
+            "claim_index": 0,
+            "matched_bug": "form-contract",
+            "evidence_calls": [
+              1,
+              3,
+              4,
+              5
+            ],
+            "rationale": "Initial invalid submission introduced Subscribed; valid submission and later editing exercised recovery. Existing feedback does not prove storage of the valid address. Corrected offset citations."
+          }
+        ],
+        "goals": [
+          {
+            "goal": "invalid-email",
+            "evidence_calls": [
+              3,
+              6
+            ],
+            "rationale": "Initial invalid submission introduced Subscribed; valid submission and later editing exercised recovery. Existing feedback does not prove storage of the valid address. Corrected offset citations."
+          },
+          {
+            "goal": "valid-email",
+            "evidence_calls": [
+              7,
+              8,
+              9
+            ],
+            "rationale": "Initial invalid submission introduced Subscribed; valid submission and later editing exercised recovery. Existing feedback does not prove storage of the valid address. Corrected offset citations."
+          }
+        ]
+      },
+      "tool_excerpts": [
+        {
+          "call": 1,
+          "tool": "start_session",
+          "arguments": {
+            "url": "http://fixture.test",
+            "goals": [
+              "invalid-email",
+              "valid-email"
+            ],
+            "constraints": [
+              "Use synthetic values only",
+              "Stay on this origin",
+              "Do not inspect source code or files"
+            ],
+            "time_budget_minutes": 5
+          },
+          "visible": "Newsletter\nEmailSubscribe",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 3,
+          "tool": "test_form",
+          "arguments": {
+            "form_fields": {
+              "input \"Email\"": "not-an-email"
+            },
+            "submit": "button \"Subscribe\""
+          },
+          "visible": "Newsletter\nEmailSubscribe\n\nSubscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 4,
+          "tool": "navigate",
+          "arguments": {
+            "url": "http://fixture.test/"
+          },
+          "visible": "Newsletter\nEmailSubscribe\n\nSubscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 5,
+          "tool": "record_bug",
+          "arguments": {
+            "title": "Malformed newsletter email is accepted with a persistent Subscribed confirmation",
+            "severity": "MEDIUM",
+            "evidence": {
+              "steps": [
+                "Open / with no subscription confirmation",
+                "Enter not-an-email into Email",
+                "Click Subscribe",
+                "Reload /"
+              ],
+              "expected": "Reject the malformed address and show validation feedback.",
+              "observed": "Subscribed appears after submission and remains after reloading.",
+              "evidence_calls": [
+                4,
+                5
+              ]
+            },
+            "verify": {
+              "expect": "present",
+              "target_text": "Subscribed",
+              "at_url": "http://fixture.test/"
+            }
+          },
+          "visible": null,
+          "verification": null,
+          "verdict": "verified",
+          "recorded": true,
+          "receipt": {
+            "attempted": true,
+            "reproduced": true,
+            "flaky": false,
+            "runs": "2/2",
+            "expect": "present",
+            "method": "fresh-load symptom re-check (server truth, no fixture reset)",
+            "target_text": "Subscribed",
+            "at_url": "http://fixture.test/",
+            "observed_present": [
+              true,
+              true
+            ]
+          },
+          "reason": null
+        },
+        {
+          "call": 6,
+          "tool": "test_form",
+          "arguments": {
+            "form_fields": {
+              "input \"Email\"": "synthetic@"
+            },
+            "submit": "button \"Subscribe\""
+          },
+          "visible": "Newsletter\nEmailSubscribe\n\nSubscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 7,
+          "tool": "test_form",
+          "arguments": {
+            "form_fields": {
+              "input \"Email\"": "newsletter.qa.20261025@example.com"
+            },
+            "submit": "button \"Subscribe\""
+          },
+          "visible": "Newsletter\nEmailSubscribe\n\nSubscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 8,
+          "tool": "verify_persistence",
+          "arguments": {
+            "expect": "present",
+            "target_text": "Subscribed",
+            "after_url": "http://fixture.test/"
+          },
+          "visible": "Newsletter\nEmailSubscribe\n\nSubscribed",
+          "verification": {
+            "expect": "present",
+            "target_text": "Subscribed",
+            "url": "/",
+            "present": true,
+            "matches": true,
+            "clear_storage": false
+          },
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 9,
+          "tool": "type_into",
+          "arguments": {
+            "description": "input \"Email\"",
+            "text": "newsletter.recovery.20261025@example.com"
+          },
+          "visible": "Newsletter\nEmailSubscribe\n\nSubscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        }
+      ],
+      "server_oracle": [
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "not-an-email"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "synthetic@"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "newsletter.qa.20261025@example.com"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        }
+      ],
+      "raw_trace_sha256": "18f8e255d1ee2e642c80559f24138a53636a0a2d013a90cf03b7f4764ac710cb"
+    },
+    "run-006": {
+      "case_id": "form-fixed",
+      "arm": "argus",
+      "original_model_report": {
+        "findings": [
+          {
+            "summary": "Newsletter signup accepts an address with no local part.",
+            "expected": "Submitting @example.com must show an invalid-email error.",
+            "observed": "Submitting @example.com displays \u201cSubscribed\u201d. Reproduced after first triggering an invalid-email error.",
+            "evidence_calls": [
+              7,
+              9,
+              10
+            ]
+          }
+        ],
+        "covered_goals": [
+          {
+            "goal": "invalid-email",
+            "evidence_calls": [
+              3,
+              4,
+              7,
+              9,
+              10
+            ]
+          },
+          {
+            "goal": "valid-email",
+            "evidence_calls": [
+              5,
+              6,
+              8,
+              9
+            ]
+          }
+        ],
+        "limitations": [
+          "Evidence numbers refer to testing MCP calls, starting with start_session as call 1.",
+          "Success and recoverability were checked through visible feedback, reload, and subsequent form use; email delivery was not checked."
+        ]
+      },
+      "review": {
+        "findings": [
+          {
+            "claim_index": 0,
+            "matched_bug": "form-localpart",
+            "evidence_calls": [
+              9,
+              10,
+              11
+            ],
+            "rationale": "Invalid-error to success transition for @example.com confirms the residual local-part validation defect. Ordinary invalid inputs and valid recovery were also exercised."
+          }
+        ],
+        "goals": [
+          {
+            "goal": "invalid-email",
+            "evidence_calls": [
+              3,
+              4,
+              9,
+              10
+            ],
+            "rationale": "Invalid-error to success transition for @example.com confirms the residual local-part validation defect. Ordinary invalid inputs and valid recovery were also exercised."
+          },
+          {
+            "goal": "valid-email",
+            "evidence_calls": [
+              5,
+              6,
+              8
+            ],
+            "rationale": "Invalid-error to success transition for @example.com confirms the residual local-part validation defect. Ordinary invalid inputs and valid recovery were also exercised."
+          }
+        ]
+      },
+      "tool_excerpts": [
+        {
+          "call": 3,
+          "tool": "test_form",
+          "arguments": {
+            "form_fields": {
+              "Email": "invalid-newsletter"
+            },
+            "submit": "Subscribe"
+          },
+          "visible": "Newsletter\nEmailSubscribe\n\nInvalid email; please correct it",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 4,
+          "tool": "test_form",
+          "arguments": {
+            "form_fields": {
+              "Email": "synthetic@"
+            },
+            "submit": "Subscribe"
+          },
+          "visible": "Newsletter\nEmailSubscribe\n\nInvalid email; please correct it",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 5,
+          "tool": "test_form",
+          "arguments": {
+            "form_fields": {
+              "Email": "newsletter.test.20261025@example.com"
+            },
+            "submit": "Subscribe"
+          },
+          "visible": "Newsletter\nEmailSubscribe\n\nSubscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 6,
+          "tool": "verify_persistence",
+          "arguments": {
+            "expect": "present",
+            "target_text": "Subscribed",
+            "after_url": "http://fixture.test/"
+          },
+          "visible": "Newsletter\nEmailSubscribe\n\nSubscribed",
+          "verification": {
+            "expect": "present",
+            "target_text": "Subscribed",
+            "url": "/",
+            "present": true,
+            "matches": true,
+            "clear_storage": false
+          },
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 8,
+          "tool": "test_form",
+          "arguments": {
+            "form_fields": {
+              "Email": "newsletter.recovery.20261025@example.com"
+            },
+            "submit": "Subscribe"
+          },
+          "visible": "Newsletter\nEmailSubscribe\n\nSubscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 9,
+          "tool": "test_form",
+          "arguments": {
+            "form_fields": {
+              "Email": "still-not-an-email"
+            },
+            "submit": "Subscribe"
+          },
+          "visible": "Newsletter\nEmailSubscribe\n\nInvalid email; please correct it",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 10,
+          "tool": "test_form",
+          "arguments": {
+            "form_fields": {
+              "Email": "@example.com"
+            },
+            "submit": "Subscribe"
+          },
+          "visible": "Newsletter\nEmailSubscribe\n\nSubscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 11,
+          "tool": "record_bug",
+          "arguments": {
+            "title": "Newsletter accepts an email address with no local part",
+            "severity": "MEDIUM",
+            "evidence": {
+              "steps": [
+                "Submit still-not-an-email and observe 'Invalid email; please correct it'.",
+                "Replace it with @example.com and click Subscribe.",
+                "Observe the message changes to 'Subscribed'."
+              ],
+              "expected": "@example.com must be rejected because it has no local part.",
+              "actual": "Submitting @example.com displays Subscribed. Reproduced after first establishing an invalid-email error.",
+              "evidence_calls": [
+                7,
+                9,
+                10
+              ]
+            },
+            "verify": {
+              "expect": "present",
+              "target_text": "Subscribed",
+              "at_url": "http://fixture.test/"
+            }
+          },
+          "visible": null,
+          "verification": null,
+          "verdict": "verified",
+          "recorded": true,
+          "receipt": {
+            "attempted": true,
+            "reproduced": true,
+            "flaky": false,
+            "runs": "2/2",
+            "expect": "present",
+            "method": "fresh-load symptom re-check (server truth, no fixture reset)",
+            "target_text": "Subscribed",
+            "at_url": "http://fixture.test/",
+            "observed_present": [
+              true,
+              true
+            ]
+          },
+          "reason": null
+        }
+      ],
+      "server_oracle": [
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "invalid-newsletter"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Invalid email; please correct it",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Invalid email; please correct it"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "synthetic@"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Invalid email; please correct it",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Invalid email; please correct it"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "newsletter.test.20261025@example.com"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "@example.com"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "newsletter.recovery.20261025@example.com"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "still-not-an-email"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Invalid email; please correct it",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Invalid email; please correct it"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "@example.com"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        }
+      ],
+      "raw_trace_sha256": "777d9d7fea194c7101431a9462681c031df68065bb91061e6eeba154cc60db84"
+    },
+    "run-007": {
+      "case_id": "form-fixed",
+      "arm": "baseline",
+      "original_model_report": {
+        "findings": [],
+        "covered_goals": [
+          {
+            "goal": "invalid-email: Both a missing @ and a missing domain were rejected with \u201cInvalid email; please correct it\u201d.",
+            "evidence_calls": [
+              3,
+              4,
+              5,
+              6
+            ]
+          },
+          {
+            "goal": "valid-email: Valid synthetic addresses returned \u201cSubscribed\u201d; the form remained usable after rejection, success, and reload.",
+            "evidence_calls": [
+              7,
+              8,
+              9,
+              10,
+              11
+            ]
+          }
+        ],
+        "limitations": [
+          "Verified observable UI behavior only; email delivery was not tested."
+        ]
+      },
+      "review": {
+        "findings": [],
+        "goals": [
+          {
+            "goal": "invalid-email",
+            "evidence_calls": [
+              2,
+              3,
+              4,
+              5
+            ],
+            "rationale": "Ordinary malformed inputs were rejected and valid submissions remained usable; missing local part was not tested. Corrected model offset references and descriptive goal labels."
+          },
+          {
+            "goal": "valid-email",
+            "evidence_calls": [
+              6,
+              7,
+              8,
+              9,
+              10
+            ],
+            "rationale": "Ordinary malformed inputs were rejected and valid submissions remained usable; missing local part was not tested. Corrected model offset references and descriptive goal labels."
+          }
+        ]
+      },
+      "tool_excerpts": [
+        {
+          "call": 2,
+          "tool": "browser_fill",
+          "arguments": {
+            "label": "Email",
+            "value": "newsletter-invalid"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\": newsletter-invalid\n- button \"Subscribe\"\n- status",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 3,
+          "tool": "browser_click",
+          "arguments": {
+            "role": "button",
+            "name": "Subscribe"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\"\n- button \"Subscribe\"\n- status: Invalid email; please correct it",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 4,
+          "tool": "browser_fill",
+          "arguments": {
+            "label": "Email",
+            "value": "newsletter-test@"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\": newsletter-test@\n- button \"Subscribe\"\n- status: Invalid email; please correct it",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 5,
+          "tool": "browser_click",
+          "arguments": {
+            "role": "button",
+            "name": "Subscribe"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\"\n- button \"Subscribe\"\n- status: Invalid email; please correct it",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 6,
+          "tool": "browser_fill",
+          "arguments": {
+            "label": "Email",
+            "value": "newsletter-test-20261025@example.com"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\": newsletter-test-20261025@example.com\n- button \"Subscribe\"\n- status: Invalid email; please correct it",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 7,
+          "tool": "browser_click",
+          "arguments": {
+            "role": "button",
+            "name": "Subscribe"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\"\n- button \"Subscribe\"\n- status: Subscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 8,
+          "tool": "browser_reload",
+          "arguments": {},
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\"\n- button \"Subscribe\"\n- status: Subscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 9,
+          "tool": "browser_fill",
+          "arguments": {
+            "label": "Email",
+            "value": "newsletter-recovery-20261025@example.com"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\": newsletter-recovery-20261025@example.com\n- button \"Subscribe\"\n- status: Subscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 10,
+          "tool": "browser_click",
+          "arguments": {
+            "role": "button",
+            "name": "Subscribe"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\"\n- button \"Subscribe\"\n- status: Subscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        }
+      ],
+      "server_oracle": [
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "newsletter-invalid"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Invalid email; please correct it",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Invalid email; please correct it"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "newsletter-test@"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Invalid email; please correct it",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Invalid email; please correct it"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "newsletter-test-20261025@example.com"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "newsletter-recovery-20261025@example.com"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        }
+      ],
+      "raw_trace_sha256": "5907f2007df55f91cd03abdb50901ad60c13d572ebd83cd213ef4fc1033d8f94"
+    },
+    "run-008": {
+      "case_id": "tasks-buggy",
+      "arm": "baseline",
+      "original_model_report": {
+        "findings": [
+          {
+            "summary": "Deleted task reappears after reload.",
+            "expected": "The seeded task stays deleted after reloading the page.",
+            "observed": "Deleting \u201cPrepare itinerary\u201d showed \u201cNo tasks\u201d and \u201cDeleted\u201d. Reloading restored \u201cPrepare itinerary\u201d and its \u201cDelete task\u201d button.",
+            "evidence_calls": [
+              2,
+              3,
+              4
+            ]
+          }
+        ],
+        "covered_goals": [
+          {
+            "goal": "delete-task",
+            "evidence_calls": [
+              2,
+              3
+            ]
+          },
+          {
+            "goal": "reload-task",
+            "evidence_calls": [
+              3,
+              4
+            ]
+          }
+        ],
+        "limitations": []
+      },
+      "review": {
+        "findings": [
+          {
+            "claim_index": 0,
+            "matched_bug": "tasks-contract",
+            "evidence_calls": [
+              1,
+              2,
+              3
+            ],
+            "rationale": "Deleted task returned on reload. Corrected model references to actual three-call trace."
+          }
+        ],
+        "goals": [
+          {
+            "goal": "delete-task",
+            "evidence_calls": [
+              1,
+              2
+            ],
+            "rationale": "Deleted task returned on reload. Corrected model references to actual three-call trace."
+          },
+          {
+            "goal": "reload-task",
+            "evidence_calls": [
+              2,
+              3
+            ],
+            "rationale": "Deleted task returned on reload. Corrected model references to actual three-call trace."
+          }
+        ]
+      },
+      "tool_excerpts": [
+        {
+          "call": 1,
+          "tool": "browser_navigate",
+          "arguments": {
+            "url": "http://fixture.test"
+          },
+          "visible": "- heading \"Tasks\" [level=1]\n- paragraph: Prepare itinerary\n- button \"Delete task\"\n- status",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 2,
+          "tool": "browser_click",
+          "arguments": {
+            "role": "button",
+            "name": "Delete task"
+          },
+          "visible": "- heading \"Tasks\" [level=1]\n- paragraph: No tasks\n- status: Deleted",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 3,
+          "tool": "browser_reload",
+          "arguments": {},
+          "visible": "- heading \"Tasks\" [level=1]\n- paragraph: Prepare itinerary\n- button \"Delete task\"\n- status: Deleted",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        }
+      ],
+      "server_oracle": [
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {},
+          "state": {
+            "name": "Alex",
+            "deleted": true,
+            "message": "Deleted",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": true,
+            "message": "Deleted"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Deleted"
+          }
+        }
+      ],
+      "raw_trace_sha256": "7c4670cfdf2f3d908146f76e27649ba4d9b302363da1e420a2bdee927de8b964"
+    },
+    "run-009": {
+      "case_id": "tasks-buggy",
+      "arm": "argus",
+      "original_model_report": {
+        "findings": [
+          {
+            "summary": "Deleted seeded task reappears after reload.",
+            "expected": "The task \u201cPrepare itinerary\u201d stays deleted after reload.",
+            "observed": "Deleting displayed \u201cNo tasks\u201d and \u201cDeleted\u201d. Reloading restored \u201cPrepare itinerary\u201d and its Delete task button. Independent reload checks confirmed its presence.",
+            "evidence_calls": [
+              4,
+              5,
+              6
+            ]
+          }
+        ],
+        "covered_goals": [
+          {
+            "goal": "delete-task",
+            "evidence_calls": [
+              2,
+              4
+            ]
+          },
+          {
+            "goal": "reload-task",
+            "evidence_calls": [
+              5,
+              6
+            ]
+          }
+        ],
+        "limitations": []
+      },
+      "review": {
+        "findings": [
+          {
+            "claim_index": 0,
+            "matched_bug": "tasks-contract",
+            "evidence_calls": [
+              3,
+              4,
+              5
+            ],
+            "rationale": "Delete produced No tasks, fresh GET restored the task, and an independent present-text receipt agrees. Corrected offset model citations."
+          }
+        ],
+        "goals": [
+          {
+            "goal": "delete-task",
+            "evidence_calls": [
+              1,
+              3
+            ],
+            "rationale": "Delete produced No tasks, fresh GET restored the task, and an independent present-text receipt agrees. Corrected offset model citations."
+          },
+          {
+            "goal": "reload-task",
+            "evidence_calls": [
+              3,
+              4,
+              5
+            ],
+            "rationale": "Delete produced No tasks, fresh GET restored the task, and an independent present-text receipt agrees. Corrected offset model citations."
+          }
+        ]
+      },
+      "tool_excerpts": [
+        {
+          "call": 1,
+          "tool": "start_session",
+          "arguments": {
+            "url": "http://fixture.test",
+            "goals": [
+              "delete-task",
+              "reload-task"
+            ],
+            "constraints": [
+              "Stay on http://fixture.test",
+              "Use synthetic values only",
+              "Do not inspect source code or files",
+              "Delete seeded task and verify it stays deleted after reload"
+            ],
+            "time_budget_minutes": 5
+          },
+          "visible": "Tasks\n\nPrepare itinerary\n\nDelete task",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 3,
+          "tool": "click_what",
+          "arguments": {
+            "description": "button \"Delete task\""
+          },
+          "visible": "Tasks\n\nNo tasks\n\nDeleted",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 4,
+          "tool": "verify_persistence",
+          "arguments": {
+            "after_url": "http://fixture.test/",
+            "expect": "absent",
+            "target_text": "Prepare itinerary"
+          },
+          "visible": "Tasks\n\nPrepare itinerary\n\nDelete task\n\nDeleted",
+          "verification": {
+            "expect": "absent",
+            "target_text": "Prepare itinerary",
+            "url": "/",
+            "present": true,
+            "matches": false,
+            "clear_storage": false
+          },
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 5,
+          "tool": "record_bug",
+          "arguments": {
+            "title": "Deleted seeded task reappears after reload",
+            "severity": "HIGH",
+            "evidence": {
+              "steps": [
+                "Open http://fixture.test/ and observe seeded task Prepare itinerary.",
+                "Click Delete task; page shows No tasks and Deleted.",
+                "Reload the same page without clearing storage."
+              ],
+              "expected": "Prepare itinerary remains deleted after reload.",
+              "actual": "Prepare itinerary and Delete task reappear after reload, while Deleted feedback remains visible."
+            },
+            "verify": {
+              "expect": "present",
+              "target_text": "Prepare itinerary",
+              "at_url": "http://fixture.test/"
+            }
+          },
+          "visible": null,
+          "verification": null,
+          "verdict": "verified",
+          "recorded": true,
+          "receipt": {
+            "attempted": true,
+            "reproduced": true,
+            "flaky": false,
+            "runs": "2/2",
+            "expect": "present",
+            "method": "fresh-load symptom re-check (server truth, no fixture reset)",
+            "target_text": "Prepare itinerary",
+            "at_url": "http://fixture.test/",
+            "observed_present": [
+              true,
+              true
+            ]
+          },
+          "reason": null
+        }
+      ],
+      "server_oracle": [
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {},
+          "state": {
+            "name": "Alex",
+            "deleted": true,
+            "message": "Deleted",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": true,
+            "message": "Deleted"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Deleted"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Deleted"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Deleted"
+          }
+        }
+      ],
+      "raw_trace_sha256": "4822cd848445dc3c023ceeb301a79ce74be43975f8c526cd4bfe3202da9c992e"
+    },
+    "run-010": {
+      "case_id": "tasks-fixed",
+      "arm": "argus",
+      "original_model_report": {
+        "findings": [],
+        "covered_goals": [
+          {
+            "goal": "delete-task",
+            "evidence_calls": [
+              2,
+              4
+            ]
+          },
+          {
+            "goal": "reload-task",
+            "evidence_calls": [
+              4,
+              5
+            ]
+          }
+        ],
+        "limitations": []
+      },
+      "review": {
+        "findings": [],
+        "goals": [
+          {
+            "goal": "delete-task",
+            "evidence_calls": [
+              1,
+              3
+            ],
+            "rationale": "Deletion remained effective after fresh GET; corrected model citations to the actual deletion and reload calls."
+          },
+          {
+            "goal": "reload-task",
+            "evidence_calls": [
+              3,
+              4
+            ],
+            "rationale": "Deletion remained effective after fresh GET; corrected model citations to the actual deletion and reload calls."
+          }
+        ]
+      },
+      "tool_excerpts": [
+        {
+          "call": 1,
+          "tool": "start_session",
+          "arguments": {
+            "url": "http://fixture.test",
+            "goals": [
+              "delete-task",
+              "reload-task"
+            ],
+            "constraints": [
+              "Use synthetic values only",
+              "Stay on this origin",
+              "Do not inspect source code or files",
+              "Report only evidenced defects; do not fix the app"
+            ],
+            "time_budget_minutes": 5
+          },
+          "visible": "Tasks\n\nPrepare itinerary\n\nDelete task",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 3,
+          "tool": "click_what",
+          "arguments": {
+            "description": "button \"Delete task\""
+          },
+          "visible": "Tasks\n\nNo tasks\n\nDeleted",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 4,
+          "tool": "verify_persistence",
+          "arguments": {
+            "after_url": "http://fixture.test/",
+            "expect": "absent",
+            "target_text": "Prepare itinerary"
+          },
+          "visible": "Tasks\n\nNo tasks\n\nDeleted",
+          "verification": {
+            "expect": "absent",
+            "target_text": "Prepare itinerary",
+            "url": "/",
+            "present": false,
+            "matches": true,
+            "clear_storage": false
+          },
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        }
+      ],
+      "server_oracle": [
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {},
+          "state": {
+            "name": "Alex",
+            "deleted": true,
+            "message": "Deleted",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": true,
+            "message": "Deleted"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": true,
+            "message": "Deleted"
+          }
+        }
+      ],
+      "raw_trace_sha256": "948a3084128999783e4f5a4703191cff7947681a0f4901dcf066e3b063a33ec8"
+    },
+    "run-011": {
+      "case_id": "tasks-fixed",
+      "arm": "baseline",
+      "original_model_report": {
+        "findings": [],
+        "covered_goals": [
+          {
+            "goal": "delete-task: Deleted the seeded task; the page showed \u201cNo tasks\u201d and \u201cDeleted\u201d.",
+            "evidence_calls": [
+              1,
+              2
+            ]
+          },
+          {
+            "goal": "reload-task: Reloaded the page and confirmed the task stayed deleted.",
+            "evidence_calls": [
+              2,
+              3
+            ]
+          }
+        ],
+        "limitations": []
+      },
+      "review": {
+        "findings": [],
+        "goals": [
+          {
+            "goal": "delete-task",
+            "evidence_calls": [
+              1,
+              2
+            ],
+            "rationale": "Deleted task remained absent on reload; canonicalized descriptive model goal labels."
+          },
+          {
+            "goal": "reload-task",
+            "evidence_calls": [
+              2,
+              3
+            ],
+            "rationale": "Deleted task remained absent on reload; canonicalized descriptive model goal labels."
+          }
+        ]
+      },
+      "tool_excerpts": [
+        {
+          "call": 1,
+          "tool": "browser_navigate",
+          "arguments": {
+            "url": "http://fixture.test"
+          },
+          "visible": "- heading \"Tasks\" [level=1]\n- paragraph: Prepare itinerary\n- button \"Delete task\"\n- status",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 2,
+          "tool": "browser_click",
+          "arguments": {
+            "role": "button",
+            "name": "Delete task"
+          },
+          "visible": "- heading \"Tasks\" [level=1]\n- paragraph: No tasks\n- status: Deleted",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 3,
+          "tool": "browser_reload",
+          "arguments": {},
+          "visible": "- heading \"Tasks\" [level=1]\n- paragraph: No tasks\n- status: Deleted",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        }
+      ],
+      "server_oracle": [
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {},
+          "state": {
+            "name": "Alex",
+            "deleted": true,
+            "message": "Deleted",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": true,
+            "message": "Deleted"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": true,
+            "message": "Deleted"
+          }
+        }
+      ],
+      "raw_trace_sha256": "3bd70a1ac9e6e35678a56b07796d0a15fdd5fa6ccab03a880a91ff1fb3e727b9"
+    },
+    "run-012": {
+      "case_id": "cart-buggy",
+      "arm": "baseline",
+      "original_model_report": {
+        "findings": [
+          {
+            "summary": "Checkout subtotal is incorrect for two $12 items.",
+            "expected": "$24 subtotal, excluding tax and shipping.",
+            "observed": "Basket shows quantity 2, unit price $12, and subtotal $24. Checkout shows the same quantity and unit price but subtotal $12.",
+            "evidence_calls": [
+              2,
+              3
+            ]
+          }
+        ],
+        "covered_goals": [
+          {
+            "goal": "basket-total",
+            "evidence_calls": [
+              2
+            ]
+          },
+          {
+            "goal": "checkout-total",
+            "evidence_calls": [
+              3
+            ]
+          }
+        ],
+        "limitations": []
+      },
+      "review": {
+        "findings": [
+          {
+            "claim_index": 0,
+            "matched_bug": "cart-contract",
+            "evidence_calls": [
+              1,
+              2
+            ],
+            "rationale": "Basket subtotal was 24, checkout subtotal 12 with unchanged quantity 2 and unit price 12. Corrected offset model citations."
+          }
+        ],
+        "goals": [
+          {
+            "goal": "basket-total",
+            "evidence_calls": [
+              1
+            ],
+            "rationale": "Basket subtotal was 24, checkout subtotal 12 with unchanged quantity 2 and unit price 12. Corrected offset model citations."
+          },
+          {
+            "goal": "checkout-total",
+            "evidence_calls": [
+              2
+            ],
+            "rationale": "Basket subtotal was 24, checkout subtotal 12 with unchanged quantity 2 and unit price 12. Corrected offset model citations."
+          }
+        ]
+      },
+      "tool_excerpts": [
+        {
+          "call": 1,
+          "tool": "browser_navigate",
+          "arguments": {
+            "url": "http://fixture.test"
+          },
+          "visible": "- heading \"Basket\" [level=1]\n- paragraph: \"Quantity: 2\"\n- paragraph: \"Unit price: $12\"\n- paragraph: \"Subtotal: $24\"\n- link \"Checkout\":\n  - /url: /checkout\n- status",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 2,
+          "tool": "browser_click",
+          "arguments": {
+            "role": "link",
+            "name": "Checkout"
+          },
+          "visible": "- heading \"Checkout\" [level=1]\n- paragraph: \"Quantity: 2\"\n- paragraph: \"Unit price: $12\"\n- paragraph: \"Subtotal: $12\"\n- link \"Back to basket\":\n  - /url: /\n- status",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        }
+      ],
+      "server_oracle": [
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/checkout",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        }
+      ],
+      "raw_trace_sha256": "9e3054228800f711e29e9227ade8709560ffe840fb85a8efd88a75bd0e870d76"
+    },
+    "run-013": {
+      "case_id": "cart-buggy",
+      "arm": "argus",
+      "original_model_report": {
+        "findings": [
+          {
+            "summary": "Checkout subtotal is incorrect for two $12 items.",
+            "expected": "$24 subtotal, excluding tax and shipping.",
+            "observed": "Basket shows $24, but checkout shows $12 for quantity 2 at $12 each. The incorrect checkout subtotal persists after reload.",
+            "evidence_calls": [
+              1,
+              3,
+              4,
+              5
+            ]
+          }
+        ],
+        "covered_goals": [
+          {
+            "goal": "basket-total",
+            "evidence_calls": [
+              1
+            ]
+          },
+          {
+            "goal": "checkout-total",
+            "evidence_calls": [
+              3,
+              4,
+              5
+            ]
+          }
+        ],
+        "limitations": []
+      },
+      "review": {
+        "findings": [
+          {
+            "claim_index": 0,
+            "matched_bug": "cart-contract",
+            "evidence_calls": [
+              1,
+              3,
+              4,
+              5
+            ],
+            "rationale": "Same quantity and unit price yielded 24 in basket and 12 in checkout; fresh-load observation reproduced the inconsistency."
+          }
+        ],
+        "goals": [
+          {
+            "goal": "basket-total",
+            "evidence_calls": [
+              1
+            ],
+            "rationale": "Same quantity and unit price yielded 24 in basket and 12 in checkout; fresh-load observation reproduced the inconsistency."
+          },
+          {
+            "goal": "checkout-total",
+            "evidence_calls": [
+              3,
+              4
+            ],
+            "rationale": "Same quantity and unit price yielded 24 in basket and 12 in checkout; fresh-load observation reproduced the inconsistency."
+          }
+        ]
+      },
+      "tool_excerpts": [
+        {
+          "call": 1,
+          "tool": "start_session",
+          "arguments": {
+            "url": "http://fixture.test",
+            "goals": [
+              "basket-total",
+              "checkout-total"
+            ],
+            "constraints": [
+              "Use synthetic values only",
+              "Stay on http://fixture.test",
+              "Do not inspect source code or files",
+              "Two items at $12 each must have basket and checkout subtotals of $24, excluding tax and shipping"
+            ],
+            "time_budget_minutes": 5
+          },
+          "visible": "Basket\n\nQuantity: 2\n\nUnit price: $12\n\nSubtotal: $24\n\nCheckout",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 3,
+          "tool": "click_what",
+          "arguments": {
+            "description": "link \"Checkout\""
+          },
+          "visible": "Checkout\n\nQuantity: 2\n\nUnit price: $12\n\nSubtotal: $12\n\nBack to basket",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 4,
+          "tool": "verify_persistence",
+          "arguments": {
+            "after_url": "http://fixture.test/checkout",
+            "expect": "present",
+            "target_text": "Subtotal: $12"
+          },
+          "visible": "Checkout\n\nQuantity: 2\n\nUnit price: $12\n\nSubtotal: $12\n\nBack to basket",
+          "verification": {
+            "expect": "present",
+            "target_text": "Subtotal: $12",
+            "url": "/checkout",
+            "present": true,
+            "matches": true,
+            "clear_storage": false
+          },
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 5,
+          "tool": "record_bug",
+          "arguments": {
+            "severity": "HIGH",
+            "title": "Checkout subtotal is $12 instead of $24 for two $12 items",
+            "evidence": {
+              "expected": "2 \u00d7 $12 = $24 subtotal, excluding tax and shipping.",
+              "observed": "Basket shows Quantity: 2, Unit price: $12, Subtotal: $24. Following Checkout shows Quantity: 2, Unit price: $12, Subtotal: $12; fresh load reproduces.",
+              "steps": [
+                "Open / and observe basket quantity 2, unit price $12, subtotal $24.",
+                "Click Checkout.",
+                "Observe checkout subtotal $12.",
+                "Reload /checkout; subtotal remains $12."
+              ]
+            },
+            "verify": {
+              "expect": "present",
+              "target_text": "Subtotal: $12",
+              "at_url": "http://fixture.test/checkout"
+            }
+          },
+          "visible": null,
+          "verification": null,
+          "verdict": "verified",
+          "recorded": true,
+          "receipt": {
+            "attempted": true,
+            "reproduced": true,
+            "flaky": false,
+            "runs": "2/2",
+            "expect": "present",
+            "method": "fresh-load symptom re-check (server truth, no fixture reset)",
+            "target_text": "Subtotal: $12",
+            "at_url": "http://fixture.test/checkout",
+            "observed_present": [
+              true,
+              true
+            ]
+          },
+          "reason": null
+        }
+      ],
+      "server_oracle": [
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/checkout",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/checkout",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/checkout",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/checkout",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        }
+      ],
+      "raw_trace_sha256": "3e344c0229d2090113ad53083af5d2688805d706b203df0ba536de0526cada3b"
+    },
+    "run-014": {
+      "case_id": "cart-fixed",
+      "arm": "argus",
+      "original_model_report": {
+        "findings": [],
+        "covered_goals": [
+          {
+            "goal": "basket-total",
+            "evidence_calls": [
+              1
+            ]
+          },
+          {
+            "goal": "checkout-total",
+            "evidence_calls": [
+              3
+            ]
+          }
+        ],
+        "limitations": []
+      },
+      "review": {
+        "findings": [],
+        "goals": [
+          {
+            "goal": "basket-total",
+            "evidence_calls": [
+              1
+            ],
+            "rationale": "Both basket and checkout displayed quantity 2, price 12 and subtotal 24."
+          },
+          {
+            "goal": "checkout-total",
+            "evidence_calls": [
+              3
+            ],
+            "rationale": "Both basket and checkout displayed quantity 2, price 12 and subtotal 24."
+          }
+        ]
+      },
+      "tool_excerpts": [
+        {
+          "call": 1,
+          "tool": "start_session",
+          "arguments": {
+            "url": "http://fixture.test",
+            "goals": [
+              "basket-total",
+              "checkout-total"
+            ],
+            "constraints": [
+              "Use synthetic values only",
+              "Stay on origin http://fixture.test",
+              "Do not inspect source code or files",
+              "Two items at $12 each must have basket and checkout subtotals of $24; exclude tax and shipping"
+            ],
+            "time_budget_minutes": 5
+          },
+          "visible": "Basket\n\nQuantity: 2\n\nUnit price: $12\n\nSubtotal: $24\n\nCheckout",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 3,
+          "tool": "click_what",
+          "arguments": {
+            "description": "link \"Checkout\""
+          },
+          "visible": "Checkout\n\nQuantity: 2\n\nUnit price: $12\n\nSubtotal: $24\n\nBack to basket",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        }
+      ],
+      "server_oracle": [
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/checkout",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        }
+      ],
+      "raw_trace_sha256": "323e4a9117c15b6d0668d4e6912a8c603570a64ccf418345b1a733f630d6ece8"
+    },
+    "run-015": {
+      "case_id": "cart-fixed",
+      "arm": "baseline",
+      "original_model_report": {
+        "findings": [],
+        "covered_goals": [
+          {
+            "goal": "basket-total",
+            "evidence_calls": [
+              1
+            ]
+          },
+          {
+            "goal": "checkout-total",
+            "evidence_calls": [
+              2
+            ]
+          }
+        ],
+        "limitations": []
+      },
+      "review": {
+        "findings": [],
+        "goals": [
+          {
+            "goal": "basket-total",
+            "evidence_calls": [
+              1
+            ],
+            "rationale": "Both views displayed the expected subtotal 24."
+          },
+          {
+            "goal": "checkout-total",
+            "evidence_calls": [
+              2
+            ],
+            "rationale": "Both views displayed the expected subtotal 24."
+          }
+        ]
+      },
+      "tool_excerpts": [
+        {
+          "call": 1,
+          "tool": "browser_navigate",
+          "arguments": {
+            "url": "http://fixture.test"
+          },
+          "visible": "- heading \"Basket\" [level=1]\n- paragraph: \"Quantity: 2\"\n- paragraph: \"Unit price: $12\"\n- paragraph: \"Subtotal: $24\"\n- link \"Checkout\":\n  - /url: /checkout\n- status",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 2,
+          "tool": "browser_click",
+          "arguments": {
+            "name": "Checkout",
+            "role": "link"
+          },
+          "visible": "- heading \"Checkout\" [level=1]\n- paragraph: \"Quantity: 2\"\n- paragraph: \"Unit price: $12\"\n- paragraph: \"Subtotal: $24\"\n- link \"Back to basket\":\n  - /url: /\n- status",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        }
+      ],
+      "server_oracle": [
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/checkout",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        }
+      ],
+      "raw_trace_sha256": "2845c01c80bc4791d463415ddee89adda23fb5d5a92a6edf318b62a4965a901e"
+    },
+    "run-016": {
+      "case_id": "profile-buggy",
+      "arm": "argus",
+      "original_model_report": {
+        "findings": [
+          {
+            "summary": "Saved display name reverts after reload.",
+            "expected": "The saved name remains after reloading.",
+            "observed": "Saving \u201cTest Cedar 482\u201d and \u201cTest Willow 739\u201d displayed each name with \u201cSaved\u201d feedback. Reloading without clearing storage restored \u201cAlex\u201d both times.",
+            "evidence_calls": [
+              4,
+              5,
+              7,
+              8
+            ]
+          }
+        ],
+        "covered_goals": [
+          {
+            "goal": "edit-name",
+            "evidence_calls": [
+              4,
+              7
+            ]
+          },
+          {
+            "goal": "reload-name",
+            "evidence_calls": [
+              5,
+              8
+            ]
+          }
+        ],
+        "limitations": [
+          "Argus automatic replay was inconclusive; the finding relies on two directly observed save-and-reload attempts."
+        ]
+      },
+      "review": {
+        "findings": [
+          {
+            "claim_index": 0,
+            "matched_bug": "profile-contract",
+            "evidence_calls": [
+              3,
+              4,
+              5,
+              6,
+              7,
+              8
+            ],
+            "rationale": "Two directly observed save/reload transitions lost the value. Automatic replay was inconclusive and a duplicate record attempt did not upgrade it; the visible transitions support the finding. Corrected offset citations."
+          }
+        ],
+        "goals": [
+          {
+            "goal": "edit-name",
+            "evidence_calls": [
+              3,
+              6
+            ],
+            "rationale": "Two directly observed save/reload transitions lost the value. Automatic replay was inconclusive and a duplicate record attempt did not upgrade it; the visible transitions support the finding. Corrected offset citations."
+          },
+          {
+            "goal": "reload-name",
+            "evidence_calls": [
+              4,
+              7
+            ],
+            "rationale": "Two directly observed save/reload transitions lost the value. Automatic replay was inconclusive and a duplicate record attempt did not upgrade it; the visible transitions support the finding. Corrected offset citations."
+          }
+        ]
+      },
+      "tool_excerpts": [
+        {
+          "call": 3,
+          "tool": "test_form",
+          "arguments": {
+            "form_fields": {
+              "Display name": "Test Cedar 482"
+            },
+            "submit": "Save"
+          },
+          "visible": "Profile\n\nDisplay name: Test Cedar 482\n\nDisplay nameSave\n\nSaved",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 4,
+          "tool": "verify_persistence",
+          "arguments": {
+            "expect": "present",
+            "target_text": "Test Cedar 482",
+            "after_url": "http://fixture.test/"
+          },
+          "visible": "Profile\n\nDisplay name: Alex\n\nDisplay nameSave\n\nSaved",
+          "verification": {
+            "expect": "present",
+            "target_text": "Test Cedar 482",
+            "url": "/",
+            "present": false,
+            "matches": false,
+            "clear_storage": false
+          },
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 5,
+          "tool": "record_bug",
+          "arguments": {
+            "title": "Saved display name reverts after reload",
+            "severity": "HIGH",
+            "evidence": {
+              "steps": [
+                "Open http://fixture.test/",
+                "Replace Display name with synthetic value Test Cedar 482 and click Save",
+                "Confirm profile shows Display name: Test Cedar 482 and Saved",
+                "Reload the page without clearing storage"
+              ],
+              "expected": "The saved display name Test Cedar 482 remains after reload.",
+              "actual": "The profile and input revert to Alex after reload, despite Saved feedback.",
+              "evidence_calls": [
+                4,
+                5
+              ]
+            },
+            "verify": {
+              "expect": "absent",
+              "target_text": "Test Cedar 482",
+              "at_url": "http://fixture.test/",
+              "replay": true
+            }
+          },
+          "visible": null,
+          "verification": null,
+          "verdict": "inconclusive",
+          "recorded": true,
+          "receipt": {
+            "attempted": true,
+            "mode": "replay",
+            "steps": 2,
+            "diverged": false,
+            "at_url": "http://fixture.test",
+            "writes_replayed": 1,
+            "target_text": "Test Cedar 482",
+            "expect": "absent",
+            "method": "cold replay of 2 recorded step(s) in a fresh isolated context",
+            "symptom_before": true,
+            "symptom_after": false,
+            "reproduced": null,
+            "reason": "symptom already held before the journey \u2014 not attributable to these steps (pre-existing / residual state)"
+          },
+          "reason": null
+        },
+        {
+          "call": 6,
+          "tool": "test_form",
+          "arguments": {
+            "form_fields": {
+              "Display name": "Test Willow 739"
+            },
+            "submit": "Save"
+          },
+          "visible": "Profile\n\nDisplay name: Test Willow 739\n\nDisplay nameSave\n\nSaved",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 7,
+          "tool": "verify_persistence",
+          "arguments": {
+            "expect": "present",
+            "target_text": "Test Willow 739",
+            "after_url": "http://fixture.test/"
+          },
+          "visible": "Profile\n\nDisplay name: Alex\n\nDisplay nameSave\n\nSaved",
+          "verification": {
+            "expect": "present",
+            "target_text": "Test Willow 739",
+            "url": "/",
+            "present": false,
+            "matches": false,
+            "clear_storage": false
+          },
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 8,
+          "tool": "record_bug",
+          "arguments": {
+            "title": "Saved display name reverts after reload",
+            "severity": "HIGH",
+            "evidence": {
+              "expected": "Saved display name remains after reload.",
+              "actual": "Twice, saving synthetic names showed the new name and Saved, then fresh-loading without clearing storage restored Alex in both profile and input.",
+              "reproductions": [
+                {
+                  "name": "Test Cedar 482",
+                  "save_call": 4,
+                  "reload_call": 5
+                },
+                {
+                  "name": "Test Willow 739",
+                  "save_call": 7,
+                  "reload_call": 8
+                }
+              ]
+            },
+            "verify": {
+              "expect": "absent",
+              "target_text": "Test Willow 739",
+              "at_url": "http://fixture.test/"
+            }
+          },
+          "visible": null,
+          "verification": null,
+          "verdict": null,
+          "recorded": false,
+          "receipt": null,
+          "reason": "duplicate"
+        }
+      ],
+      "server_oracle": [
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "name": [
+              "Test Cedar 482"
+            ]
+          },
+          "state": {
+            "name": "Test Cedar 482",
+            "deleted": false,
+            "message": "Saved",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Test Cedar 482",
+            "deleted": false,
+            "message": "Saved"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Saved"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Saved"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "name": [
+              "Test Cedar 482"
+            ]
+          },
+          "state": {
+            "name": "Test Cedar 482",
+            "deleted": false,
+            "message": "Saved",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Test Cedar 482",
+            "deleted": false,
+            "message": "Saved"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "name": [
+              "Test Willow 739"
+            ]
+          },
+          "state": {
+            "name": "Test Willow 739",
+            "deleted": false,
+            "message": "Saved",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Test Willow 739",
+            "deleted": false,
+            "message": "Saved"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Saved"
+          }
+        }
+      ],
+      "raw_trace_sha256": "2e16bf09e5829086f3cee8b19d2da47444421175afa30c38d23519395558c6cc"
+    },
+    "run-017": {
+      "case_id": "profile-buggy",
+      "arm": "baseline",
+      "original_model_report": {
+        "findings": [
+          {
+            "summary": "Saved display name is lost after reload.",
+            "expected": "The saved name \u201cTest Maple 482\u201d remains after reloading.",
+            "observed": "Saving displayed \u201cTest Maple 482\u201d and \u201cSaved\u201d. Reloading reverted both the profile name and input to \u201cAlex\u201d.",
+            "evidence_calls": [
+              3,
+              4
+            ]
+          }
+        ],
+        "covered_goals": [
+          {
+            "goal": "edit-name",
+            "evidence_calls": [
+              2,
+              3
+            ]
+          },
+          {
+            "goal": "reload-name",
+            "evidence_calls": [
+              3,
+              4
+            ]
+          }
+        ],
+        "limitations": [
+          "Evidence numbers count testing MCP calls: 1 navigate, 2 fill, 3 Save, 4 reload."
+        ]
+      },
+      "review": {
+        "findings": [
+          {
+            "claim_index": 0,
+            "matched_bug": "profile-contract",
+            "evidence_calls": [
+              3,
+              4
+            ],
+            "rationale": "Saved value reverted to Alex after reload, consistent with the server oracle."
+          }
+        ],
+        "goals": [
+          {
+            "goal": "edit-name",
+            "evidence_calls": [
+              2,
+              3
+            ],
+            "rationale": "Saved value reverted to Alex after reload, consistent with the server oracle."
+          },
+          {
+            "goal": "reload-name",
+            "evidence_calls": [
+              3,
+              4
+            ],
+            "rationale": "Saved value reverted to Alex after reload, consistent with the server oracle."
+          }
+        ]
+      },
+      "tool_excerpts": [
+        {
+          "call": 2,
+          "tool": "browser_fill",
+          "arguments": {
+            "label": "Display name",
+            "value": "Test Maple 482"
+          },
+          "visible": "- heading \"Profile\" [level=1]\n- paragraph: \"Display name: Alex\"\n- text: Display name\n- textbox \"Display name\": Test Maple 482\n- button \"Save\"\n- status",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 3,
+          "tool": "browser_click",
+          "arguments": {
+            "role": "button",
+            "name": "Save"
+          },
+          "visible": "- heading \"Profile\" [level=1]\n- paragraph: \"Display name: Test Maple 482\"\n- text: Display name\n- textbox \"Display name\": Test Maple 482\n- button \"Save\"\n- status: Saved",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 4,
+          "tool": "browser_reload",
+          "arguments": {},
+          "visible": "- heading \"Profile\" [level=1]\n- paragraph: \"Display name: Alex\"\n- text: Display name\n- textbox \"Display name\": Alex\n- button \"Save\"\n- status: Saved",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        }
+      ],
+      "server_oracle": [
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "name": [
+              "Test Maple 482"
+            ]
+          },
+          "state": {
+            "name": "Test Maple 482",
+            "deleted": false,
+            "message": "Saved",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Test Maple 482",
+            "deleted": false,
+            "message": "Saved"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Saved"
+          }
+        }
+      ],
+      "raw_trace_sha256": "d20c74dbc31c69f16064be8633e8f47abecd9621236f473e8bbb704789814157"
+    },
+    "run-018": {
+      "case_id": "profile-fixed",
+      "arm": "baseline",
+      "original_model_report": {
+        "findings": [],
+        "covered_goals": [
+          {
+            "goal": "edit-name: Saved synthetic display name \"Test Cedar 482\"; the displayed name updated and status showed \"Saved\".",
+            "evidence_calls": [
+              2,
+              3
+            ]
+          },
+          {
+            "goal": "reload-name: After reload, the displayed name and input retained \"Test Cedar 482\".",
+            "evidence_calls": [
+              3,
+              4
+            ]
+          }
+        ],
+        "limitations": []
+      },
+      "review": {
+        "findings": [],
+        "goals": [
+          {
+            "goal": "edit-name",
+            "evidence_calls": [
+              2,
+              3
+            ],
+            "rationale": "Save and reload retained the value. Canonicalized descriptive goal labels."
+          },
+          {
+            "goal": "reload-name",
+            "evidence_calls": [
+              3,
+              4
+            ],
+            "rationale": "Save and reload retained the value. Canonicalized descriptive goal labels."
+          }
+        ]
+      },
+      "tool_excerpts": [
+        {
+          "call": 2,
+          "tool": "browser_fill",
+          "arguments": {
+            "label": "Display name",
+            "value": "Test Cedar 482"
+          },
+          "visible": "- heading \"Profile\" [level=1]\n- paragraph: \"Display name: Alex\"\n- text: Display name\n- textbox \"Display name\": Test Cedar 482\n- button \"Save\"\n- status",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 3,
+          "tool": "browser_click",
+          "arguments": {
+            "role": "button",
+            "name": "Save"
+          },
+          "visible": "- heading \"Profile\" [level=1]\n- paragraph: \"Display name: Test Cedar 482\"\n- text: Display name\n- textbox \"Display name\": Test Cedar 482\n- button \"Save\"\n- status: Saved",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 4,
+          "tool": "browser_reload",
+          "arguments": {},
+          "visible": "- heading \"Profile\" [level=1]\n- paragraph: \"Display name: Test Cedar 482\"\n- text: Display name\n- textbox \"Display name\": Test Cedar 482\n- button \"Save\"\n- status: Saved",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        }
+      ],
+      "server_oracle": [
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "name": [
+              "Test Cedar 482"
+            ]
+          },
+          "state": {
+            "name": "Test Cedar 482",
+            "deleted": false,
+            "message": "Saved",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Test Cedar 482",
+            "deleted": false,
+            "message": "Saved"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Test Cedar 482",
+            "deleted": false,
+            "message": "Saved"
+          }
+        }
+      ],
+      "raw_trace_sha256": "49c98453cadc33814baade0d0f50ed3c75430229e3b4662c70a10aeee772cdf2"
+    },
+    "run-019": {
+      "case_id": "profile-fixed",
+      "arm": "argus",
+      "original_model_report": {
+        "findings": [],
+        "covered_goals": [
+          {
+            "goal": "edit-name",
+            "evidence_calls": [
+              4
+            ]
+          },
+          {
+            "goal": "reload-name",
+            "evidence_calls": [
+              4,
+              5
+            ]
+          }
+        ],
+        "limitations": []
+      },
+      "review": {
+        "findings": [],
+        "goals": [
+          {
+            "goal": "edit-name",
+            "evidence_calls": [
+              3
+            ],
+            "rationale": "Saved name remained after fresh load; corrected offset model citations to actual save and check calls."
+          },
+          {
+            "goal": "reload-name",
+            "evidence_calls": [
+              4
+            ],
+            "rationale": "Saved name remained after fresh load; corrected offset model citations to actual save and check calls."
+          }
+        ]
+      },
+      "tool_excerpts": [
+        {
+          "call": 3,
+          "tool": "test_form",
+          "arguments": {
+            "form_fields": {
+              "Display name": "Test Rowan 742"
+            },
+            "submit": "Save"
+          },
+          "visible": "Profile\n\nDisplay name: Test Rowan 742\n\nDisplay nameSave\n\nSaved",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 4,
+          "tool": "verify_persistence",
+          "arguments": {
+            "expect": "present",
+            "target_text": "Test Rowan 742",
+            "after_url": "http://fixture.test/"
+          },
+          "visible": "Profile\n\nDisplay name: Test Rowan 742\n\nDisplay nameSave\n\nSaved",
+          "verification": {
+            "expect": "present",
+            "target_text": "Test Rowan 742",
+            "url": "/",
+            "present": true,
+            "matches": true,
+            "clear_storage": false
+          },
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        }
+      ],
+      "server_oracle": [
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "name": [
+              "Test Rowan 742"
+            ]
+          },
+          "state": {
+            "name": "Test Rowan 742",
+            "deleted": false,
+            "message": "Saved",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Test Rowan 742",
+            "deleted": false,
+            "message": "Saved"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Test Rowan 742",
+            "deleted": false,
+            "message": "Saved"
+          }
+        }
+      ],
+      "raw_trace_sha256": "858058a5e5f7a9d348bd43263ebc7020212818f35fe6e07dbc332d692672fa12"
+    }
+  }
+}

@@ -23,6 +23,7 @@ PUBLIC_FILES = {
     "docs/implementation-0.7.md",
     "docs/agent-protocol.md",
     "docs/evaluation.md",
+    "docs/evaluation-0.8.md",
     "scripts/check_distributions.py",
     "test-site/app.py",
     "human-eye-fixture/app.py",

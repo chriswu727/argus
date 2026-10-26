@@ -16,6 +16,7 @@ from .capture import _capture_browser_events, _file_event_bugs
 from .evidence import _auto_screenshot, _record_action, _record_coverage_action
 from .expectations import _evaluate_expectation, _reconcile_action
 from .observation import _resolve_or_error
+from .payloads import observation_data
 from .session import _require_session
 
 
@@ -166,6 +167,7 @@ async def test_action(target: str, expectation: str = "", expect: Optional[dict]
     return ToolText(
         "\n".join(lines),
         {
+            "observation": observation_data(s, after),
             "changes": changes[:100],
             "changes_omitted": max(0, len(changes) - 100),
             "expectations": [
@@ -210,6 +212,7 @@ async def test_form(
     s._last_elements = before.elements
 
     field_results = []
+    partial = False
     for field_desc, value in form_fields.items():
         # Re-observe before each field; SPA re-renders shift element refs.
         state = await s.browser.get_state()
@@ -221,6 +224,7 @@ async def test_form(
             result_any = resolve_element(field_desc, state.elements)
             if result_any.reason != "unique" or result_any.found is None:
                 field_results.append(f"[MISS] {field_desc!r} — {result.reason}")
+                partial = True
                 continue
             el = result_any.found
         else:
@@ -239,6 +243,7 @@ async def test_form(
             )
         except Exception as exc:
             field_results.append(f"[FAIL] {field_desc!r} — {exc}")
+            partial = True
 
     # Submit
     state = await s.browser.get_state()
@@ -256,7 +261,10 @@ async def test_form(
             _record_action(s, "press_key", "Enter")
         except Exception as exc:
             await _auto_screenshot(s, "form_no_submit", "Enter-key submit failed")
-            return f"FORM: filled {len(field_results)} fields but Enter-submit failed: {exc}"
+            return Rejection(
+                f"FORM: filled {len(field_results)} fields but Enter-submit failed: {exc}",
+                ErrorCode.BACKEND,
+            )
     else:
         if submit == "auto":
             # Auto-discover: prefer a button whose text matches typical submit verbs.
@@ -292,7 +300,7 @@ async def test_form(
         else:
             result = resolve_element(submit, state.elements, kind_filter="button")
             if result.reason != "unique" or result.found is None:
-                return (
+                return Rejection(
                     f"FORM: filled {len(field_results)} fields but submit "
                     f"description {submit!r} did not resolve: {result.reason}.\n"
                     + "\n".join(field_results)
@@ -301,7 +309,7 @@ async def test_form(
 
         if target_el is None:
             await _auto_screenshot(s, "form_no_submit", "Could not find submit button")
-            return (
+            return Rejection(
                 f"FORM: filled {len(field_results)} fields but no submit button "
                 f'found. Pass submit="enter" or submit="<description>" '
                 f"explicitly.\n" + "\n".join(field_results)
@@ -316,9 +324,10 @@ async def test_form(
             _record_action(s, "click_what", submit_label)
         except Exception as exc:
             await _auto_screenshot(s, "form_submit_fail", "Submit click failed")
-            return (
+            return Rejection(
                 f"FORM: filled {len(field_results)} fields but submit click failed: {exc}\n"
-                + "\n".join(field_results)
+                + "\n".join(field_results),
+                ErrorCode.BACKEND,
             )
 
     await asyncio.sleep(0.3)
@@ -381,4 +390,15 @@ async def test_form(
         "garbage / lost data / showed a misleading toast / etc., call record_bug."
     )
     lines.append(f"Screenshot: {ss_path}")
-    return "\n".join(lines)
+    return ToolText(
+        "\n".join(lines),
+        {
+            "observation": observation_data(s, after),
+            "fields": field_results,
+            "changes": changes[:100],
+            "changes_omitted": max(0, len(changes) - 100),
+            "screenshot": ss_path,
+            "finding_confirmed": False,
+            "partial": partial,
+        },
+    )

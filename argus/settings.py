@@ -49,11 +49,15 @@ class Settings:
     event_capacity: int = 512
     monitor_port: int | None = None
     unsafe_eval: bool = False
+    response_mode: str = "compatible"
     capture: CaptureSettings = field(default_factory=CaptureSettings)
     access: AccessPolicy = field(default_factory=AccessPolicy)
 
     def __post_init__(self) -> None:
         import math
+
+        if self.response_mode not in {"compatible", "compact"}:
+            raise ValueError("response_mode must be compatible or compact")
 
         for name in ("operation_timeout", "queue_timeout", "cleanup_timeout"):
             value = getattr(self, name)
@@ -78,6 +82,7 @@ class Settings:
             if env.get("ARGUS_MONITOR_PORT")
             else None,
             "unsafe_eval": env.get("ARGUS_UNSAFE_EVAL", "").lower() in {"1", "true"},
+            "response_mode": env.get("ARGUS_RESPONSE_MODE", "compatible"),
             "capture": CaptureSettings.from_env(env),
             "access": AccessPolicy.from_env(env),
         }

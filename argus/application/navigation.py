@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from argus.domain.contracts import ErrorCode, Rejection
+
 from .coverage import _coverage_reference_url
 from .evidence import _record_action, _record_coverage_action
+from .payloads import action_result
 from .session import _require_session, _require_web_session
 
 
@@ -154,7 +157,12 @@ async def navigate(url: str) -> str:
         s.pages_visited.append(state.url)
     _record_action(s, "navigate", value=url)
 
-    return f"Navigated to {state.url} — {state.title} ({len(state.elements)} elements)"
+    return await action_result(
+        s,
+        f"Navigated to {state.url} — {state.title} ({len(state.elements)} elements)",
+        "navigate",
+        state,
+    )
 
 
 async def go_back() -> str:
@@ -172,8 +180,8 @@ async def go_back() -> str:
         if state.url not in s.pages_visited:
             s.pages_visited.append(state.url)
         _record_coverage_action(s, "go_back", _coverage_reference_url(state.url))
-        return f"Went back to {state.url}"
-    return "Failed to go back"
+        return await action_result(s, f"Went back to {state.url}", "back", state)
+    return Rejection("Failed to go back", ErrorCode.BACKEND)
 
 
 async def scroll_down() -> str:

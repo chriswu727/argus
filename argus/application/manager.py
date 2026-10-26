@@ -19,6 +19,7 @@ from argus.settings import Settings
 from argus.storage import StorageError
 
 from .context import runtime_scope
+from .guidance import monitor_counts
 from .progress import Stage, emit
 from .session import Session
 from .telemetry import EventStream
@@ -52,16 +53,18 @@ class SessionManager:
         self.started = time.monotonic()
         self.last_progress = time.time()
         self.last_error: str | None = None
+        self.last_stage: str | None = None
         self.ready = True
         self.closing = False
         self._active_task: asyncio.Task | None = None
 
     async def progress(self, stage: Stage) -> None:
         self.last_progress = time.time()
+        self.last_stage = stage.name.lower()
         self.events.publish(
             "progress", self.state.value, self.current_operation, stage.name.lower()
         )
-        await emit(stage)
+        await emit(stage, monitor_counts(self.session))
 
     def _result(self, value: Any, error: ErrorCode | None = None) -> OperationResult:
         return OperationResult(
@@ -250,6 +253,8 @@ class SessionManager:
             else 0,
             "last_progress_at": self.last_progress,
             "last_error": self.last_error,
+            "stage": self.last_stage,
+            "testing": monitor_counts(session),
             "calls": sum(self.calls.values()),
             "failures": sum(self.failures.values()),
             "findings": len(session.bugs),

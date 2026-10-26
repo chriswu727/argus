@@ -1,10 +1,11 @@
 # Paired evaluation
 
-Availability: development on `main`; not included in PyPI 0.7.1.
+Available in 0.8.0 and newer.
 
-The evaluation package is separate from the MCP runtime. It has no provider
-client, API key requirement or autonomous model invocation. It supports local
-protocol smoke checks and offline scoring of externally collected agent trials.
+The evaluation package is separate from the MCP runtime. Its default CLI only
+runs local protocol smoke checks and offline scoring. A separate, explicit opt-in
+Codex collector consumes the operator's subscription; it is never invoked by the
+MCP server, package import or test suite. No API-provider fallback is implemented.
 
 ## Local smoke check
 
@@ -80,3 +81,87 @@ quality are desirable, but small samples are not statistically conclusive.
 Do not publish private targets, credentials, customer data or raw transcripts.
 The scorer does not sanitize externally supplied evidence when saving datasets.
 Review artifacts before sharing. Only synthetic fixtures belong in this repository.
+
+## Opt-in Codex collection (POSIX hosts)
+
+Use an installed Codex CLI logged in with ChatGPT. Obtain explicit authorization
+for the model, number of attempts and budget first. The collector sets
+`forced_login_method=chatgpt`, removes API-key environment variables, disables
+shell/web/plugin tools, and uses an empty working directory and ephemeral runs.
+The synthetic testing gateway alone is pre-approved for this invocation; the
+user's persistent Codex settings are not changed. See the official
+[non-interactive interface](https://learn.chatgpt.com/docs/non-interactive-mode)
+and [MCP tool policies](https://learn.chatgpt.com/docs/extend/mcp).
+
+```bash
+# Only after explicit authorization; MODEL must be an available, fixed model.
+python -m argus.evaluation.codex_runner \
+  --allow-subscription-usage --model MODEL --effort high \
+  --output /private/path/collection --runs 8 --max-runs 32
+```
+
+The same directory can continue to a larger `--runs` value without repeating
+existing attempts. Its immutable manifest pins implementation, fixture, prompt,
+host and model settings. `--max-runs` persists the approved collection cap, at
+most 32. Changed controls, incomplete attempts or host/tool-startup failures stop
+collection. Track authorization across separate collections as well; creating a
+new directory is not permission to reset a user's overall budget.
+
+Each run has a five-minute model deadline and a gateway that executes at most
+60 tool calls. Process cleanup is bounded separately. Attempts, interruptions
+and failures remain on disk. The runner rejects disallowed host tool execution,
+caps event output at 16 MB and stderr at 64 KB, and does not retain model reasoning.
+Directories are private; only synthetic data should enter these fixtures.
+
+The baseline is a small conventional Playwright MCP adapter, not Microsoft's
+official Playwright MCP. Both arms can navigate, read visible state, click, fill,
+reload, use the keyboard and take screenshots. Baseline click/fill/navigation
+already return post-action snapshots. Argus adds its testing protocol, evidence,
+verification, coverage and the 19-tool `agent` profile with compact structured results.
+Compare these configurations,
+not entire third-party products. Neither model receives the fixture source or
+bug/fixed variant. Each trial uses a fresh server and browser state.
+
+Eight cases cover four task families. The historical `form-fixed` case is a
+partial fix with a known missing-local-part validation defect, not a clean control;
+its oracle includes `form-localpart`. Profile, deletion and cart fixed cases are
+clean controls. Browser regression tests verify these declarations. The normal schedule
+has two repetitions, alternating arm order. `seed` records the fixture/order seed;
+Codex model sampling does not expose a deterministic seed in this runner. Token
+usage is the host's reported total input (including cached input) and output, not
+a dollar-cost estimate. Keep model, host and reasoning effort fixed.
+
+## Independent adjudication
+
+The collector saves an unscored model answer, tool trace and server-side oracle
+log for each attempt. A reviewer must inspect the observed behavior against the
+stated requirement, not match keywords or trust a reproduction badge. Every model
+claim receives a match or null; unsupported and duplicate claims cannot be omitted.
+Coverage needs successful tool references showing the actual journey, not merely
+the model's assertion that it was covered.
+
+Create a review keyed by run directory, using `Review.model_json_schema()` from
+`argus.evaluation.adjudication`. Each finding decision includes its zero-based
+claim index, matched bug ID or null, reviewer-checked evidence call numbers, and
+rationale. Keep the original answer unchanged; explicitly explain any correction
+to model-generated call numbering. Each goal decision includes
+the goal ID, evidence call numbers and rationale. Then validate and score:
+
+```bash
+python -m argus.evaluation.adjudication \
+  --collection /private/path/collection --reviews /private/path/reviews.json \
+  --output /private/path/paired.json
+python -m argus.evaluation --compare /private/path/paired.json
+```
+
+The assembler requires a review for every finalized attempt, every finding,
+valid trace references and complete pairs. It still trusts the reviewer's semantic
+judgment. Audit that judgment with server logs and trace excerpts. Protocol-invalid
+preflight attempts must be reported separately with their reason and cost; do not
+quietly erase them or describe them as successful application tests.
+
+For historical collections, `--cases reviewed-cases.json` supplies an explicit
+list of `Case` records instead of the current fixture oracle. Document any
+ground-truth correction and apply it to both arms. See the
+[0.8 evaluation report](evaluation-0.8.md) for results, preflight dispositions,
+the post-hoc fixture correction and downloadable evidence.

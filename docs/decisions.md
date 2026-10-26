@@ -84,7 +84,7 @@ than growing a single universal driver interface.
 
 ## ADR 7 — Additive agent results and best-effort progress
 
-Status: accepted on main, after 0.7.1.
+Status: shipped in 0.8.0.
 
 Keep existing tool names, arguments and text/image content; add a versioned
 structured envelope with evidence supplied by the application layer. Do not
@@ -102,7 +102,7 @@ Measure actual agent costs with paired trials before changing default verbosity.
 
 ## ADR 8 — Separate protocol controls from agent effectiveness
 
-Status: accepted on main, after 0.7.1.
+Status: shipped in 0.8.0.
 
 Use exact externally adjudicated bug IDs, matched experimental controls, and
 evidence-backed coverage. Reject incomplete pairs instead of silently dropping
@@ -113,3 +113,37 @@ do not call any model.
 Trade-off: the scorer trusts supplied adjudication and cannot certify an external
 experiment. Independent evidence review and sufficient repeated trials are
 required before publishing claims about an agent's quality or efficiency.
+
+## ADR 9 — Deterministic guidance without an embedded model
+
+Status: accepted for 0.8.
+
+Use bounded evidence-based next-check suggestions, post-action observations and
+explicit unknown outcomes to support the host agent. Do not introduce a second
+LLM planner, automatic writes, or guessed coverage. Keep conventional output as
+the default; compact mode is an operator choice for hosts that consume structured
+content. Model effectiveness must be measured separately from byte reduction.
+
+Trade-off: hints are simple and can be inapplicable. The host remains responsible
+for product semantics, user constraints and choosing the next action. A stalled
+hint is a signal to reconsider, not an automatic stop or retry.
+
+The optional `agent` profile narrows discovery to 19 common tools; `core` stays
+the default. Atomic batch coverage avoids separate calls for goals sharing a
+journey without inferring that those goals passed. Verification returns its page
+observation, so a host can reuse evidence rather than observing reflexively.
+
+## ADR 10 — Real-host collection with separately reviewed evidence
+
+Status: accepted for 0.8.
+
+Run an explicitly authorized, logged-in Codex CLI against an isolated MCP gateway.
+Pin controls, limit attempts/calls/time/output, preserve failures and refuse API
+fallback. Use independent tool/server traces for adjudication; reject missing
+pairs or discarded claims. Baseline browser tools include post-action snapshots
+so the comparison is not won by withholding basic browser ergonomics.
+
+Trade-off: this measures one pinned host/model and synthetic task sample. The
+small baseline adapter is not the official Playwright MCP. Host configuration
+and fixture correctness require preflight checks; invalid preflights consume
+budget and must remain visible in the evaluation report.

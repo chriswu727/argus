@@ -1,0 +1,2349 @@
+{
+  "cohort": "pilot",
+  "review_method": "Implementation assistant reviewed tool observations and server oracle, not a blinded third-party review. Call numbering was corrected explicitly where necessary.",
+  "ground_truth_correction": "The historical form-fixed case retains a missing-local-part defect; form-localpart is post-hoc corrected ground truth in both arms. Original case IDs and model answers are preserved.",
+  "source_manifest": {
+    "model": "gpt-6-astra",
+    "effort": "high",
+    "host": "codex-cli 0.155.0-alpha.16.4",
+    "fixture": "d1aa615b9c97518ebe5a1e1f5163861bdaf9710eff4bde104484ceeabc5e3574",
+    "task": "9bc46b4bc2b59cca8eb7ca1598c8d462232a7e5591b122ec546849801809bc06",
+    "max_runs": 28,
+    "implementation": "761c2ecd2d4c78a0ab21e07788c9437da9c7736c5bd1454326857205f99c36ed"
+  },
+  "runs": {
+    "run-000": {
+      "case_id": "profile-buggy",
+      "arm": "baseline",
+      "original_model_report": {
+        "findings": [
+          {
+            "summary": "Saved display name does not persist after reload.",
+            "expected": "After saving \u201cTest Cedar 742\u201d, the name remains after reload.",
+            "observed": "Save displayed \u201cTest Cedar 742\u201d and confirmed \u201cSaved\u201d. Reload reverted both the displayed name and input to \u201cAlex\u201d.",
+            "evidence_calls": [
+              4,
+              5
+            ]
+          }
+        ],
+        "covered_goals": [
+          {
+            "goal": "edit-name",
+            "evidence_calls": [
+              3,
+              4
+            ]
+          },
+          {
+            "goal": "reload-name",
+            "evidence_calls": [
+              4,
+              5
+            ]
+          }
+        ],
+        "limitations": []
+      },
+      "review": {
+        "findings": [
+          {
+            "claim_index": 0,
+            "matched_bug": "profile-contract",
+            "evidence_calls": [
+              3,
+              4
+            ],
+            "rationale": "Save displayed the new name; GET reload restored Alex. Corrected the model citation offset."
+          }
+        ],
+        "goals": [
+          {
+            "goal": "edit-name",
+            "evidence_calls": [
+              2,
+              3
+            ],
+            "rationale": "Save displayed the new name; GET reload restored Alex. Corrected the model citation offset."
+          },
+          {
+            "goal": "reload-name",
+            "evidence_calls": [
+              3,
+              4
+            ],
+            "rationale": "Save displayed the new name; GET reload restored Alex. Corrected the model citation offset."
+          }
+        ]
+      },
+      "tool_excerpts": [
+        {
+          "call": 2,
+          "tool": "browser_fill",
+          "arguments": {
+            "label": "Display name",
+            "value": "Test Cedar 742"
+          },
+          "visible": "- heading \"Profile\" [level=1]\n- paragraph: \"Display name: Alex\"\n- text: Display name\n- textbox \"Display name\": Test Cedar 742\n- button \"Save\"\n- status",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 3,
+          "tool": "browser_click",
+          "arguments": {
+            "role": "button",
+            "name": "Save"
+          },
+          "visible": "- heading \"Profile\" [level=1]\n- paragraph: \"Display name: Test Cedar 742\"\n- text: Display name\n- textbox \"Display name\": Test Cedar 742\n- button \"Save\"\n- status: Saved",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 4,
+          "tool": "browser_reload",
+          "arguments": {},
+          "visible": "- heading \"Profile\" [level=1]\n- paragraph: \"Display name: Alex\"\n- text: Display name\n- textbox \"Display name\": Alex\n- button \"Save\"\n- status: Saved",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        }
+      ],
+      "server_oracle": [
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "name": [
+              "Test Cedar 742"
+            ]
+          },
+          "state": {
+            "name": "Test Cedar 742",
+            "deleted": false,
+            "message": "Saved",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Test Cedar 742",
+            "deleted": false,
+            "message": "Saved"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Saved"
+          }
+        }
+      ],
+      "raw_trace_sha256": "2f894a5ae54e85f85e89e452ad925d4fbec573cd47d9a9e585463f3589ef92e7"
+    },
+    "run-001": {
+      "case_id": "profile-buggy",
+      "arm": "argus",
+      "original_model_report": {
+        "findings": [
+          {
+            "summary": "Saved display name reverts after reload.",
+            "expected": "A saved display name remains after reload.",
+            "observed": "Saving \u201cTest River 482\u201d and \u201cTest Cedar 739\u201d displayed the new name and \u201cSaved\u201d. After each reload, the profile and input reverted to \u201cAlex\u201d, without clearing storage.",
+            "evidence_calls": [
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10
+            ]
+          }
+        ],
+        "covered_goals": [
+          {
+            "goal": "edit-name",
+            "evidence_calls": [
+              4,
+              7
+            ]
+          },
+          {
+            "goal": "reload-name",
+            "evidence_calls": [
+              5,
+              6,
+              8,
+              9
+            ]
+          }
+        ],
+        "limitations": []
+      },
+      "review": {
+        "findings": [
+          {
+            "claim_index": 0,
+            "matched_bug": "profile-contract",
+            "evidence_calls": [
+              4,
+              5,
+              7,
+              8,
+              10
+            ],
+            "rationale": "Two saves lost their values on GET reload. Independent absent-text receipt reproduced the symptom."
+          }
+        ],
+        "goals": [
+          {
+            "goal": "edit-name",
+            "evidence_calls": [
+              4,
+              7
+            ],
+            "rationale": "Two saves lost their values on GET reload. Independent absent-text receipt reproduced the symptom."
+          },
+          {
+            "goal": "reload-name",
+            "evidence_calls": [
+              5,
+              8
+            ],
+            "rationale": "Two saves lost their values on GET reload. Independent absent-text receipt reproduced the symptom."
+          }
+        ]
+      },
+      "tool_excerpts": [
+        {
+          "call": 4,
+          "tool": "test_form",
+          "arguments": {
+            "form_fields": {
+              "Display name": "Test River 482"
+            },
+            "submit": "Save"
+          },
+          "visible": "Profile\n\nDisplay name: Test River 482\n\nDisplay nameSave\n\nSaved",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 5,
+          "tool": "verify_persistence",
+          "arguments": {
+            "expect": "present",
+            "target_text": "Test River 482"
+          },
+          "visible": null,
+          "verification": {
+            "expect": "present",
+            "target_text": "Test River 482",
+            "url": "/",
+            "present": false,
+            "matches": false,
+            "clear_storage": false
+          },
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 7,
+          "tool": "test_form",
+          "arguments": {
+            "form_fields": {
+              "Display name": "Test Cedar 739"
+            },
+            "submit": "Save"
+          },
+          "visible": "Profile\n\nDisplay name: Test Cedar 739\n\nDisplay nameSave\n\nSaved",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 8,
+          "tool": "verify_persistence",
+          "arguments": {
+            "expect": "present",
+            "target_text": "Test Cedar 739"
+          },
+          "visible": null,
+          "verification": {
+            "expect": "present",
+            "target_text": "Test Cedar 739",
+            "url": "/",
+            "present": false,
+            "matches": false,
+            "clear_storage": false
+          },
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 10,
+          "tool": "record_bug",
+          "arguments": {
+            "title": "Saved display name reverts after reload",
+            "severity": "high",
+            "verify": {
+              "expect": "absent",
+              "target_text": "Test Cedar 739",
+              "at_url": "/"
+            },
+            "evidence": {
+              "description": "Saving a synthetic display name updates the profile and shows Saved, but reloading restores Alex in both the profile text and input. Reproduced with Test River 482 and Test Cedar 739 without clearing storage.",
+              "steps": [
+                "Enter Test Cedar 739 in Display name.",
+                "Click Save; profile displays Test Cedar 739 and Saved.",
+                "Reload; profile and input revert to Alex."
+              ],
+              "bug_type": "state_verification"
+            }
+          },
+          "visible": null,
+          "verification": null,
+          "verdict": "verified",
+          "recorded": true,
+          "receipt": {
+            "attempted": true,
+            "reproduced": true,
+            "flaky": false,
+            "runs": "2/2",
+            "expect": "absent",
+            "method": "fresh-load symptom re-check (server truth, no fixture reset)",
+            "target_text": "Test Cedar 739",
+            "at_url": "http://fixture.test/",
+            "observed_present": [
+              false,
+              false
+            ]
+          },
+          "reason": null
+        }
+      ],
+      "server_oracle": [
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "name": [
+              "Test River 482"
+            ]
+          },
+          "state": {
+            "name": "Test River 482",
+            "deleted": false,
+            "message": "Saved",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Test River 482",
+            "deleted": false,
+            "message": "Saved"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Saved"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "name": [
+              "Test Cedar 739"
+            ]
+          },
+          "state": {
+            "name": "Test Cedar 739",
+            "deleted": false,
+            "message": "Saved",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Test Cedar 739",
+            "deleted": false,
+            "message": "Saved"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Saved"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Saved"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Saved"
+          }
+        }
+      ],
+      "raw_trace_sha256": "12e140ae872aaa7116d4968c4ca4cc88cb08f1d3de1594473f89dbc00a6a4d36"
+    },
+    "run-002": {
+      "case_id": "profile-fixed",
+      "arm": "argus",
+      "original_model_report": {
+        "findings": [],
+        "covered_goals": [
+          {
+            "goal": "edit-name",
+            "evidence_calls": [
+              4
+            ]
+          },
+          {
+            "goal": "reload-name",
+            "evidence_calls": [
+              5,
+              6
+            ]
+          }
+        ],
+        "limitations": []
+      },
+      "review": {
+        "findings": [],
+        "goals": [
+          {
+            "goal": "edit-name",
+            "evidence_calls": [
+              4
+            ],
+            "rationale": "The saved value remained in the page and input after fresh load."
+          },
+          {
+            "goal": "reload-name",
+            "evidence_calls": [
+              5,
+              6
+            ],
+            "rationale": "The saved value remained in the page and input after fresh load."
+          }
+        ]
+      },
+      "tool_excerpts": [
+        {
+          "call": 4,
+          "tool": "test_form",
+          "arguments": {
+            "form_fields": {
+              "Display name": "Test Morgan 742"
+            },
+            "submit": "Save"
+          },
+          "visible": "Profile\n\nDisplay name: Test Morgan 742\n\nDisplay nameSave\n\nSaved",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 5,
+          "tool": "verify_persistence",
+          "arguments": {
+            "expect": "present",
+            "target_text": "Test Morgan 742",
+            "after_url": "http://fixture.test/"
+          },
+          "visible": null,
+          "verification": {
+            "expect": "present",
+            "target_text": "Test Morgan 742",
+            "url": "/",
+            "present": true,
+            "matches": true,
+            "clear_storage": false
+          },
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 6,
+          "tool": "observe",
+          "arguments": {},
+          "visible": "Profile\n\nDisplay name: Test Morgan 742\n\nDisplay nameSave\n\nSaved",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        }
+      ],
+      "server_oracle": [
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "name": [
+              "Test Morgan 742"
+            ]
+          },
+          "state": {
+            "name": "Test Morgan 742",
+            "deleted": false,
+            "message": "Saved",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Test Morgan 742",
+            "deleted": false,
+            "message": "Saved"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Test Morgan 742",
+            "deleted": false,
+            "message": "Saved"
+          }
+        }
+      ],
+      "raw_trace_sha256": "328696560b19b18b7e8c48fb5b37ba9bd9690c630859e78fd7d917536f051e95"
+    },
+    "run-003": {
+      "case_id": "profile-fixed",
+      "arm": "baseline",
+      "original_model_report": {
+        "findings": [],
+        "covered_goals": [
+          {
+            "goal": "edit-name: Saved synthetic display name \"Test Avery 742\"; the displayed name updated and confirmation read \"Saved\".",
+            "evidence_calls": [
+              2,
+              3
+            ]
+          },
+          {
+            "goal": "reload-name: After reload, both the displayed name and input retained \"Test Avery 742\".",
+            "evidence_calls": [
+              3,
+              4
+            ]
+          }
+        ],
+        "limitations": []
+      },
+      "review": {
+        "findings": [],
+        "goals": [
+          {
+            "goal": "edit-name",
+            "evidence_calls": [
+              2,
+              3
+            ],
+            "rationale": "Save and reload retained the value. Canonicalized descriptive goal labels."
+          },
+          {
+            "goal": "reload-name",
+            "evidence_calls": [
+              3,
+              4
+            ],
+            "rationale": "Save and reload retained the value. Canonicalized descriptive goal labels."
+          }
+        ]
+      },
+      "tool_excerpts": [
+        {
+          "call": 2,
+          "tool": "browser_fill",
+          "arguments": {
+            "label": "Display name",
+            "value": "Test Avery 742"
+          },
+          "visible": "- heading \"Profile\" [level=1]\n- paragraph: \"Display name: Alex\"\n- text: Display name\n- textbox \"Display name\": Test Avery 742\n- button \"Save\"\n- status",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 3,
+          "tool": "browser_click",
+          "arguments": {
+            "name": "Save",
+            "role": "button"
+          },
+          "visible": "- heading \"Profile\" [level=1]\n- paragraph: \"Display name: Test Avery 742\"\n- text: Display name\n- textbox \"Display name\": Test Avery 742\n- button \"Save\"\n- status: Saved",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 4,
+          "tool": "browser_reload",
+          "arguments": {},
+          "visible": "- heading \"Profile\" [level=1]\n- paragraph: \"Display name: Test Avery 742\"\n- text: Display name\n- textbox \"Display name\": Test Avery 742\n- button \"Save\"\n- status: Saved",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        }
+      ],
+      "server_oracle": [
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "name": [
+              "Test Avery 742"
+            ]
+          },
+          "state": {
+            "name": "Test Avery 742",
+            "deleted": false,
+            "message": "Saved",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Test Avery 742",
+            "deleted": false,
+            "message": "Saved"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Test Avery 742",
+            "deleted": false,
+            "message": "Saved"
+          }
+        }
+      ],
+      "raw_trace_sha256": "7bef1b1a994b253064d1f5e0fe0ad8eacdbaffd2d090728c6fef6e1f05fe502e"
+    },
+    "run-004": {
+      "case_id": "form-buggy",
+      "arm": "baseline",
+      "original_model_report": {
+        "findings": [
+          {
+            "summary": "Malformed email addresses are accepted.",
+            "expected": "Invalid email addresses must be rejected with no signup success indication.",
+            "observed": "Submitting \u201cnot-an-email\u201d and \u201csynthetic@\u201d cleared the field and displayed \u201cSubscribed,\u201d without a validation error.",
+            "evidence_calls": [
+              3,
+              4,
+              5,
+              6
+            ]
+          }
+        ],
+        "covered_goals": [
+          {
+            "goal": "invalid-email: Tested two malformed addresses; both incorrectly produced success feedback.",
+            "evidence_calls": [
+              3,
+              4,
+              5,
+              6
+            ]
+          },
+          {
+            "goal": "valid-email: Submitted two synthetic valid addresses; success feedback appeared and the form remained usable for another submission.",
+            "evidence_calls": [
+              8,
+              9,
+              10,
+              11
+            ]
+          }
+        ],
+        "limitations": [
+          "Verification covers observable UI behavior; actual subscription persistence or email delivery was not verified."
+        ]
+      },
+      "review": {
+        "findings": [
+          {
+            "claim_index": 0,
+            "matched_bug": "form-contract",
+            "evidence_calls": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "rationale": "Malformed addresses produced Subscribed. Valid submissions remained usable. Corrected offset references; no email-delivery claim is scored."
+          }
+        ],
+        "goals": [
+          {
+            "goal": "invalid-email",
+            "evidence_calls": [
+              2,
+              3,
+              4,
+              5
+            ],
+            "rationale": "Malformed addresses produced Subscribed. Valid submissions remained usable. Corrected offset references; no email-delivery claim is scored."
+          },
+          {
+            "goal": "valid-email",
+            "evidence_calls": [
+              7,
+              8,
+              9,
+              10
+            ],
+            "rationale": "Malformed addresses produced Subscribed. Valid submissions remained usable. Corrected offset references; no email-delivery claim is scored."
+          }
+        ]
+      },
+      "tool_excerpts": [
+        {
+          "call": 1,
+          "tool": "browser_navigate",
+          "arguments": {
+            "url": "http://fixture.test"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\"\n- button \"Subscribe\"\n- status",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 2,
+          "tool": "browser_fill",
+          "arguments": {
+            "label": "Email",
+            "value": "not-an-email"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\": not-an-email\n- button \"Subscribe\"\n- status",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 3,
+          "tool": "browser_click",
+          "arguments": {
+            "role": "button",
+            "name": "Subscribe"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\"\n- button \"Subscribe\"\n- status: Subscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 4,
+          "tool": "browser_fill",
+          "arguments": {
+            "label": "Email",
+            "value": "synthetic@"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\": synthetic@\n- button \"Subscribe\"\n- status: Subscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 5,
+          "tool": "browser_click",
+          "arguments": {
+            "role": "button",
+            "name": "Subscribe"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\"\n- button \"Subscribe\"\n- status: Subscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 7,
+          "tool": "browser_fill",
+          "arguments": {
+            "label": "Email",
+            "value": "newsletter.test.001@example.com"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\": newsletter.test.001@example.com\n- button \"Subscribe\"\n- status: Subscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 8,
+          "tool": "browser_click",
+          "arguments": {
+            "role": "button",
+            "name": "Subscribe"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\"\n- button \"Subscribe\"\n- status: Subscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 9,
+          "tool": "browser_fill",
+          "arguments": {
+            "label": "Email",
+            "value": "newsletter.test.002@example.com"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\": newsletter.test.002@example.com\n- button \"Subscribe\"\n- status: Subscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 10,
+          "tool": "browser_click",
+          "arguments": {
+            "role": "button",
+            "name": "Subscribe"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\"\n- button \"Subscribe\"\n- status: Subscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        }
+      ],
+      "server_oracle": [
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "not-an-email"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "synthetic@"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "newsletter.test.001@example.com"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "newsletter.test.002@example.com"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        }
+      ],
+      "raw_trace_sha256": "6151a196f2c8d0af32ff543d0f8896da7adfd1d3ed916febdf76316ce49f7a60"
+    },
+    "run-005": {
+      "case_id": "form-buggy",
+      "arm": "argus",
+      "original_model_report": {
+        "findings": [
+          {
+            "summary": "Malformed email submission displays success instead of rejection.",
+            "expected": "Invalid email addresses must be rejected.",
+            "observed": "Submitting synthetic-invalid changed the initial page to show \u201cSubscribed\u201d without a validation error. Submitting synthetic@ also left \u201cSubscribed\u201d visible.",
+            "evidence_calls": [
+              1,
+              3,
+              4,
+              7,
+              8
+            ]
+          }
+        ],
+        "covered_goals": [
+          {
+            "goal": "invalid-email",
+            "evidence_calls": [
+              3,
+              4,
+              7,
+              8
+            ]
+          },
+          {
+            "goal": "valid-email",
+            "evidence_calls": [
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18
+            ]
+          }
+        ],
+        "limitations": [
+          "Valid submissions showed success and the form remained editable and resubmittable; backend subscription storage and email delivery were not independently verified.",
+          "Automated defect replay was inconclusive because the success message already existed before replay; the finding relies on the initial observed transition."
+        ]
+      },
+      "review": {
+        "findings": [
+          {
+            "claim_index": 0,
+            "matched_bug": "form-contract",
+            "evidence_calls": [
+              1,
+              3,
+              7
+            ],
+            "rationale": "Initial invalid submission visibly introduced Subscribed. Valid submissions exercised recovery. Replay was inconclusive; the initial transition and server oracle support the defect."
+          }
+        ],
+        "goals": [
+          {
+            "goal": "invalid-email",
+            "evidence_calls": [
+              3,
+              7
+            ],
+            "rationale": "Initial invalid submission visibly introduced Subscribed. Valid submissions exercised recovery. Replay was inconclusive; the initial transition and server oracle support the defect."
+          },
+          {
+            "goal": "valid-email",
+            "evidence_calls": [
+              12,
+              13,
+              15,
+              17
+            ],
+            "rationale": "Initial invalid submission visibly introduced Subscribed. Valid submissions exercised recovery. Replay was inconclusive; the initial transition and server oracle support the defect."
+          }
+        ]
+      },
+      "tool_excerpts": [
+        {
+          "call": 1,
+          "tool": "start_session",
+          "arguments": {
+            "url": "http://fixture.test",
+            "goals": [
+              "invalid-email",
+              "valid-email"
+            ],
+            "constraints": [
+              "Synthetic values only",
+              "Stay on http://fixture.test",
+              "Only provided testing MCP tools; no source or files"
+            ],
+            "time_budget_minutes": 5
+          },
+          "visible": "Newsletter\nEmailSubscribe",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 3,
+          "tool": "test_form",
+          "arguments": {
+            "form_fields": {
+              "Email": "synthetic-invalid"
+            },
+            "submit": "Subscribe"
+          },
+          "visible": "Newsletter\nEmailSubscribe\n\nSubscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 7,
+          "tool": "test_form",
+          "arguments": {
+            "form_fields": {
+              "Email": "synthetic@"
+            },
+            "submit": "Subscribe"
+          },
+          "visible": "Newsletter\nEmailSubscribe\n\nSubscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 12,
+          "tool": "test_form",
+          "arguments": {
+            "form_fields": {
+              "Email": "newsletter.qa.20261025@example.com"
+            },
+            "submit": "Subscribe"
+          },
+          "visible": "Newsletter\nEmailSubscribe\n\nSubscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 13,
+          "tool": "verify_persistence",
+          "arguments": {
+            "expect": "present",
+            "target_text": "Subscribed",
+            "after_url": "http://fixture.test/"
+          },
+          "visible": null,
+          "verification": {
+            "expect": "present",
+            "target_text": "Subscribed",
+            "url": "/",
+            "present": true,
+            "matches": true,
+            "clear_storage": false
+          },
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 15,
+          "tool": "type_into",
+          "arguments": {
+            "description": "Email",
+            "text": "newsletter.recovery.20261025@example.com"
+          },
+          "visible": "Newsletter\nEmailSubscribe\n\nSubscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 17,
+          "tool": "click_what",
+          "arguments": {
+            "description": "Subscribe"
+          },
+          "visible": "Newsletter\nEmailSubscribe\n\nSubscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        }
+      ],
+      "server_oracle": [
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "synthetic-invalid"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "synthetic@"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "synthetic-invalid"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "synthetic@"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "newsletter.qa.20261025@example.com"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "newsletter.recovery.20261025@example.com"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        }
+      ],
+      "raw_trace_sha256": "0e6c80808537cd590b9ea1077407bc2d4bb53beab9e2bcb39c1b9caf31bb5cf2"
+    },
+    "run-006": {
+      "case_id": "form-fixed",
+      "arm": "argus",
+      "original_model_report": {
+        "findings": [
+          {
+            "summary": "Newsletter signup accepts an email with no local part.",
+            "expected": "@example.com must be rejected as invalid.",
+            "observed": "Submitting @example.com changed \u201cInvalid email; please correct it\u201d to \u201cSubscribed.\u201d",
+            "evidence_calls": [
+              15,
+              16,
+              17,
+              18
+            ]
+          }
+        ],
+        "covered_goals": [
+          {
+            "goal": "invalid-email",
+            "evidence_calls": [
+              3,
+              4,
+              5,
+              6,
+              17,
+              18
+            ]
+          },
+          {
+            "goal": "valid-email",
+            "evidence_calls": [
+              9,
+              10,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25
+            ]
+          }
+        ],
+        "limitations": [
+          "Automated replay verification was inconclusive because success feedback already existed; the finding relies on the directly observed validation-to-success transition.",
+          "Verified visible success, reload behavior, and form recoverability; email delivery was not tested."
+        ]
+      },
+      "review": {
+        "findings": [
+          {
+            "claim_index": 0,
+            "matched_bug": "form-localpart",
+            "evidence_calls": [
+              15,
+              17
+            ],
+            "rationale": "A confirmed residual fixture defect: @example.com changed an invalid-email error to Subscribed. The nominal fixed label was wrong; corrected ground truth, not a false positive."
+          }
+        ],
+        "goals": [
+          {
+            "goal": "invalid-email",
+            "evidence_calls": [
+              3,
+              5,
+              15,
+              17
+            ],
+            "rationale": "A confirmed residual fixture defect: @example.com changed an invalid-email error to Subscribed. The nominal fixed label was wrong; corrected ground truth, not a false positive."
+          },
+          {
+            "goal": "valid-email",
+            "evidence_calls": [
+              9,
+              20,
+              22
+            ],
+            "rationale": "A confirmed residual fixture defect: @example.com changed an invalid-email error to Subscribed. The nominal fixed label was wrong; corrected ground truth, not a false positive."
+          }
+        ]
+      },
+      "tool_excerpts": [
+        {
+          "call": 3,
+          "tool": "test_form",
+          "arguments": {
+            "form_fields": {
+              "Email": "newsletter-invalid"
+            },
+            "submit": "Subscribe"
+          },
+          "visible": "Newsletter\nEmailSubscribe\n\nInvalid email; please correct it",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 5,
+          "tool": "test_form",
+          "arguments": {
+            "form_fields": {
+              "Email": "newsletter-test@"
+            },
+            "submit": "Subscribe"
+          },
+          "visible": "Newsletter\nEmailSubscribe\n\nInvalid email; please correct it",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 9,
+          "tool": "test_form",
+          "arguments": {
+            "form_fields": {
+              "Email": "newsletter.qa.20261025@example.com"
+            },
+            "submit": "Subscribe"
+          },
+          "visible": "Newsletter\nEmailSubscribe\n\nSubscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 15,
+          "tool": "test_form",
+          "arguments": {
+            "form_fields": {
+              "Email": "newsletter-invalid"
+            },
+            "submit": "Subscribe"
+          },
+          "visible": "Newsletter\nEmailSubscribe\n\nInvalid email; please correct it",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 17,
+          "tool": "test_form",
+          "arguments": {
+            "form_fields": {
+              "Email": "@example.com"
+            },
+            "submit": "Subscribe"
+          },
+          "visible": "Newsletter\nEmailSubscribe\n\nSubscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 20,
+          "tool": "test_form",
+          "arguments": {
+            "form_fields": {
+              "Email": "newsletter-test@"
+            },
+            "submit": "Subscribe"
+          },
+          "visible": "Newsletter\nEmailSubscribe\n\nInvalid email; please correct it",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 22,
+          "tool": "test_form",
+          "arguments": {
+            "form_fields": {
+              "Email": "newsletter.recovery.20261025@example.com"
+            },
+            "submit": "Subscribe"
+          },
+          "visible": "Newsletter\nEmailSubscribe\n\nSubscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        }
+      ],
+      "server_oracle": [
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "newsletter-invalid"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Invalid email; please correct it",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Invalid email; please correct it"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "newsletter-test@"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Invalid email; please correct it",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Invalid email; please correct it"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "newsletter.qa.20261025@example.com"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "@example.com"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "newsletter-invalid"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Invalid email; please correct it",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Invalid email; please correct it"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "@example.com"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "newsletter-invalid"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Invalid email; please correct it",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Invalid email; please correct it"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "newsletter-test@"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Invalid email; please correct it",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Invalid email; please correct it"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "newsletter.qa.20261025@example.com"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "@example.com"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "newsletter-invalid"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Invalid email; please correct it",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Invalid email; please correct it"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "@example.com"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "newsletter-test@"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Invalid email; please correct it",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Invalid email; please correct it"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "newsletter.recovery.20261025@example.com"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        }
+      ],
+      "raw_trace_sha256": "35645f0f2fe7f557fd25cba8572c76e93c14743417cd51a4876f72a968e3552b"
+    },
+    "run-007": {
+      "case_id": "form-fixed",
+      "arm": "baseline",
+      "original_model_report": {
+        "findings": [],
+        "covered_goals": [
+          {
+            "goal": "invalid-email: malformed addresses were rejected with an error message.",
+            "evidence_calls": [
+              3,
+              4,
+              5,
+              6
+            ]
+          },
+          {
+            "goal": "valid-email: valid addresses succeeded; the form remained usable after success and recovered from a subsequent invalid submission.",
+            "evidence_calls": [
+              7,
+              8,
+              9,
+              10,
+              11,
+              12
+            ]
+          }
+        ],
+        "limitations": [
+          "Verified observable UI behavior only. Evidence numbers count the initial tool-discovery call as call 1."
+        ]
+      },
+      "review": {
+        "findings": [],
+        "goals": [
+          {
+            "goal": "invalid-email",
+            "evidence_calls": [
+              2,
+              3,
+              4,
+              5
+            ],
+            "rationale": "Malformed inputs were rejected and valid inputs recovered, but the missing-local-part defect was not tested. Corrected offset citations and canonicalized goals."
+          },
+          {
+            "goal": "valid-email",
+            "evidence_calls": [
+              6,
+              7,
+              8,
+              9,
+              10,
+              11
+            ],
+            "rationale": "Malformed inputs were rejected and valid inputs recovered, but the missing-local-part defect was not tested. Corrected offset citations and canonicalized goals."
+          }
+        ]
+      },
+      "tool_excerpts": [
+        {
+          "call": 2,
+          "tool": "browser_fill",
+          "arguments": {
+            "label": "Email",
+            "value": "not-an-email"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\": not-an-email\n- button \"Subscribe\"\n- status",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 3,
+          "tool": "browser_click",
+          "arguments": {
+            "role": "button",
+            "name": "Subscribe"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\"\n- button \"Subscribe\"\n- status: Invalid email; please correct it",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 4,
+          "tool": "browser_fill",
+          "arguments": {
+            "label": "Email",
+            "value": "synthetic@"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\": synthetic@\n- button \"Subscribe\"\n- status: Invalid email; please correct it",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 5,
+          "tool": "browser_click",
+          "arguments": {
+            "role": "button",
+            "name": "Subscribe"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\"\n- button \"Subscribe\"\n- status: Invalid email; please correct it",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 6,
+          "tool": "browser_fill",
+          "arguments": {
+            "label": "Email",
+            "value": "newsletter.test.482@example.com"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\": newsletter.test.482@example.com\n- button \"Subscribe\"\n- status: Invalid email; please correct it",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 7,
+          "tool": "browser_click",
+          "arguments": {
+            "role": "button",
+            "name": "Subscribe"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\"\n- button \"Subscribe\"\n- status: Subscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 8,
+          "tool": "browser_fill",
+          "arguments": {
+            "label": "Email",
+            "value": "recovery-check"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\": recovery-check\n- button \"Subscribe\"\n- status: Subscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 9,
+          "tool": "browser_click",
+          "arguments": {
+            "role": "button",
+            "name": "Subscribe"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\"\n- button \"Subscribe\"\n- status: Invalid email; please correct it",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 10,
+          "tool": "browser_fill",
+          "arguments": {
+            "label": "Email",
+            "value": "newsletter.recovery.482@example.com"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\": newsletter.recovery.482@example.com\n- button \"Subscribe\"\n- status: Invalid email; please correct it",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        },
+        {
+          "call": 11,
+          "tool": "browser_click",
+          "arguments": {
+            "role": "button",
+            "name": "Subscribe"
+          },
+          "visible": "- heading \"Newsletter\" [level=1]\n- text: Email\n- textbox \"Email\"\n- button \"Subscribe\"\n- status: Subscribed",
+          "verification": null,
+          "verdict": null,
+          "recorded": null,
+          "receipt": null,
+          "reason": null
+        }
+      ],
+      "server_oracle": [
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": ""
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "not-an-email"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Invalid email; please correct it",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Invalid email; please correct it"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "synthetic@"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Invalid email; please correct it",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Invalid email; please correct it"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "newsletter.test.482@example.com"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "recovery-check"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Invalid email; please correct it",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Invalid email; please correct it"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "data": {
+            "email": [
+              "newsletter.recovery.482@example.com"
+            ]
+          },
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed",
+            "just_submitted": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "state": {
+            "name": "Alex",
+            "deleted": false,
+            "message": "Subscribed"
+          }
+        }
+      ],
+      "raw_trace_sha256": "059fe9774c172a3a72f4409a3dddcdf33f40d4d83ffeda2c8dc5297028a8b79c"
+    }
+  }
+}

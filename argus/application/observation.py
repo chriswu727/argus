@@ -462,11 +462,11 @@ async def observe() -> str:
     return ToolText(text, observation_data(s, state, previous_counts, previous_url))
 
 
-async def coverage_update(goal: str, status: str, evidence: str = "") -> str:
-    """Update one testing goal and attach its session evidence automatically.
+async def coverage_update(goal: str | list[str], status: str, evidence: str = "") -> str:
+    """Update one goal or a batch of related goals with shared evidence.
 
     Args:
-        goal: The goal text, or a unique part of it.
+        goal: Goal text, a unique part of it, or 1-20 related goals.
         status: untested, in_progress, exercised, or blocked.
         evidence: Concrete observed result; required for exercised and blocked.
     """
@@ -485,37 +485,46 @@ async def coverage_update(goal: str, status: str, evidence: str = "") -> str:
         return Rejection("coverage_update: evidence must be at most 1000 characters.")
     if status in {"exercised", "blocked"} and not evidence:
         return Rejection(f"coverage_update: {status} requires concrete evidence.")
-    index, error = _coverage_goal_index(s, goal)
-    if error:
-        return Rejection(error)
-    assert index is not None
-    selected = s.coverage_goals[index]
-    if status == "untested":
+    queries = [goal] if isinstance(goal, str) else goal
+    if not isinstance(queries, list) or not 1 <= len(queries) <= 20:
+        return Rejection("coverage_update: provide 1-20 goals.")
+    indices = []
+    for query in queries:
+        if not isinstance(query, str):
+            return Rejection("coverage_update: each goal must be text.")
+        index, error = _coverage_goal_index(s, query)
+        if error:
+            return Rejection(error)
+        if index in indices:
+            return Rejection("coverage_update: goals must resolve to distinct entries.")
+        indices.append(index)
+    for index in indices:
+        selected = s.coverage_goals[index]
         selected["status"] = status
-        selected["evidence"] = ""
-        selected.pop("evidence_refs", None)
-        s._coverage_goal_cursors.pop(index, None)
-    elif status == "in_progress":
-        selected["status"] = status
-        selected["evidence"] = evidence
-        selected.pop("evidence_refs", None)
-        s._coverage_goal_cursors[index] = _coverage_cursor(s)
-    else:
-        cursor = s._coverage_goal_cursors.setdefault(index, dict(s._coverage_evidence_cursor))
-        selected["status"] = status
-        selected["evidence"] = evidence
-        selected["evidence_refs"] = _coverage_evidence_refs(s, cursor)
+        selected["evidence"] = "" if status == "untested" else evidence
+        if status == "untested":
+            selected.pop("evidence_refs", None)
+            s._coverage_goal_cursors.pop(index, None)
+        elif status == "in_progress":
+            selected.pop("evidence_refs", None)
+            s._coverage_goal_cursors[index] = _coverage_cursor(s)
+        else:
+            cursor = s._coverage_goal_cursors.setdefault(index, dict(s._coverage_evidence_cursor))
+            selected["evidence_refs"] = _coverage_evidence_refs(s, cursor)
+    if status in {"exercised", "blocked"}:
         s._coverage_evidence_cursor = _coverage_cursor(s)
     snapshot = _coverage_snapshot(s)
-    result = f"Coverage updated: {selected['goal']} → {status}.\n" + _format_coverage(snapshot)
-    refs = selected.get("evidence_refs")
-    if refs:
-        result += (
-            "\nEvidence linked: "
-            f"{len(refs['urls'])} URL(s), {len(refs['actions'])} action(s), "
-            f"{len(refs['screenshots'])} screenshot(s), "
-            f"{len(refs['verifications'])} verification(s), "
-            f"{len(refs['findings'])} finding(s)."
-        )
+    names = "; ".join(s.coverage_goals[index]["goal"] for index in indices)
+    result = f"Coverage updated: {names} → {status}.\n" + _format_coverage(snapshot)
+    for index in indices:
+        refs = s.coverage_goals[index].get("evidence_refs")
+        if refs:
+            result += (
+                "\nEvidence linked: "
+                f"{len(refs['urls'])} URL(s), {len(refs['actions'])} action(s), "
+                f"{len(refs['screenshots'])} screenshot(s), "
+                f"{len(refs['verifications'])} verification(s), "
+                f"{len(refs['findings'])} finding(s)."
+            )
     await current_runtime().progress(Stage.COVERAGE)
     return ToolText(result, {"coverage": snapshot})

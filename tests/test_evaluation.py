@@ -1,12 +1,30 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
 from argus.evaluation.models import Dataset
 from argus.evaluation.scoring import compare
+
+
+@pytest.mark.parametrize("cohort,count", [("pilot", 8), ("optimized", 20)])
+def test_published_agent_datasets_are_complete_and_rescorable(cohort, count):
+    source = Path(__file__).parents[1] / "examples" / f"agent-evaluation-{cohort}.json"
+    dataset = Dataset.model_validate_json(source.read_text())
+    assert len(dataset.trials) == count
+    assert compare(dataset)["paired_trials"] == count // 2
+    evidence = json.loads(source.with_name(f"agent-evaluation-{cohort}-evidence.json").read_text())
+    assert len(evidence["runs"]) == count
+    for trial in dataset.trials:
+        for finding in trial.findings:
+            for reference in finding.evidence:
+                run, call = reference.split("/call-")
+                assert int(call) in {
+                    entry["call"] for entry in evidence["runs"][run]["tool_excerpts"]
+                }
 
 
 def dataset_payload():
