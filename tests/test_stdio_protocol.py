@@ -7,6 +7,8 @@ import sys
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+from argus import __version__
+
 
 async def test_real_stdio_handshake_and_local_page_journey(tmp_path):
     page = tmp_path / "fixture.html"
@@ -19,6 +21,7 @@ async def test_real_stdio_handshake_and_local_page_journey(tmp_path):
         async with ClientSession(read, write) as client:
             initialized = await client.initialize()
             assert initialized.serverInfo.name == "argus"
+            assert initialized.serverInfo.version == __version__
             tools = await client.list_tools()
             assert len(tools.tools) == 30
             assert all(tool.outputSchema for tool in tools.tools)
@@ -89,3 +92,41 @@ async def test_stdio_enforces_startup_access_policy(tmp_path):
                 assert denied.isError and "permission_denied" in denied.content[0].text
             empty = await client.call_tool("observe", {})
             assert empty.isError and "no_session" in empty.content[0].text
+
+
+async def test_delta_stdio_resync_images_and_negative_persistence(tmp_path):
+    page = tmp_path / "delta.html"
+    page.write_text(
+        '<html><body><label>Name<input id="name"></label><button onclick="document.getElementById(\'status\').textContent=\'Saved Morgan\'">Save</button><p id="status">Not saved</p>'
+        + "".join(f"<button>Item {i}</button>" for i in range(40))
+        + "</body></html>"
+    )
+    parameters = StdioServerParameters(
+        command=sys.executable,
+        args=["-m", "argus.mcp_server", "--tool-profile", "agent", "--response-mode", "delta"],
+        env=dict(os.environ, ARGUS_OUTPUT_DIR=str(tmp_path / "reports")),
+    )
+    async with stdio_client(parameters) as (read, write):
+        async with ClientSession(read, write) as client:
+            initialized = await client.initialize()
+            assert initialized.serverInfo.version == __version__
+            assert "base_id must match" in initialized.instructions
+            start = await client.call_tool("start_session", {"url": page.as_uri()})
+            base_id = start.structuredContent["data"]["snapshot"]["id"]
+            action = await client.call_tool("click_what", {"description": "Save"})
+            snapshot = action.structuredContent["data"]["snapshot"]
+            assert snapshot["mode"] == "delta" and snapshot["base_id"] == base_id
+            assert "Saved Morgan" in action.structuredContent["data"]["visible_text"]
+            assert action.structuredContent["data"]["action"]["application_passed"] is None
+            synced = await client.call_tool("observe", {})
+            assert synced.structuredContent["data"]["snapshot"]["mode"] == "full"
+            checked = await client.call_tool(
+                "verify_persistence", {"expect": "present", "target_text": "Saved Morgan"}
+            )
+            assert checked.structuredContent["data"]["verification"]["matches"] is False
+            assert checked.structuredContent["data"]["observation"]["snapshot"]["mode"] == "full"
+            shot = await client.call_tool("screenshot", {"name": "delta"})
+            assert [block.type for block in shot.content] == ["text", "image"]
+            assert shot.structuredContent["data"]["artifacts"]
+            ended = await client.call_tool("end_session", {})
+            assert ended.structuredContent["data"]["report_path"]

@@ -99,6 +99,54 @@ Count deltas require both measurements on the same URL. Invalid booleans,
 fractional count deltas, empty text markers and malformed predicates produce
 unchecked results rather than guesses.
 
+## Incremental observations
+
+Version 0.9 adds opt-in `--response-mode delta` (`ARGUS_RESPONSE_MODE=delta`).
+It has compact text behavior and keeps the version-1 result envelope. Only
+observation fields can be inherited: `page`, `visible_text`, `targets`, `counts`,
+`feedback`, `coverage`, `omitted`, and `follow_up`. The observation lives directly
+in `data` or in `data.observation`, depending on the operation.
+
+- `snapshot: {id, mode: "full"}` replaces the client's observation base.
+- `snapshot: {id, mode: "delta", base_id, removed}` requires the exact prior
+  base ID. Inherit only the fields listed above, remove keys listed in `removed`,
+  and replace fields returned in the new observation. Arrays and objects are
+  replaced wholesale, not recursively merged. Empty values are meaningful.
+- Action results, count changes, next checks, verification outcomes and all
+  other fields are **current-call-only**; never inherit them from an old result.
+- Without the exact base (including after context loss or interrupted delivery),
+  call `observe` to get full state before reasoning or acting. Snapshot IDs are
+  per server process, not persistent evidence IDs or an artifact download API.
+
+`observe`, navigation, session start, and persistence reloads always return full
+observations. A changed run or URL also forces a full snapshot. Errors, cancellation,
+session end, oversized observations, and operations without a page observation
+discard the retained base. After 16 consecutive deltas a full snapshot is sent.
+Only one redacted observation is retained, bounded to 256 KiB of compact JSON;
+oversized observations use the original compact representation without a snapshot.
+The encoder uses a full snapshot when a delta would be larger. A full snapshot
+adds small metadata overhead compared with compact mode.
+
+Screenshot requests still return image blocks; paths to screenshots and reports
+remain evidence references, not proof that their contents were inspected. Direct
+Python application calls, compatible mode and compact mode do not use snapshots.
+The decoder must not infer "unchanged" when a required base is unavailable.
+
+## Overhead telemetry
+
+The optional loopback monitor exposes `overhead` in `/api/status` and numeric
+Prometheus counters in `/metrics`. Counts include result JSON bytes, text UTF-8
+bytes, structured JSON bytes, image base64 bytes and image count. Categories
+overlap; do not sum them to derive total bytes. JSON-RPC framing and transport
+notifications are not included, and bytes are not model tokens or billed cost.
+
+Request-local timing measures instrumented browser waits, state extraction,
+screenshots, report export and response encoding. Timings include failed work
+when the request returns a result; cancelled requests have no final response
+sample. They are inclusive wall-clock components, not a complete latency partition.
+No page text, URLs, arguments, input values or artifact paths enter these counters.
+Snapshot evidence remains in process memory, not in the numeric monitor.
+
 ## Progress transport
 
 When the caller supplies an MCP progress token, Argus sends standard progress

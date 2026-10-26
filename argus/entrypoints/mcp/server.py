@@ -8,10 +8,12 @@ from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.fastmcp.utilities.types import Image
 from mcp.types import ToolAnnotations
 
+from argus import __version__
 from argus.application.manager import SessionManager
 from argus.application.operations import OPERATIONS
 from argus.application.progress import progress_scope
 from argus.domain.contracts import ImageArtifact
+from argus.measurement import measurement_scope
 
 from .catalog import (
     _AGENT_TOOL_DESCRIPTIONS,
@@ -22,7 +24,9 @@ from .catalog import (
     _SCREEN_TOOL_NAMES,
     _TOOL_TITLES,
 )
+from .overhead import response_bytes
 from .results import AgentResult, to_mcp_result
+from .snapshots import FIELDS, ObservationSnapshots
 
 INSTRUCTIONS = (
     "Start with start_session; follow its protocol. Exercise real journeys and "
@@ -60,16 +64,29 @@ def tool_names(profile: str) -> set[str]:
     raise ValueError("tool profile must be agent, core, screen, or full")
 
 
-def bind_tool(runtime: SessionManager, operation):
+def bind_tool(runtime: SessionManager, operation, snapshots: ObservationSnapshots | None = None):
     @wraps(operation)
     async def call(*args, ctx: Context | None = None, **kwargs):
         async def notify(sequence: int, message: str) -> None:
             if ctx is not None:
                 await ctx.report_progress(sequence, message=message)
 
-        with progress_scope(notify if ctx is not None else None) as progress:
-            result = await runtime.execute(operation.__name__, operation, *args, **kwargs)
-        return to_mcp_result(operation.__name__, result, progress, runtime.settings.response_mode)
+        with measurement_scope() as measurements:
+            with progress_scope(notify if ctx is not None else None) as progress:
+                try:
+                    result = await runtime.execute(operation.__name__, operation, *args, **kwargs)
+                except BaseException:
+                    if snapshots is not None:
+                        snapshots.clear()
+                    raise
+            encoded = to_mcp_result(
+                operation.__name__, result, progress, runtime.settings.response_mode, snapshots
+            )
+        runtime.response_totals.update(response_bytes(encoded))
+        runtime.response_totals["responses"] += 1
+        runtime.component_seconds.update(measurements.seconds)
+        runtime.component_calls.update(measurements.calls)
+        return encoded
 
     signature = inspect.signature(operation, eval_str=True)
     parameters = [
@@ -88,10 +105,21 @@ def bind_tool(runtime: SessionManager, operation):
 
 def create_server(runtime: SessionManager, profile: str = "core") -> FastMCP:
     server = FastMCP("argus", instructions=INSTRUCTIONS)
+    # FastMCP 1.x does not expose the low-level server's product version argument.
+    server._mcp_server.version = __version__
+    snapshots = ObservationSnapshots()
+    if runtime.settings.response_mode == "delta":
+        server._mcp_server.instructions += (
+            " Delta mode: retain observation snapshots by ID. In delta snapshots, inherit only "
+            + ", ".join(sorted(FIELDS))
+            + "; replace returned fields and delete snapshot.removed fields. base_id must match. "
+            "Other fields are current-call-only. On a missing base call observe for full state. "
+            "Never infer unchanged from an unavailable base."
+        )
     for name in sorted(tool_names(profile)):
         read_only = name in _READ_ONLY_TOOL_NAMES
         server.add_tool(
-            bind_tool(runtime, OPERATIONS[name]),
+            bind_tool(runtime, OPERATIONS[name], snapshots),
             name=name,
             description=_AGENT_TOOL_DESCRIPTIONS[name] if profile == "agent" else None,
             title=_TOOL_TITLES[name],

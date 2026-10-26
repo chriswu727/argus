@@ -62,6 +62,18 @@ async def test_monitor_events_and_metrics_have_no_inputs(monitor):
                     break
 
 
+async def test_mcp_overhead_is_visible_without_payloads(monitor):
+    from argus.entrypoints.mcp.server import create_server
+
+    await create_server(monitor.runtime).call_tool("observe", {})
+    async with httpx.AsyncClient(base_url=monitor.url) as client:
+        status = (await client.get("/api/status")).json()["overhead"]
+        assert status["response_totals"]["responses"] == 1
+        assert status["response_totals"]["result_json_bytes"] > 0
+        metrics = (await client.get("/metrics")).text
+        assert 'argus_response_total{measurement="responses"} 1' in metrics
+
+
 async def test_monitor_sse_gap_and_disconnect_release_subscriber(monitor):
     for _ in range(600):
         monitor.runtime.events.publish("session", "idle")
@@ -169,6 +181,18 @@ async def test_browser_dashboard_tracks_real_testing_flow(monitor):
                 if output := os.environ.get("ARGUS_MONITOR_DEMO"):
                     await page.screenshot(path=output, full_page=True)
                 assert not errors
+                await server.call_tool("end_session", {})
+                overhead = monitor.runtime.snapshot()["overhead"]
+                for component in (
+                    "browser_wait",
+                    "observation",
+                    "screenshot",
+                    "report_export",
+                    "response_encode",
+                ):
+                    assert overhead["component_calls"][component] > 0
+                    assert overhead["component_seconds"][component] > 0
+                assert "Morgan" not in json.dumps(overhead) and origin not in json.dumps(overhead)
             finally:
                 await monitor.runtime.shutdown()
                 await browser.close()

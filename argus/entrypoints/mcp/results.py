@@ -4,14 +4,25 @@ from typing import Any, Literal
 
 from mcp.server.fastmcp.utilities.types import Image
 from mcp.types import CallToolResult, TextContent
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from argus.application.progress import Progress
 from argus.domain.contracts import ImageArtifact, OperationResult, ToolText
+from argus.measurement import timed
 from argus.security import redacted_copy
+
+from .snapshots import ObservationSnapshots
+
+
+def _omit_schema_titles(schema: dict) -> None:
+    schema.pop("title", None)
+    for field_schema in schema.get("properties", {}).values():
+        field_schema.pop("title", None)
 
 
 class AgentResult(BaseModel):
+    model_config = ConfigDict(json_schema_extra=_omit_schema_titles)
+
     schema_version: Literal[1] = 1
     operation: str
     status: Literal["completed", "error"]
@@ -36,8 +47,13 @@ _RECOVERY = {
 }
 
 
+@timed("response_encode")
 def to_mcp_result(
-    name: str, result: OperationResult, progress: Progress, mode: str = "compatible"
+    name: str,
+    result: OperationResult,
+    progress: Progress,
+    mode: str = "compatible",
+    snapshots: ObservationSnapshots | None = None,
 ) -> CallToolResult:
     value = result.value
     code = result.error.value if result.error else None
@@ -56,13 +72,15 @@ def to_mcp_result(
     ]
     if artifacts:
         data["artifacts"] = artifacts
-    if mode == "compact" and not code and isinstance(value, ToolText) and data:
+    if mode in {"compact", "delta"} and not code and isinstance(value, ToolText) and data:
         content = [
             TextContent(
                 type="text",
                 text=f"{name}: completed. Read structuredContent.data for evidence; completion is not a test verdict.",
             )
         ]
+    if mode == "delta" and snapshots is not None:
+        data = snapshots.encode(data, name, result.run_id, error=bool(code))
     envelope = AgentResult(
         operation=name,
         status="error" if code else "completed",

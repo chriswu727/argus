@@ -1,0 +1,170 @@
+{
+  "schema_version": 1,
+  "argus_version": "0.9.0",
+  "mcp_sdk_version": "1.30.0",
+  "method": "synthetic-identical-input-encoding-v1",
+  "baseline": "0.8-compatible compact encoder semantics; same structured evidence",
+  "limitations": [
+    "No model calls or token measurement",
+    "Not an end-to-end latency or testing-quality benchmark",
+    "Result JSON excludes JSON-RPC framing; byte categories overlap",
+    "Synthetic repeated catalog content favors deltas; navigation invalidates them"
+  ],
+  "discovery": {
+    "agent": {
+      "tools": 19,
+      "tools_json_bytes": 23891,
+      "instructions_utf8_bytes": 223,
+      "description_utf8_bytes": 2844,
+      "input_schema_json_bytes": 4396,
+      "output_schema_json_bytes": 12673
+    },
+    "core": {
+      "tools": 30,
+      "tools_json_bytes": 54482,
+      "instructions_utf8_bytes": 223,
+      "description_utf8_bytes": 21718,
+      "input_schema_json_bytes": 5835,
+      "output_schema_json_bytes": 20010
+    },
+    "screen": {
+      "tools": 14,
+      "tools_json_bytes": 26589,
+      "instructions_utf8_bytes": 223,
+      "description_utf8_bytes": 11129,
+      "input_schema_json_bytes": 2810,
+      "output_schema_json_bytes": 9338
+    },
+    "full": {
+      "tools": 77,
+      "tools_json_bytes": 123369,
+      "instructions_utf8_bytes": 223,
+      "description_utf8_bytes": 40502,
+      "input_schema_json_bytes": 14164,
+      "output_schema_json_bytes": 51359
+    }
+  },
+  "cases": [
+    {
+      "case": "unchanged-page",
+      "calls": 6,
+      "lossless_roundtrip": true,
+      "modes": {
+        "compatible": {
+          "result_json_bytes": 64143,
+          "text_utf8_bytes": 30744,
+          "structured_json_bytes": 30447,
+          "image_base64_bytes": 0,
+          "images": 0
+        },
+        "compact": {
+          "result_json_bytes": 31494,
+          "text_utf8_bytes": 591,
+          "structured_json_bytes": 30447,
+          "image_base64_bytes": 0,
+          "images": 0
+        },
+        "delta": {
+          "result_json_bytes": 8406,
+          "text_utf8_bytes": 591,
+          "structured_json_bytes": 7359,
+          "image_base64_bytes": 0,
+          "images": 0
+        }
+      },
+      "delta_vs_compact_reduction_percent": 73.31
+    },
+    {
+      "case": "changed-page",
+      "calls": 6,
+      "lossless_roundtrip": true,
+      "modes": {
+        "compatible": {
+          "result_json_bytes": 64347,
+          "text_utf8_bytes": 30840,
+          "structured_json_bytes": 30543,
+          "image_base64_bytes": 0,
+          "images": 0
+        },
+        "compact": {
+          "result_json_bytes": 31590,
+          "text_utf8_bytes": 591,
+          "structured_json_bytes": 30543,
+          "image_base64_bytes": 0,
+          "images": 0
+        },
+        "delta": {
+          "result_json_bytes": 8572,
+          "text_utf8_bytes": 591,
+          "structured_json_bytes": 7525,
+          "image_base64_bytes": 0,
+          "images": 0
+        }
+      },
+      "delta_vs_compact_reduction_percent": 72.86
+    },
+    {
+      "case": "navigation",
+      "calls": 6,
+      "lossless_roundtrip": true,
+      "modes": {
+        "compatible": {
+          "result_json_bytes": 64143,
+          "text_utf8_bytes": 30744,
+          "structured_json_bytes": 30447,
+          "image_base64_bytes": 0,
+          "images": 0
+        },
+        "compact": {
+          "result_json_bytes": 31494,
+          "text_utf8_bytes": 591,
+          "structured_json_bytes": 30447,
+          "image_base64_bytes": 0,
+          "images": 0
+        },
+        "delta": {
+          "result_json_bytes": 31716,
+          "text_utf8_bytes": 591,
+          "structured_json_bytes": 30669,
+          "image_base64_bytes": 0,
+          "images": 0
+        }
+      },
+      "delta_vs_compact_reduction_percent": -0.7
+    },
+    {
+      "case": "small-page",
+      "calls": 6,
+      "lossless_roundtrip": true,
+      "modes": {
+        "compatible": {
+          "result_json_bytes": 7599,
+          "text_utf8_bytes": 2826,
+          "structured_json_bytes": 3945,
+          "image_base64_bytes": 0,
+          "images": 0
+        },
+        "compact": {
+          "result_json_bytes": 4992,
+          "text_utf8_bytes": 591,
+          "structured_json_bytes": 3945,
+          "image_base64_bytes": 0,
+          "images": 0
+        },
+        "delta": {
+          "result_json_bytes": 3989,
+          "text_utf8_bytes": 591,
+          "structured_json_bytes": 2942,
+          "image_base64_bytes": 0,
+          "images": 0
+        }
+      },
+      "delta_vs_compact_reduction_percent": 20.09
+    }
+  ],
+  "aggregate": {
+    "compact_result_json_bytes": 99570,
+    "delta_result_json_bytes": 52683,
+    "reduction_percent": 47.09
+  }
+}

@@ -35,6 +35,15 @@ def test_release_metadata_stays_in_sync():
     )
     assert f"mcp-name: {server['name']}" in (ROOT / "README.md").read_text()
     assert "chriswu727" in glama["maintainers"]
+    from argus import __version__
+    from argus.bootstrap import create_runtime
+    from argus.entrypoints.mcp.server import create_server
+
+    assert __version__ == version
+    assert (
+        create_server(create_runtime())._mcp_server.create_initialization_options().server_version
+        == version
+    )
 
 
 def test_readme_covers_every_public_tool_profile():

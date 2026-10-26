@@ -50,6 +50,10 @@ the phase summary in the final result. See the [agent protocol](docs/agent-proto
   and avoids repeating migrated payloads as prose. Compatible mode remains the default.
 - **Visible progress:** real phases, goal counts and check counts over MCP;
   `--monitor-port 8765` adds the local live dashboard without exposing goal text.
+- **Measured response overhead (0.9):** smaller output schemas, numeric payload
+  and component-timing counters, and opt-in `--response-mode delta` for clients
+  that retain observation snapshots. Missing bases require a full `observe`;
+  verification outcomes and image blocks are never replaced by cached verdicts.
 
 Does installing Argus improve an agent? Measure it with the
 [paired evaluation harness](docs/evaluation.md): the same model, task, fixture,
@@ -62,6 +66,11 @@ one post-hoc fixture defect. Both had zero observed false positives and equal
 declared-goal coverage. Argus used more time and tokens. On four repeated pilot
 cases, the targeted update reduced Argus's median calls from 17 to 9; this small
 synthetic sample does not establish general superiority.
+
+The no-model [response encoding benchmark](docs/evaluation.md#response-overhead)
+compares identical synthetic evidence, including navigation invalidation. Delta
+mode reduces aggregate result JSON by 47.09% versus compact mode across those
+24 responses; this measures bytes, **not agent token usage or testing quality**.
 
 <details>
 <summary><b>Live monitoring from a real local fixture run</b></summary>
@@ -164,7 +173,7 @@ The button adds Argus to Cursor; run the Chromium installation command above onc
 
 The default `core` profile exposes the primary web-testing workflow without flooding the host with every specialist tool. Use `uvx --from argus-testing argus-mcp --list-tools` to inspect the selected profile, `--tool-profile screen` for native macOS testing, or `--tool-profile full` for the entire advanced surface. `ARGUS_TOOL_PROFILE` provides the same setting through the environment.
 
-For agents that read structured MCP results, use the focused 0.8 configuration:
+For agents that read structured MCP results, use the focused configuration:
 
 ```bash
 uvx --from argus-testing argus-mcp --tool-profile agent --response-mode compact --monitor-port 8765
@@ -173,6 +182,21 @@ uvx --from argus-testing argus-mcp --tool-profile agent --response-mode compact 
 Read returned observations before issuing another `observe`. Batch related goals
 with `coverage_update(goal=["edit profile", "reload profile"], status="in_progress")`;
 finish them with observed evidence, not an assumed pass. The monitor stays local.
+
+`--response-mode delta` is an additional opt-in for clients that can retain and
+merge snapshot IDs. Keep `compact` if the host cannot reliably resolve bases.
+See the [snapshot contract](docs/agent-protocol.md#incremental-observations).
+
+To check installation, product version, stdio handshake, discovery and structured
+errors without opening a browser or calling a model:
+
+```bash
+uvx --from argus-testing python -m argus.install_check
+```
+
+Editable installs must be reinstalled after a version change so their package
+metadata matches the source. MCP `serverInfo.version` now reports Argus's version,
+not the MCP SDK version.
 
 Then just ask, in your agent session:
 
@@ -265,9 +289,9 @@ selected URL is printed to **stderr**, so stdio MCP messages stay intact.
 | `/` | Local live dashboard |
 | `/healthz` | HTTP process liveness |
 | `/readyz` | Runtime initialized and not shutting down; 503 otherwise |
-| `/api/status` | Versioned state snapshot, counts and capture drops |
+| `/api/status` | Versioned state snapshot, counts, capture drops and numeric overhead |
 | `/api/events` | Server-Sent Events, `Last-Event-ID` reconnect and gap notices |
-| `/metrics` | Prometheus text counters and operation duration sums/counts |
+| `/metrics` | Prometheus operation, response-byte and component-timing counters |
 
 The monitor binds only to `127.0.0.1`, rejects unrelated Host/Origin headers,
 and has no action endpoints. It emits no page contents, URLs, typed values,

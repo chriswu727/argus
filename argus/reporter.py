@@ -21,6 +21,7 @@ from .adapters.reporting.html import render_html
 from .adapters.reporting.json import render_json
 from .adapters.reporting.junit import render_junit
 from .adapters.reporting.sarif import render_sarif
+from .measurement import timed
 from .models import ExplorationResult, validated_run_id
 from .security import redacted_copy
 from .storage import StorageError, atomic_write_text, exclusive_file_lock
@@ -51,6 +52,7 @@ class Reporter:
         ):
             raise ValueError("report extensions must contain only letters, digits and dots")
 
+    @timed("report_export")
     def generate(
         self,
         result: ExplorationResult,

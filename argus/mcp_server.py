@@ -91,7 +91,7 @@ def main() -> None:
         default=os.environ.get("ARGUS_TOOL_PROFILE", "core"),
     )
     parser.add_argument("--list-tools", action="store_true")
-    parser.add_argument("--response-mode", choices=("compatible", "compact"))
+    parser.add_argument("--response-mode", choices=("compatible", "compact", "delta"))
     parser.add_argument(
         "--monitor-port", type=int, help="Enable local monitoring; 0 chooses a free port"
     )

@@ -75,6 +75,16 @@ to avoid duplicated prose for migrated testing tools. Keep the default
 `compatible` mode for older hosts. Add `--monitor-port 8765` for a read-only
 loopback dashboard; MCP phase notifications require host support.
 
+Version 0.9 also offers `--response-mode delta` for hosts that retain observation
+snapshots and validate their base IDs. Use `observe` to resynchronize after a
+missing base. Do not enable it for a host that ignores structured results or
+cannot retain state. It preserves verification outcomes and requested images;
+encoding savings do not establish model token savings.
+
+Run `uvx --from argus-testing python -m argus.install_check` for a no-model,
+no-browser check of installed metadata, product-version handshake, tool discovery
+and structured errors.
+
 Argus is useful when an agent needs evidence-linked journey coverage,
 persistence checks, independent reproduction receipts, or machine-readable
 regression results. It is not a guarantee of comprehensive testing or zero false

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.9.0 - 2026-10-25
+
+- Report the Argus product version in the MCP handshake instead of the SDK
+  version. Add a no-browser installed-package stdio check and run it against
+  fresh release wheels outside the source checkout.
+- Remove redundant output-schema display titles without changing validation
+  constraints or tool display titles.
+- Add opt-in delta observations with explicit base IDs, field removals, full
+  resynchronization, lifecycle invalidation and bounded redacted retention.
+  Preserve errors, current-call verdicts, image blocks and compatibility defaults.
+- Measure response bytes and instrumented browser waits, observation, screenshots,
+  report export and encoding. Expose numeric totals through loopback status and
+  Prometheus; keep page content and input values out of monitoring.
+- Add reproducible, lossless encoding comparisons with navigation controls and
+  gateway discovery/response measurements. Do not equate byte savings with model
+  token savings or claim a new model effectiveness evaluation.
+
 ## 0.8.0 - 2026-10-25
 
 - Add an optional 19-tool agent profile with concise discovery descriptions,
