@@ -46,7 +46,7 @@ the phase summary in the final result. See the [agent protocol](docs/agent-proto
 - **Conservative checks:** missing or malformed evidence stays unknown, not a
   guessed pass or a fabricated bug. Findings link to stable session references.
 - **Focused agent mode:** `argus-mcp --tool-profile agent --response-mode compact`
-  exposes 19 common testing tools with concise discovery descriptions and keeps structured evidence
+  exposes 19 common testing tools with concise discovery descriptions, preserves structured evidence,
   and avoids repeating migrated payloads as prose. Compatible mode remains the default.
 - **Visible progress:** real phases, goal counts and check counts over MCP;
   `--monitor-port 8765` adds the local live dashboard without exposing goal text.
@@ -100,10 +100,10 @@ flowchart LR
     A(["observe"]) --> B{"looks wrong?"}
     B -->|not sure| C["act: click · type · resize · verify"]
     C --> A
-    B -->|bug| D["verify_persistence — reload from a clean state"]
-    D -->|symptom repeats| E(["VERIFIED"])
-    D -->|symptom gone or uncertain| F(["not certified"])
-    E --> G[["report: HTML · JSON · JUnit · SARIF"]]
+    B -->|suspected defect| D["verify_persistence — inspect a fresh load"]
+    D --> E["record_bug with an independent recheck"]
+    E --> F(["reproduced / not reproduced / inconclusive"])
+    F --> G[["report: HTML · JSON · JUnit · SARIF"]]
 ```
 
 The agent supplies the judgment. Argus supplies concise QA guidance, a description-keyed tool surface (`click_what("Login button")`, not `click(7)`), a goal coverage ledger, and a **reproduction-receipt engine** that distinguishes observed, reproduced and inconclusive symptoms.
@@ -313,16 +313,20 @@ application data; see [Privacy](PRIVACY.md).
 
 ## Why Argus is different
 
-**Existing testing tools only test what you script.** Playwright and Cypress run the assertions you wrote. Argus *discovers* bugs you didn't think to test for — and then does the thing an LLM alone can't be trusted to do: **proves them.**
+**Give exploratory testing a repeatable evidence workflow.** An agent can use
+Argus to investigate journeys beyond prewritten checks, inspect what changed,
+and independently recheck suspected symptoms. The agent still decides whether
+the observed behavior violates the application's requirements; a reproduction
+receipt is supporting evidence, not a guarantee of correctness or zero false positives.
 
 | | |
 |---|---|
 | **Agent-directed & black-box** | Give your agent a URL and scope. It explores through Argus without requiring application source access or prewritten test scripts. |
 | **Coverage contract** | Optional natural-language goals, user constraints, discovered pages, and time budget stay visible throughout the session and in the final report. |
-| **Reproduction receipts** | Before certifying a bug, it re-loads the page from a clean state and re-confirms the symptom. Engineered for **zero false-certifications.** |
-| **Finds human-eye bugs** | Fake "Only 3 left!" scarcity, a "Saved" toast that doesn't save, a sale badge where the price didn't drop, a stale navbar after a rename. Static analysis catches none of these. |
-| **Discover → guard** | Findings are journaled; `argus-regression` re-checks them on every build with **zero LLM cost** and a non-zero exit — a real CI gate against known bugs coming back. |
-| **Machine-readable** | Every report also emits JSON, JUnit, and SARIF — so findings gate a pipeline and surface as inline **GitHub PR annotations.** |
+| **Reproduction receipts** | Independent checks distinguish reproduced, not-reproduced and inconclusive symptoms. Reloads preserve authentication and storage by default; replay can repeat writes. |
+| **Runtime evidence** | Inspect misleading success messages, cross-page inconsistencies and persistence failures in the running app. The agent interprets this evidence against the intended behavior. |
+| **Discover → guard** | Add `argus-regression` to CI to recheck eligible journaled findings without model calls. Exit codes distinguish reproduced symptoms, operational failures and inconclusive checks. |
+| **Machine-readable** | JSON, JUnit and SARIF exports support downstream processing. CI gates and code-scanning uploads require integration; URL-based findings do not guarantee source-line PR annotations. |
 
 ---
 
@@ -376,7 +380,7 @@ not the basis for current product claims. See [methodology](docs/evaluation.md).
 
 **BuggyTasks** (`:5555`) — 22 mechanical bugs in a task app: console errors, dead links, fake delete (UI says "deleted!" but data persists on refresh), auth bypass, NaN dates, off-by-one counts, race conditions. The "scripted E2E could find these" tier.
 
-**DarkShop** (`:5556`) — 12 human-eye bugs in a polished-looking store: hardcoded "Only 3 left!" scarcity, `-50%` badges where sale price equals original, a "free shipping over $50" banner contradicted by a flat `$5` at checkout, inverted visual hierarchy ("Add to Cart" demoted under a prominent "Subscribe"), cross-page state drift (rename sticks on /account, navbar greeting doesn't). **Static analysis catches roughly none of these** — they require an agent that reads the page and *reasons.*
+**DarkShop** (`:5556`) — 12 seeded runtime and visual scenarios in a polished-looking store: hardcoded "Only 3 left!" scarcity, `-50%` badges where sale price equals original, a "free shipping over $50" banner contradicted by a flat `$5` at checkout, inverted visual hierarchy ("Add to Cart" demoted under a prominent "Subscribe"), cross-page state drift (rename sticks on /account, navbar greeting doesn't). These fixtures exercise comparisons between visible claims and observed behavior; they are not a benchmark against static analysis tools.
 
 ```bash
 python test-site/app.py           # BuggyTasks  :5555
@@ -427,7 +431,7 @@ uvx --from argus-testing argus-mcp --tool-profile full --list-tools
 | `test_action` · `test_form` | Perform a description-keyed action or form submission and return the resulting state diff in one round trip. |
 | `check_links` · `check_performance` | Probe current-page internal links and expose raw browser performance metrics without auto-certifying generic audit findings. |
 | `regression_check` | Re-test journaled findings for the current origin without requiring another discovery pass. |
-| `record_bug` · `record_observation` | Record a reproducible defect with evidence and receipt, or keep a qualitative review note separate from certified bugs. |
+| `record_bug` · `record_observation` | Record a finding with evidence and its recheck outcome, or keep a qualitative review note separate. Inspect the receipt rather than treating recording as confirmation. |
 | `end_session` | Close the active session and emit HTML, JSON, JUnit, and SARIF reports. |
 
 </details>
