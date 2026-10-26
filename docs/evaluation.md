@@ -48,6 +48,48 @@ runs local protocol smoke checks and offline scoring. A separate, explicit opt-i
 Codex collector consumes the operator's subscription; it is never invoked by the
 MCP server, package import or test suite. No API-provider fallback is implemented.
 
+## Bounded verification-efficiency check (development main)
+
+On 2026-10-26, four authorized Codex attempts tested one synthetic profile-save
+task in buggy/fixed variants, each with Argus and the repository's seven-tool
+conventional-browser MCP baseline (not Microsoft's Playwright MCP). Controls:
+`gpt-6-astra`, high effort, Codex CLI `0.155.0-alpha.16.4`, the existing collector
+prompt/fixture, fresh state, 60 calls and five minutes per attempt. Argus used
+the 19-tool agent profile with compact responses, not delta. Arm order was
+reversed for the fixed variant. All four attempts completed without tool errors.
+
+| Variant / arm | Calls | Seconds | Input tokens | Cached input subset | Output tokens |
+|---|---:|---:|---:|---:|---:|
+| Buggy / baseline | 4 | 31.7 | 68,508 | 55,808 | 432 |
+| Buggy / Argus | 7 | 40.6 | 145,223 | 124,544 | 665 |
+| Fixed / Argus | 6 | 38.0 | 126,477 | 107,264 | 583 |
+| Fixed / baseline | 4 | 29.7 | 68,528 | 64,256 | 322 |
+
+Trace and server-oracle review found the one seeded defect in both arms, no
+false-positive claims on the fixed control, and evidence for all four goal
+opportunities per arm. Argus submitted once per variant. On the buggy variant
+it used the suggested fresh-load predicate and confirmed the failure in two
+loads, without replaying writes or attempting a duplicate finding. Both save
+summaries correctly reported visible text and field-value changes. Shared goal
+evidence was returned once in the compact coverage map. Incorrect model call
+citations were corrected in a separate review; raw answers were not rewritten.
+
+A preceding 0.9.1 diagnostic using the same model/host/task/profile settings
+took 10 Argus calls on the buggy variant and 6 on the fixed variant, with
+334,627 combined input/output tokens. This follow-up used 13 calls and 272,948
+tokens in total (18.4% fewer); non-cached input fell from 42,733 to 39,892 (6.6%).
+This is one before/after sample per variant, not a statistical performance claim.
+Argus still used 1.98 times the baseline's combined tokens and more calls; its
+coverage bookkeeping, independent checks and exported reports are extra work.
+Caching and host latency vary, and token totals are not subscription-usage
+percentages. No general coverage, speed or cost advantage is established.
+
+The tested runtime source hash was
+`66de6f7ec73c93258d9dfd0c6f1c57c7f5fcf32b23d926788bd3aeeacca57539`
+(collector SHA-256 over sorted `argus/**/*.py` contents). Raw traces, screenshots,
+account usage and local paths remain private; only reviewed synthetic aggregates
+are published. No further model attempts were used to improve these results.
+
 ## Local smoke check
 
 ```bash

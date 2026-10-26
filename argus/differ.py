@@ -98,6 +98,18 @@ def compute_changes(
             elif not was_present and is_present:
                 changes.append(f"Text '{target}': was absent -> NOW PRESENT")
 
+    if " ".join(before.page_text.split()) != " ".join(after.page_text.split()):
+        changes.append("Visible page text changed; inspect the post-action observation")
+
+    before_values = {(e.tag, e.id, e.name, e.index): e.value for e in before.elements}
+    after_values = {(e.tag, e.id, e.name, e.index): e.value for e in after.elements}
+    changed_values = sum(
+        before_values[key] != after_values[key]
+        for key in before_values.keys() & after_values.keys()
+    )
+    if changed_values:
+        changes.append(f"Field values changed: {changed_values} (values omitted)")
+
     if not changes:
         changes.append("No visible changes detected")
 

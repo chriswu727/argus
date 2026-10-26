@@ -120,7 +120,7 @@ click_what(...) / type_into(...) /     # ACT — one probe per call
 test_form({...})
                                        # read returned observation; observe only if needed
 verify_persistence(...)                # VERIFY (delete / save / submit / toggle)
-record_bug(..., verify={...})          # RECORD — verify clause attaches a receipt
+record_bug(..., verify={...})          # RECORD — use suggested_verify for persistence
 coverage_update([goal_a, goal_b], "exercised",
                 evidence)
 ... repeat ...
@@ -133,6 +133,15 @@ compact WebP previews under `report-assets/`. Set
 needed. Machine-readable JSON also contains complete reproduction receipts,
 goal evidence, user constraints, page coverage, time-budget status, review mode,
 observations, tool-call counts, step counts, and screenshot metadata.
+
+On development main, persistence mismatches may include `suggested_verify` for
+a fresh-load recheck without repeating writes. Do not use replay for an
+unrecorded refresh. Supplement an existing finding with
+`record_bug(title, severity, verify=..., finding_id=...)`, omitting evidence and
+keeping title/severity unchanged. At most two rechecks are allowed; stop on a
+confirmed receipt. Inconclusive is not proof. Compact/delta coverage may share
+bundles via goal `evidence_ref` into the same `coverage.evidence` map; resolve
+those references before judging coverage. See the protocol for exact semantics.
 
 ## When `record_bug` is appropriate
 

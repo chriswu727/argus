@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Guide observed persistence failures toward fresh-load symptom checks instead
+  of replaying writes. Keep login/error-page results inconclusive and preserve
+  the distinction between a suggested check and a verified finding.
+- Allow up to two explicit rechecks of an existing finding by session ID,
+  preserving receipt history, deduplication, original replay steps and capsule
+  expiry guards. Already verified findings do not consume another recheck.
+- Share identical coverage evidence bundles in compact/delta MCP output while
+  preserving compatible responses and full report evidence.
+- Detect page-text and field-value changes in action summaries without adding
+  raw input values to the diff.
+
 ## 0.9.1 - 2026-10-25
 
 - Publish a distribution-alignment patch following a stale-commit Glama build

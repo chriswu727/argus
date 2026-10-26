@@ -60,6 +60,11 @@ Does installing Argus improve an agent? Measure it with the
 initial state and budget, with both arms and failures retained. The local scripted smoke
 suite validates the harness; it is **not evidence of agent performance gains**.
 
+Development main (not yet in 0.9.1) adds read-only persistence-verification
+guidance, bounded rechecks by finding ID, shared coverage evidence in compact
+responses, and text/value-aware change summaries. See the
+[protocol](docs/agent-protocol.md#bounded-verification-recovery-unreleased).
+
 The [0.8 Codex evaluation](docs/evaluation-0.8.md) includes ten matched pairs:
 Argus found 6/6 defect opportunities versus 5/6 for the browser baseline, including
 one post-hoc fixture defect. Both had zero observed false positives and equal
