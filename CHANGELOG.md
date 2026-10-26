@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.7.1 - 2026-10-25
+
+- Restrict source distributions to explicitly selected product files and validate
+  built archive contents before publication. Use private vulnerability reporting
+  for security disclosures and omit personal contact details from package metadata.
 
 - Parse structured credentials before redaction, omit multipart bodies, and
   redact captured request URLs and custom credential-bearing headers.

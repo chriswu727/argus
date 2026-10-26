@@ -35,8 +35,8 @@ jobs:
         run: python -m pip_audit --vulnerability-service osv --progress-spinner off --skip-editable
       - name: Static checks
         run: |
-          ruff check argus tests
-          ruff format --check argus tests
+          ruff check argus tests scripts
+          ruff format --check argus tests scripts
           mypy
       - name: Install Chromium
         run: python -m playwright install --with-deps chromium
@@ -44,3 +44,8 @@ jobs:
         env:
           ARGUS_REQUIRE_BROWSER: "1"
         run: python -m pytest
+      - name: Check public distribution contents
+        run: |
+          python -m pip install build
+          python -m build
+          python scripts/check_distributions.py dist/*

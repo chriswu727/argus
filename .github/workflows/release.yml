@@ -50,7 +50,9 @@ jobs:
       - name: Build distributions
         run: python -m build
       - name: Check distributions
-        run: python -m twine check dist/*
+        run: |
+          python -m twine check dist/*
+          python scripts/check_distributions.py dist/*
       - name: Smoke-test wheel
         run: |
           python -m venv /tmp/argus-wheel
@@ -95,7 +97,7 @@ jobs:
         with:
           name: python-package-distributions
           path: dist
-      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
 
   mcp-registry:
     needs: pypi

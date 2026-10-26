@@ -68,6 +68,9 @@ For release, synchronize `pyproject.toml` and both version fields in
 `server.json`, update `CHANGELOG.md`, build with `python -m build`, check with
 `twine check`, and smoke-test the wheel outside the source directory. JS and
 dashboard assets are package resources and must be present in the wheel.
+Source distributions use an explicit inclusion list. Run
+`python scripts/check_distributions.py dist/*` after building; newly packaged
+files must satisfy the public-content policy before publication.
 Publish only after CI passes. The GitHub release workflow builds/tests again,
 publishes to PyPI through Trusted Publishing, then publishes MCP Registry
 metadata. Do not commit keys, capsules, generated reports or local test data.

@@ -1,6 +1,6 @@
 [project]
 name = "argus-testing"
-version = "0.7.0"
+version = "0.7.1"
 description = "Autonomous QA MCP that tests apps like a real testing engineer and verifies every certified bug"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -62,6 +62,15 @@ argus-cleanup = "argus.cli:cleanup"
 
 [tool.hatch.build.targets.wheel]
 packages = ["argus"]
+
+[tool.hatch.build.targets.sdist]
+only-include = [
+    "argus", "tests", "examples", "scripts/check_distributions.py",
+    "test-site/app.py", "human-eye-fixture/app.py",
+    "docs/architecture.md", "docs/decisions.md", "docs/implementation-0.7.md",
+    "pyproject.toml", "README.md", "LICENSE", "CHANGELOG.md", "CONTRIBUTING.md",
+    "SECURITY.md", "PRIVACY.md", "AGENTS.md", "llms-install.md", "server.json", "glama.json",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
