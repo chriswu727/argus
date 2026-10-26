@@ -1,9 +1,9 @@
 [project]
 name = "argus-testing"
-version = "0.7.0"
+version = "0.7.1"
 description = "Autonomous QA MCP that tests apps like a real testing engineer and verifies every certified bug"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [{name = "Yichen Wu"}]
 urls = {Homepage = "https://yichenwu.dev/projects/argus", Documentation = "https://github.com/chriswu727/argus#readme", Repository = "https://github.com/chriswu727/argus", Issues = "https://github.com/chriswu727/argus/issues"}
@@ -24,8 +24,8 @@ dependencies = [
     "pyyaml>=6.0",
     "rich>=13.0.0",
     "jinja2>=3.0.0",
-    "Pillow>=10.0.0",
-    "filelock>=3.12,<4",
+    "Pillow>=13.0.0",
+    "filelock>=4.2.4,<5",
     "starlette>=0.27,<2",
     "uvicorn>=0.31,<1",
     "typing-extensions>=4.9",
@@ -34,13 +34,13 @@ dependencies = [
     "cryptography>=50.0.2",
     "multidict>=6.9.1",
     "urllib3>=2.8.0",
+    "certifi>=2026.10.23",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
-    "tomli>=2.0.0; python_version < '3.11'",
     "ruff>=0.17,<0.18",
     "mypy>=2.4,<3",
     "httpx>=0.27,<1",
@@ -63,6 +63,15 @@ argus-cleanup = "argus.cli:cleanup"
 [tool.hatch.build.targets.wheel]
 packages = ["argus"]
 
+[tool.hatch.build.targets.sdist]
+only-include = [
+    "argus", "tests", "examples", "scripts/check_distributions.py",
+    "test-site/app.py", "human-eye-fixture/app.py",
+    "docs/architecture.md", "docs/decisions.md", "docs/implementation-0.7.md",
+    "pyproject.toml", "README.md", "LICENSE", "CHANGELOG.md", "CONTRIBUTING.md",
+    "SECURITY.md", "PRIVACY.md", "AGENTS.md", "llms-install.md", "server.json", "glama.json",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
@@ -71,14 +80,14 @@ python_functions = ["test_*"]
 asyncio_mode = "auto"
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 100
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F", "I"]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 files = ["argus/domain/contracts.py", "argus/domain/replay.py", "argus/domain/verification.py", "argus/settings.py", "argus/ports.py", "argus/application/context.py", "argus/application/telemetry.py", "argus/application/manager.py"]
 follow_imports = "silent"
 check_untyped_defs = true

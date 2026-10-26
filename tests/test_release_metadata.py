@@ -1,14 +1,9 @@
 import base64
 import json
 import re
+import tomllib
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
-
-try:
-    import tomllib
-except ModuleNotFoundError:
-    import tomli as tomllib
-
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -18,6 +13,10 @@ def test_release_metadata_stays_in_sync():
     server = json.loads((ROOT / "server.json").read_text())
     glama = json.loads((ROOT / "glama.json").read_text())
     version = project["project"]["version"]
+
+    assert project["project"]["requires-python"] == ">=3.11"
+    assert "Pillow>=13.0.0" in project["project"]["dependencies"]
+    assert "filelock>=4.2.4,<5" in project["project"]["dependencies"]
 
     assert server["name"] == "io.github.chriswu727/argus"
     assert server["version"] == version

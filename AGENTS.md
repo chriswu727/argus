@@ -6,6 +6,9 @@ task; it does not replace the host agent's identity or authority.
 
 ## Setup
 
+Use Python 3.11 or newer. With an older default interpreter, launch with
+`uvx --python 3.12 --from argus-testing argus-mcp`.
+
 ```bash
 # Web mode (works everywhere)
 pip install argus-testing
