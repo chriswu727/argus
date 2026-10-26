@@ -3,7 +3,8 @@ from __future__ import annotations
 import re
 from typing import List, Optional
 
-from argus.domain.contracts import Rejection
+from argus.application.context import current_runtime
+from argus.domain.contracts import ErrorCode, Rejection, ToolText
 from argus.domain.models import (
     Bug,
     InteractiveElement,
@@ -26,6 +27,8 @@ from .coverage import (
     _format_coverage,
     _update_coverage_from_state,
 )
+from .payloads import observation_data
+from .progress import Stage
 from .screen import _observe_screen
 from .session import Session, _require_session
 
@@ -432,16 +435,21 @@ async def observe() -> str:
     here — that's your judgment to make.
     """
     s = _require_session()
+    await current_runtime().progress(Stage.OBSERVING)
     if s.mode != "web" or s.browser is None:
         if s.mode != "screen" or s.screen is None:
-            return "observe: the active session has no usable backend."
+            return Rejection(
+                "observe: the active session has no usable backend.", ErrorCode.BACKEND
+            )
         return await _observe_screen(s)
     if not s.browser.has_page:
-        return (
+        return Rejection(
             "observe: no open page — all tabs were closed. Call "
             "navigate(url) or start_session(url) to recover."
         )
     state = await s.browser.get_state()
+    previous_counts = getattr(s, "_last_observed_counts", None)
+    previous_url = getattr(s, "_last_observed_url", None)
     delta_note = _count_delta_note(
         getattr(s, "_last_observed_counts", None), getattr(s, "_last_observed_url", None), state
     )
@@ -450,7 +458,8 @@ async def observe() -> str:
     s._last_elements = state.elements
     if state.url not in s.pages_visited:
         s.pages_visited.append(state.url)
-    return _format_observation(state) + delta_note + _coverage_line(s, state)
+    text = _format_observation(state) + delta_note + _coverage_line(s, state)
+    return ToolText(text, observation_data(s, state, previous_counts, previous_url))
 
 
 async def coverage_update(goal: str, status: str, evidence: str = "") -> str:
@@ -463,18 +472,22 @@ async def coverage_update(goal: str, status: str, evidence: str = "") -> str:
     """
     s = _require_session()
     if not s.coverage_goals:
-        return "coverage_update: this session has no supplied goals. Continue exploring and report pages visited."
+        return Rejection(
+            "coverage_update: this session has no supplied goals. Continue exploring and report pages visited."
+        )
     status = status.strip().lower()
     if status not in _COVERAGE_STATUSES:
-        return "coverage_update: status must be untested, in_progress, exercised, or blocked."
+        return Rejection(
+            "coverage_update: status must be untested, in_progress, exercised, or blocked."
+        )
     evidence = " ".join(evidence.split())
     if len(evidence) > 1000:
-        return "coverage_update: evidence must be at most 1000 characters."
+        return Rejection("coverage_update: evidence must be at most 1000 characters.")
     if status in {"exercised", "blocked"} and not evidence:
-        return f"coverage_update: {status} requires concrete evidence."
+        return Rejection(f"coverage_update: {status} requires concrete evidence.")
     index, error = _coverage_goal_index(s, goal)
     if error:
-        return error
+        return Rejection(error)
     assert index is not None
     selected = s.coverage_goals[index]
     if status == "untested":
@@ -504,4 +517,5 @@ async def coverage_update(goal: str, status: str, evidence: str = "") -> str:
             f"{len(refs['verifications'])} verification(s), "
             f"{len(refs['findings'])} finding(s)."
         )
-    return result
+    await current_runtime().progress(Stage.COVERAGE)
+    return ToolText(result, {"coverage": snapshot})

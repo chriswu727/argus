@@ -148,3 +148,22 @@ Chromium. Native macOS UI permissions and behavior require manual integration
 testing; unit tests alone do not establish native app correctness.
 
 See [design decisions](decisions.md) and the [extension guide](../CONTRIBUTING.md).
+
+## Agent interface and evaluation
+
+The MCP adapter adds a versioned `AgentResult` envelope while preserving text
+and image blocks. Application services expose `ToolText` evidence without MCP
+dependencies; the adapter does not scrape prose to reconstruct evidence. The
+runtime captures result state while holding the operation lock. Core payloads
+bound target/feedback counts and identify omissions.
+
+Progress is a request-local context with a bounded stage list and a best-effort
+notification sink. Fixed phases are emitted at actual work boundaries into both
+MCP progress and the existing monitor event stream. Delivery has a short deadline
+and cannot prevent lock release or convert a failed reproduction into success.
+
+`evaluation/` owns paired records, validation, deterministic local smoke fixtures
+and offline scoring. The production runtime never imports it. Real model drivers
+and independent adjudication remain external inputs; scripted controls are
+explicitly not agent-effectiveness evidence. See [protocol](agent-protocol.md)
+and [evaluation](evaluation.md) for compatibility and measurement limits.

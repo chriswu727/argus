@@ -49,6 +49,17 @@ class ImageArtifact:
 class OperationResult:
     value: Any
     error: ErrorCode | None = None
+    state: str = "idle"
+    run_id: str | None = None
+
+
+class ToolText(str):
+    data: dict[str, Any]
+
+    def __new__(cls, text: str, data: dict[str, Any]):
+        value = super().__new__(cls, text)
+        value.data = data
+        return value
 
 
 @dataclass(frozen=True)

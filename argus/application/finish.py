@@ -3,13 +3,14 @@ from __future__ import annotations
 import asyncio
 
 from argus.application.context import current_runtime
-from argus.domain.contracts import SessionState
+from argus.domain.contracts import SessionState, ToolText
 from argus.domain.models import (
     ExplorationResult,
 )
 
 from .coverage import _coverage_snapshot
 from .evidence import _output_dir, _write_journal
+from .progress import Stage
 from .session import Session
 
 
@@ -62,6 +63,7 @@ async def end_session() -> str:
 
     output_dir = _output_dir()
     reporter = current_runtime().reporter_factory()
+    await current_runtime().progress(Stage.EXPORTING)
     try:
         report_path = await asyncio.to_thread(reporter.generate, result, output_dir)
         warnings.extend(reporter.warnings)
@@ -116,4 +118,19 @@ async def end_session() -> str:
         for bug in result.bugs:
             lines.append(f"  [{bug.severity.value.upper()}] {bug.title}")
 
-    return "\n".join(lines)
+    return ToolText(
+        "\n".join(lines),
+        {
+            "run_id": result.run_id,
+            "report_path": report_path or None,
+            "warnings": warnings,
+            "coverage": coverage,
+            "summary": {
+                "tool_calls": result.tool_calls,
+                "actions": result.actions_taken,
+                "findings": len(result.bugs),
+                "observations": len(result.observations),
+                "duration_seconds": duration,
+            },
+        },
+    )

@@ -21,6 +21,8 @@ PUBLIC_FILES = {
     "docs/architecture.md",
     "docs/decisions.md",
     "docs/implementation-0.7.md",
+    "docs/agent-protocol.md",
+    "docs/evaluation.md",
     "scripts/check_distributions.py",
     "test-site/app.py",
     "human-eye-fixture/app.py",

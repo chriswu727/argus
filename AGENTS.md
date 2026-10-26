@@ -48,6 +48,16 @@ the user's broader task. The short version:
   Map → **Use it** (walk each goal end-to-end, carrying real state) →
   Hypothesize → Act → Observe → Verify → Record → Cover.
 
+## Structured results (development on main)
+
+These additions are not included in PyPI 0.7.1. Read `structuredContent.data`
+for operation-specific evidence where available; text and images remain for
+compatibility. `status: completed` means the tool ran, not that the application
+passed. Inspect expectation matches, finding verdicts and export warnings.
+Progress notifications describe actual phases, not percentages or proof of
+coverage. Missing live notifications do not mean execution stopped; the final
+result includes captured stages. See [the protocol](docs/agent-protocol.md).
+
 ## Tools you'll use most
 
 ### Web mode

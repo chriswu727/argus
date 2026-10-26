@@ -139,7 +139,11 @@ async def test_action_reports_match_and_surprise_live():
         await (observe.fn if hasattr(observe, "fn") else observe)()
         out = await ta("Save", expect={"text_present": "Saved"})
         assert "[MATCH" in out and "All predictions held" in out
+        assert out.data["expectations"][0]["matches"] is True
+        assert out.data["finding_confirmed"] is False
+        assert out.data["screenshot"]
         out2 = await ta("Save", expect={"text_present": "Nope-not-here"})
         assert "SURPRISE" in out2 and "SURPRISE(S)" in out2
+        assert out2.data["expectations"][0]["matches"] is False
     finally:
         await end()

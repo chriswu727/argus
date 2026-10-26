@@ -34,6 +34,8 @@ async def test_start_returns_observation_and_screenshot_returns_mcp_image(tmp_pa
         content = await m.mcp._tool_manager.call_tool(
             "screenshot", {"name": "contract"}, convert_result=True
         )
+        assert content.structuredContent["status"] == "completed"
+        content = content.content
         assert [block.type for block in content] == ["text", "image"]
         screenshot_path = content[0].text.split(": ", 1)[1]
         assert Path(screenshot_path).is_absolute()

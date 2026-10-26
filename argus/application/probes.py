@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from argus.application.context import current_runtime
+from argus.domain.contracts import Rejection, ToolText
+
 from .capture import _file_event_bugs
 from .coverage import _coverage_reference_url
 from .evidence import _auto_screenshot
+from .progress import Stage
 from .session import _require_session
 from .text import _present_with_scroll, _resolve_url, _short
 
@@ -47,7 +51,12 @@ async def verify_persistence(
     s = _require_session()
     expect_norm = (expect or "").strip().lower()
     if expect_norm not in ("present", "absent"):
-        return f"verify_persistence: invalid `expect` {expect!r}. Use 'present' or 'absent'."
+        return Rejection(
+            f"verify_persistence: invalid `expect` {expect!r}. Use 'present' or 'absent'."
+        )
+    if not target_text.strip():
+        return Rejection("verify_persistence: target_text must not be empty.")
+    await current_runtime().progress(Stage.VERIFYING)
 
     s.steps.append(
         f"verify_persistence({expect_norm}, {target_text[:60]!r}"
@@ -89,13 +98,14 @@ async def verify_persistence(
             else "Target text is MISSING after refresh — does NOT match expectation."
         )
 
-    return (
+    return ToolText(
         f"verify_persistence(expect={expect_norm!r}, target={target_text[:60]!r}) "
         f"on {nav_url}\n"
         f"  Result: {'MATCH' if matches else 'MISMATCH'} — {verdict}\n"
         f"  Decide: if this mismatch is a real bug (silent delete failure, "
         f"edit not persisting, etc.), call record_bug. Argus does not infer "
-        f"that for you."
+        f"that for you.",
+        {"verification": dict(s.verification_checks[-1]), "finding_confirmed": False},
     )
 
 

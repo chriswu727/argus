@@ -4,6 +4,7 @@ import asyncio
 from typing import Optional
 
 from argus.differ import compute_changes
+from argus.domain.contracts import ErrorCode, Rejection, ToolText
 from argus.domain.models import (
     InteractiveElement,
 )
@@ -68,10 +69,11 @@ async def test_action(target: str, expectation: str = "", expect: Optional[dict]
         await s.browser.settle()
     except Exception as exc:
         ss = await _auto_screenshot(s, "action_failed", step)
-        return (
+        return Rejection(
             f"test_action({target!r}) — click failed: {exc}\n"
             f"The element may be obscured, stale, or removed. "
-            f"Screenshot: {ss}"
+            f"Screenshot: {ss}",
+            ErrorCode.BACKEND,
         )
 
     await asyncio.sleep(0.3)
@@ -130,6 +132,7 @@ async def test_action(target: str, expectation: str = "", expect: Optional[dict]
         if xs_check:
             lines.append(f"  CHECK: {xs_check}")
 
+    checks = []
     if expect:
         checks = _evaluate_expectation(before, after, expect)
         surprises = sum(1 for _, ok, _ in checks if ok is False)
@@ -160,7 +163,20 @@ async def test_action(target: str, expectation: str = "", expect: Optional[dict]
         "test_action does not infer that for you."
     )
     lines.append(f"Screenshot: {ss_path}")
-    return "\n".join(lines)
+    return ToolText(
+        "\n".join(lines),
+        {
+            "changes": changes[:100],
+            "changes_omitted": max(0, len(changes) - 100),
+            "expectations": [
+                {"predicate": label, "matches": matches, "detail": detail}
+                for label, matches, detail in checks
+            ],
+            "screenshot": ss_path,
+            "auto_captured_findings": len(filed_bugs),
+            "finding_confirmed": False,
+        },
+    )
 
 
 async def test_form(
