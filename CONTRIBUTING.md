@@ -93,13 +93,14 @@ Publish only after CI passes. The GitHub release workflow builds/tests again,
 publishes to PyPI through Trusted Publishing, then publishes MCP Registry
 metadata. Do not commit keys, capsules, generated reports or local test data.
 
-Before creating the GitHub release, synchronize Glama's repository index to the
-tested main commit. Clear any stale pinned commit in its build configuration;
-an automatic version label does not prove which source was built. Build without
-publishing first and verify the source SHA, installed Argus version and MCP
-`serverInfo.version`. Only then create the GitHub release and check that Glama's
-published version points to that verified source. Do not reuse an occupied
-version label for a different build.
+Keep Glama's automatic release switch off: its build configuration can retain a
+resolved commit even after the pin field is cleared. Before creating the GitHub
+release, synchronize Glama's repository index and explicitly select the tested
+main commit. Build without publishing first and verify the source SHA, installed
+Argus version and MCP `serverInfo.version`. After the GitHub release and package
+publication succeed, manually publish that verified Glama build under the same
+version. A version label does not prove which source was built. Do not reuse an
+occupied version label for a different build.
 
 After publication, verify the PyPI wheel and source archive, official MCP
 Registry package version, and directory release associations. Run

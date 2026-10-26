@@ -4,8 +4,8 @@
 
 - Publish a distribution-alignment patch following a stale-commit Glama build
   associated with its 0.9.0 release. Runtime behavior is unchanged from 0.9.0.
-- Document directory release checks: clear stale build pins, synchronize the
-  repository, and verify the source commit and MCP handshake before publishing.
+- Document manually gated directory releases: synchronize the repository and
+  verify the source commit and MCP handshake before publishing.
 
 ## 0.9.0 - 2026-10-25
 
