@@ -133,6 +133,11 @@ class Bug:
     # human-readable steps_to_reproduce.
     replay_steps: List[Dict] = field(default_factory=list)
     verification_history: List[Dict] = field(default_factory=list)
+    expected: str = ""
+    actual: str = ""
+    coverage_goals: List[str] = field(default_factory=list)
+    claimed_evidence_calls: List[int] = field(default_factory=list)
+    evidence_warnings: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict:
         """Machine-readable finding — for JSON/JUnit/SARIF export so Argus can be
@@ -146,6 +151,11 @@ class Bug:
             "type": getattr(self.type, "value", str(self.type)),
             "url": self.url,
             "description": self.description,
+            "expected": self.expected,
+            "actual": self.actual,
+            "coverage_goals": list(self.coverage_goals),
+            "claimed_evidence_calls": list(self.claimed_evidence_calls),
+            "evidence_warnings": list(self.evidence_warnings),
             "steps_to_reproduce": list(self.steps_to_reproduce or []),
             "screenshot_path": self.screenshot_path,
             "replay_steps": export_trace(self.replay_steps or []),

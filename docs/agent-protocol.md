@@ -127,6 +127,39 @@ Replay rechecks use the original finding's trace and still repeat its writes;
 they require the same authority as any replay. A limit or inconclusive receipt
 is a reason to preserve uncertainty, not to create a duplicate and force a pass.
 
+## Finding evidence provenance (unreleased)
+
+`record_bug.evidence` declares optional `expected`, `actual`, `steps`, `url`,
+`screenshot`, `bug_type`, `goal`/`goals` and `evidence_calls`, in addition to
+`description` and legacy checkable-target fields. Bare description strings remain
+accepted. Expected/actual text is retained in JSON fields and the description
+used by HTML, JUnit and SARIF. Each outcome accepts up to 4,000 characters.
+Goal names resolve against the session's declared goals; unknown or ambiguous
+names reject the finding before verification or screenshots. Up to 50 positive
+call numbers are retained as `claimed_evidence_calls`, not verified trace IDs.
+These fields never change a finding's trust tier by themselves.
+
+For independent fresh-load text/status checks, the default finding URL is the
+loaded verification page, including redirects. Automatic screenshots are taken
+there before restoring the caller's page, with no additional navigation or
+write replay. The receipt records `evidence_url` and the available screenshot
+path. Explicit finding URLs are preserved; if they differ from the check target,
+no automatic screenshot is attached. Without a fresh-load check, a URL different
+from the current page likewise cannot borrow that page's screenshot. Explicit
+approved image paths remain caller-provided evidence. `screenshot: "skip"` still
+disables capture. Capture failures produce evidence warnings without changing
+the check verdict. Replay receipts name a journey's start URL, so that URL is
+not used to infer the finding's location.
+
+A new `in_progress` group closes the previous group's evidence range but leaves
+its status unchanged. Goals batched together share their journey window;
+reopening a goal starts a new window. Final updates retain the closed boundary.
+Action URLs retain revisits even when a page was visited earlier in the session.
+Explicitly goal-linked findings and their screenshots can be attached after a
+window closes, including after its status is finalized. They do not contaminate
+unrelated goals. Untagged findings remain linked only by their time window;
+Argus does not infer semantic goal associations or completeness.
+
 ## Guidance and compact output
 
 The optional `agent` profile exposes 19 common browser-testing tools with concise

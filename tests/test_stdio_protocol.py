@@ -26,6 +26,11 @@ async def test_real_stdio_handshake_and_local_page_journey(tmp_path):
             assert len(tools.tools) == 30
             assert all(tool.outputSchema for tool in tools.tools)
             assert all("ctx" not in tool.inputSchema.get("properties", {}) for tool in tools.tools)
+            finding_schema = next(
+                tool for tool in tools.tools if tool.name == "record_bug"
+            ).inputSchema
+            evidence_schema = finding_schema["$defs"]["FindingEvidence"]["properties"]
+            assert {"expected", "actual", "goal", "goals", "evidence_calls"} <= set(evidence_schema)
             missing = await client.call_tool("observe", {})
             assert missing.isError and "no_session" in missing.content[0].text
             assert missing.structuredContent["error_code"] == "no_session"
@@ -68,6 +73,27 @@ async def test_real_stdio_handshake_and_local_page_journey(tmp_path):
             shot = await client.call_tool("screenshot", {"name": "protocol"})
             assert [item.type for item in shot.content] == ["text", "image"]
             assert shot.structuredContent["status"] == "completed"
+            finding = await client.call_tool(
+                "record_bug",
+                {
+                    "title": "Synthetic contract finding",
+                    "severity": "low",
+                    "evidence": {
+                        "description": None,
+                        "steps": None,
+                        "url": None,
+                        "bug_type": None,
+                        "expect_status": None,
+                        "expected": "Expected contract state",
+                        "actual": "Observed contract state",
+                        "goal": "inspect page",
+                        "evidence_calls": [2, 3],
+                        "screenshot": "skip",
+                    },
+                },
+            )
+            assert not finding.isError
+            assert finding.structuredContent["data"]["verdict"] == "inconclusive"
             rejected_end = await client.call_tool(
                 "end_session",
                 {
@@ -103,6 +129,11 @@ async def test_real_stdio_handshake_and_local_page_journey(tmp_path):
             assert ended.structuredContent["data"]["report_path"]
             assert ended.structuredContent["data"]["coverage"]["goals"][0]["status"] == "exercised"
     assert len(list((tmp_path / "reports").glob("report_*.json"))) == 1
+    exported = json.loads(next((tmp_path / "reports").glob("report_*.json")).read_text())
+    assert exported["findings"][0]["expected"] == "Expected contract state"
+    assert exported["findings"][0]["actual"] == "Observed contract state"
+    assert exported["findings"][0]["coverage_goals"] == ["inspect page"]
+    assert exported["findings"][0]["claimed_evidence_calls"] == [2, 3]
 
 
 async def test_stdio_enforces_startup_access_policy(tmp_path):

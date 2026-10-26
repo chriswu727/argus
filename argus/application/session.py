@@ -56,6 +56,7 @@ class Session:
         self.verification_checks: List[dict] = []
         self.exploration = ExplorationProgress()
         self._coverage_goal_cursors: dict[int, dict] = {}
+        self._coverage_goal_ends: dict[int, dict] = {}
         self._coverage_evidence_cursor: dict = {
             "actions": 0,
             "pages": 0,
