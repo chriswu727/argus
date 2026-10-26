@@ -35,7 +35,9 @@ async def test_real_stdio_handshake_and_local_page_journey(tmp_path):
                 progress.append((value, total, message))
 
             started = await client.call_tool(
-                "start_session", {"url": page.as_uri()}, progress_callback=on_progress
+                "start_session",
+                {"url": page.as_uri(), "goals": ["inspect page"]},
+                progress_callback=on_progress,
             )
             assert not started.isError and "Protocol fixture" in started.content[0].text
             assert started.structuredContent["data"]["page"]["title"] == ""
@@ -66,9 +68,40 @@ async def test_real_stdio_handshake_and_local_page_journey(tmp_path):
             shot = await client.call_tool("screenshot", {"name": "protocol"})
             assert [item.type for item in shot.content] == ["text", "image"]
             assert shot.structuredContent["status"] == "completed"
-            ended = await client.call_tool("end_session", {})
+            rejected_end = await client.call_tool(
+                "end_session",
+                {
+                    "coverage_updates": [
+                        {
+                            "goal": "inspect page",
+                            "status": "exercised",
+                            "evidence": "Inspected heading and Save control",
+                        },
+                        {"goal": "unknown", "status": "blocked", "evidence": "Unavailable"},
+                    ]
+                },
+            )
+            assert rejected_end.isError
+            still_open = await client.call_tool("observe", {})
+            assert still_open.structuredContent["session_state"] == "active"
+            assert (
+                still_open.structuredContent["data"]["coverage"]["goals"][0]["status"] == "untested"
+            )
+            ended = await client.call_tool(
+                "end_session",
+                {
+                    "coverage_updates": [
+                        {
+                            "goal": "inspect page",
+                            "status": "exercised",
+                            "evidence": "Inspected heading and Save control",
+                        }
+                    ]
+                },
+            )
             assert not ended.isError and "Report saved" in ended.content[0].text
             assert ended.structuredContent["data"]["report_path"]
+            assert ended.structuredContent["data"]["coverage"]["goals"][0]["status"] == "exercised"
     assert len(list((tmp_path / "reports").glob("report_*.json"))) == 1
 
 

@@ -186,6 +186,7 @@ async def test_scripted_smoke_exercises_buggy_fixed_and_clean_controls():
     result = compare(dataset)
     assert result["mode"] == "scripted_smoke"
     assert result["paired_trials"] == 3
+    assert all(trial.tool_calls == 5 for trial in dataset.trials if trial.arm == "argus")
     for arm in result["arms"].values():
         assert arm["failed_trials"] == 0, dataset.model_dump_json(indent=2)
         assert arm["true_positives"] == 1

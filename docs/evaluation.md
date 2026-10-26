@@ -48,7 +48,35 @@ runs local protocol smoke checks and offline scoring. A separate, explicit opt-i
 Codex collector consumes the operator's subscription; it is never invoked by the
 MCP server, package import or test suite. No API-provider fallback is implemented.
 
-## Bounded verification-efficiency check (development main)
+## Development encoding and finalization follow-up
+
+A subsequent offline change removes generated input-schema display titles,
+omits empty optional success metadata in compact/delta results, and lets agents
+submit final coverage while ending a session. Runtime validators, tool display
+titles, evidence, actual progress stages and verdicts are retained.
+
+| Deterministic measurement | Before | After |
+|---|---:|---:|
+| Agent-profile tool JSON bytes | 24,040 | 23,069 |
+| Agent-profile input-schema bytes | 4,461 | 3,414 |
+| Compact result bytes, 24-response fixture | 99,570 | 97,182 |
+| Delta result bytes, same fixture | 52,683 | 50,295 |
+| Argus scripted save/reload calls per control | 7 | 5 |
+
+Run `python -m argus.evaluation.overhead` and the scripted smoke check to
+reproduce the current figures. The five-call workflow starts, declares the
+goal in progress, clicks Save and reads its returned observation, checks a
+fresh load, then ends with explicit final coverage. It runs buggy, client-storage
+fixed and server-backed clean controls over real MCP stdio. Separate tests
+verify that invalid final batches leave both the session and coverage unchanged,
+and that export failures retain the final ledger with a warning.
+
+These are byte counts and scripted call counts. This follow-up consumed no
+model calls and does not establish new token, subscription, latency or agent
+quality improvements. The model measurements below describe the earlier source
+snapshot, before this finalization change.
+
+## Bounded verification-efficiency check (pre-batching snapshot)
 
 On 2026-10-26, four authorized Codex attempts tested one synthetic profile-save
 task in buggy/fixed variants, each with Argus and the repository's seven-tool

@@ -25,7 +25,7 @@ from .catalog import (
     _TOOL_TITLES,
 )
 from .overhead import response_bytes
-from .results import AgentResult, to_mcp_result
+from .results import AgentResult, _omit_schema_titles, to_mcp_result
 from .snapshots import FIELDS, ObservationSnapshots
 
 INSTRUCTIONS = (
@@ -131,4 +131,7 @@ def create_server(runtime: SessionManager, profile: str = "core") -> FastMCP:
             ),
             structured_output=True,
         )
+        registered = server._tool_manager.get_tool(name)
+        if registered is not None:
+            _omit_schema_titles(registered.parameters)
     return server

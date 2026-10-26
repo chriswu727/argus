@@ -17,8 +17,18 @@ from .snapshots import ObservationSnapshots
 
 def _omit_schema_titles(schema: dict) -> None:
     schema.pop("title", None)
-    for field_schema in schema.get("properties", {}).values():
-        field_schema.pop("title", None)
+    for key in ("properties", "$defs", "definitions"):
+        for child in schema.get(key, {}).values():
+            if isinstance(child, dict):
+                _omit_schema_titles(child)
+    for key in ("items", "additionalProperties"):
+        child = schema.get(key)
+        if isinstance(child, dict):
+            _omit_schema_titles(child)
+    for key in ("anyOf", "allOf", "oneOf", "prefixItems"):
+        for child in schema.get(key, []):
+            if isinstance(child, dict):
+                _omit_schema_titles(child)
 
 
 class AgentResult(BaseModel):
@@ -101,7 +111,7 @@ def to_mcp_result(
         content = [
             TextContent(
                 type="text",
-                text=f"{name}: completed. Read structuredContent.data for evidence; completion is not a test verdict.",
+                text="Evidence: structuredContent.data; completion is not a test verdict.",
             )
         ]
     if mode == "delta" and snapshots is not None:
@@ -118,6 +128,13 @@ def to_mcp_result(
         progress_omitted=progress.omitted,
         progress_delivery_failed=progress.delivery_failed,
     )
+    omitted = set()
+    if mode in {"compact", "delta"} and not code:
+        for key in ("recovery", "progress_omitted", "progress_delivery_failed"):
+            if not getattr(envelope, key):
+                omitted.add(key)
     return CallToolResult(
-        content=content, structuredContent=envelope.model_dump(mode="json"), isError=bool(code)
+        content=content,
+        structuredContent=envelope.model_dump(mode="json", exclude=omitted),
+        isError=bool(code),
     )

@@ -10,7 +10,7 @@ from argus.application.guidance import monitor_counts
 from argus.application.payloads import observation_data
 from argus.application.progress import progress_scope
 from argus.domain.contracts import OperationResult, ToolText
-from argus.entrypoints.mcp.results import to_mcp_result
+from argus.entrypoints.mcp.results import AgentResult, to_mcp_result
 from argus.settings import Settings
 
 
@@ -75,7 +75,9 @@ def test_compact_mode_preserves_data_and_compatibility_text():
         compact = to_mcp_result("observe", OperationResult(value), progress, "compact")
         compatible = to_mcp_result("observe", OperationResult(value), progress)
     assert compatible.content[0].text == value
-    assert compact.structuredContent == compatible.structuredContent
+    assert AgentResult.model_validate(compact.structuredContent) == AgentResult.model_validate(
+        compatible.structuredContent
+    )
     assert len(compact.model_dump_json()) < len(compatible.model_dump_json()) / 2
 
 

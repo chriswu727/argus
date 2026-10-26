@@ -27,6 +27,12 @@ data, never by parsing the rendered text.
 `[error_code]` prefix. SDK-level argument/schema validation and unknown-tool
 errors remain standard MCP errors and may not contain this envelope.
 
+On development main, successful compact/delta responses omit empty `recovery`,
+zero `progress_omitted`, and false `progress_delivery_failed`. Their defaults
+remain `[]`, `0`, and `false` in envelope version 1. Nondefault values, actual
+stages, verdicts, images and error responses remain explicit. Compatible mode
+continues returning every envelope field.
+
 Never interpret `status: completed` as "the application passed". A persistence
 probe can complete successfully with `data.verification.matches: false`.
 Similarly, completing `record_bug` does not certify the finding: inspect
@@ -66,6 +72,34 @@ not that a root cause or defect interpretation has been proven.
 - Screenshot tools: image artifact paths plus unchanged MCP image blocks.
 - `end_session`: original run ID, report path, warnings, coverage and counts.
   A null report path or nonempty warnings must not be treated as clean export.
+
+## Final coverage in one call (unreleased)
+
+Instead of a final `coverage_update` followed by `end_session`, submit explicit
+final updates while ending:
+
+```json
+{
+  "coverage_updates": [
+    {
+      "goal": ["edit-name", "reload-name"],
+      "status": "exercised",
+      "evidence": "Saved the new name and compared it with a fresh page load."
+    }
+  ]
+}
+```
+
+`end_session.coverage_updates` accepts at most 20 entries. Each entry specifies
+one goal or 1-20 related goals, `exercised` or `blocked`, and up to 1,000 characters
+of observed evidence. The entire batch validates before changing the ledger or
+closing resources. Unknown, ambiguous or repeated goals and malformed evidence
+reject the call with the session still open. Each goal keeps its existing
+evidence window; goals without a window use the common pre-batch cursor.
+Unlisted goals keep their status, and exercised does not mean passed.
+The updated coverage is included in the returned summary and exported reports,
+including the returned warning summary if export fails. Calling `end_session()`
+without updates and making mid-session `coverage_update` calls remain supported.
 
 Common credential patterns are redacted in the added structured data. Existing
 text retains each tool's disclosure policy, including explicitly enabled sensitive

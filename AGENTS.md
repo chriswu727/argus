@@ -94,7 +94,7 @@ result includes captured stages. See [the protocol](docs/agent-protocol.md).
 | `get_errors()` | Drain captured console + network events. Events retain the page where they occurred; matching console/network symptoms attach to an existing root cause, while new causes are tagged "auto-captured / not independently verified". |
 | `check_links()` / `check_performance()` | Probe-style helpers — return raw data, no auto-bug. |
 | `crawl_site()` | Page discovery: crawls internal links, auto-capturing only console/network events (tagged). Walk the surfaced pages and record_bug what you confirm. |
-| `end_session()` | Close session; write HTML, JSON, JUnit, and SARIF reports with separate tool-call and recorded-step counts. |
+| `end_session(coverage_updates=...)` | Optionally submit explicit final exercised/blocked goals with evidence, then close and export reports. The entire batch validates before shutdown; invalid updates keep the session open. |
 
 ### Screen mode (macOS)
 
@@ -121,10 +121,10 @@ test_form({...})
                                        # read returned observation; observe only if needed
 verify_persistence(...)                # VERIFY (delete / save / submit / toggle)
 record_bug(..., verify={...})          # RECORD — use suggested_verify for persistence
-coverage_update([goal_a, goal_b], "exercised",
-                evidence)
-... repeat ...
-end_session()                          # reports completed + unfinished coverage
+... repeat; use coverage_update for mid-session milestones ...
+end_session(coverage_updates=[         # final coverage + reports in one call
+  {"goal": [goal_a, goal_b], "status": "exercised", "evidence": evidence}
+])                                    # preserves unfinished goals
 ```
 
 Reports preserve original screenshot evidence and normally reference
@@ -142,6 +142,8 @@ keeping title/severity unchanged. At most two rechecks are allowed; stop on a
 confirmed receipt. Inconclusive is not proof. Compact/delta coverage may share
 bundles via goal `evidence_ref` into the same `coverage.evidence` map; resolve
 those references before judging coverage. See the protocol for exact semantics.
+Successful compact/delta envelopes may omit empty recovery and zero/false
+progress metadata; use their documented defaults. Verdicts remain explicit.
 
 ## When `record_bug` is appropriate
 
