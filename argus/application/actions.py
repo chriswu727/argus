@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from argus.domain.contracts import ErrorCode, Rejection
+
 from .evidence import _record_action, _record_coverage_action
 from .observation import (
     _edge_case_hint,
@@ -10,6 +12,7 @@ from .observation import (
     _toast_line,
     _verify_nudge,
 )
+from .payloads import action_result
 from .session import _require_session, _require_web_session
 
 
@@ -42,9 +45,10 @@ async def click_what(description: str) -> str:
     # element (nth-aware), not the first DOM match.
     ok = await s.browser.click(s._last_elements.index(el), s._last_elements)
     if not ok:
-        return (
+        return Rejection(
             f'click_what({description!r}) — failed to click "{label[:60]}".\n'
-            "The element may be obscured, stale, or removed. Try observe() again."
+            "The element may be obscured, stale, or removed. Try observe() again.",
+            ErrorCode.BACKEND,
         )
     _record_action(s, "click_what", description)
 
@@ -52,14 +56,17 @@ async def click_what(description: str) -> str:
     s._last_elements = new_state.elements
     if new_state.url not in s.pages_visited:
         s.pages_visited.append(new_state.url)
-    return (
+    return await action_result(
+        s,
         f'Clicked "{label[:60]}" (via description {description!r}).\n'
         f"Now on: {new_state.url} — {len(new_state.elements)} interactive elements visible."
         f"{_toast_line(new_state.toast_messages)}"
         f"{_verify_nudge(label, bool(new_state.toast_messages))}"
         f"{_new_tab_line(s, _bt)}"
         f"{_new_events_line(s, _bc, _bn)}\n"
-        f"Call observe() to see what changed."
+        f"Call observe() for a fresh view if needed.",
+        "click",
+        new_state,
     )
 
 
@@ -85,12 +92,17 @@ async def type_into(description: str, text: str) -> str:
 
     ok = await s.browser.type_text(s._last_elements.index(el), text, s._last_elements)
     if not ok:
-        return (
+        return Rejection(
             f"type_into({description!r}) — failed. "
-            f"The element may be disabled or the page may have re-rendered."
+            f"The element may be disabled or the page may have re-rendered.",
+            ErrorCode.BACKEND,
         )
     _record_action(s, "type_into", description, text)
-    return f'Typed into "{label[:60]}" (via description {description!r}).{_edge_case_hint(s, el)}'
+    return await action_result(
+        s,
+        f'Typed into "{label[:60]}" (via description {description!r}).{_edge_case_hint(s, el)}',
+        "fill",
+    )
 
 
 async def paste_into(description: str, text: str) -> str:
@@ -141,13 +153,14 @@ async def select_into(description: str, value: str) -> str:
 
     ok = await s.browser.select_option(s._last_elements.index(el), value, s._last_elements)
     if not ok:
-        return (
+        return Rejection(
             f"select_into({description!r}, {value!r}) — failed. "
             f"Make sure the dropdown actually has that option "
-            f"(call inspect_element to list the choices)."
+            f"(call inspect_element to list the choices).",
+            ErrorCode.BACKEND,
         )
     _record_action(s, "select_into", description, value)
-    return f'Selected "{value}" in "{label[:60]}".'
+    return await action_result(s, f'Selected "{value}" in "{label[:60]}".', "select")
 
 
 async def hover_what(description: str) -> str:
@@ -232,14 +245,20 @@ async def press_key(key: str, description: str = "") -> str:
         _bc, _bn = s.browser.error_cursors()
         ok = await s.browser.press_key(key)
     if not ok:
-        return f"press_key: failed to press {key!r} (unknown key name? use Playwright names like Escape/Enter/Tab/ArrowDown)."
+        return Rejection(
+            f"press_key: failed to press {key!r} (unknown key name? use Playwright names like Escape/Enter/Tab/ArrowDown).",
+            ErrorCode.BACKEND,
+        )
     s.steps.append(f"press_key({key!r}{(', ' + repr(description)) if description else ''})")
     _record_action(s, "press_key", f"{key}{(' on ' + description) if description else ''}")
     new_state = await s.browser.get_state()
     s._last_elements = new_state.elements
-    return (
+    return await action_result(
+        s,
         f"Pressed {key!r}{target}.{_new_events_line(s, _bc, _bn)}\n"
-        f"Call observe() to see what changed."
+        f"Call observe() for a fresh view if needed.",
+        "press",
+        new_state,
     )
 
 

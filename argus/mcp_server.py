@@ -87,10 +87,11 @@ def main() -> None:
     parser.add_argument("--unsafe", action="store_true", default=None)
     parser.add_argument(
         "--tool-profile",
-        choices=("core", "screen", "full"),
+        choices=("agent", "core", "screen", "full"),
         default=os.environ.get("ARGUS_TOOL_PROFILE", "core"),
     )
     parser.add_argument("--list-tools", action="store_true")
+    parser.add_argument("--response-mode", choices=("compatible", "compact"))
     parser.add_argument(
         "--monitor-port", type=int, help="Enable local monitoring; 0 chooses a free port"
     )
@@ -105,7 +106,11 @@ def main() -> None:
         print("\n".join(names))
         return
     try:
-        settings = Settings.from_env(monitor_port=args.monitor_port, unsafe_eval=args.unsafe)
+        settings = Settings.from_env(
+            monitor_port=args.monitor_port,
+            unsafe_eval=args.unsafe,
+            response_mode=args.response_mode,
+        )
     except ValueError as exc:
         parser.error(str(exc))
     logging.basicConfig(level=logging.WARNING, stream=sys.stderr)

@@ -165,7 +165,7 @@ async def test_session_contract_requires_evidence_and_reaches_reports(tmp_path, 
             time_budget_minutes=5,
         )
         assert "Session protocol (returned once" in started
-        assert "Mark a goal in_progress before its journey" in started
+        assert "Batch related goals" in started
         assert "Change the account settings" in started
         assert "Do not submit external forms" in started
 

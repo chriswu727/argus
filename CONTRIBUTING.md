@@ -45,6 +45,8 @@ separate macOS manual check; Linux CI does not claim to test that integration.
   `ToolText` without importing MCP. Keep text/image compatibility and test real stdio.
 - Progress: fixed phases in `application/progress.py`, emitted at actual work
   boundaries through the runtime. Never accept page-supplied progress messages.
+- Coverage hints: `application/guidance.py`; use observed facts and bounded output,
+  never model calls, automatic writes or inferred completion. Monitor only counts.
 - Paired evaluation: `evaluation/`; keep model calls and external adjudication
   outside the product runtime. Preserve both arms, failures and unknown usage.
 - Access rules: `access.py`; keep operator policy outside tool-controlled data.
@@ -73,6 +75,12 @@ consume subscription/API usage and must be explicitly authorized.
 Run `python -m argus.evaluation --smoke` for the isolated, no-model paired
 protocol check. See [evaluation methodology](docs/evaluation.md) before reporting
 agent effectiveness. Protocol details are in [agent protocol](docs/agent-protocol.md).
+
+The opt-in `evaluation.codex_runner` consumes subscription usage and requires
+explicit authorization. Never add it to CI. Unit and stdio gateway tests do not
+invoke a model. Test every fixture's buggy/fixed ground truth through real browser
+interactions before collecting model trials. Keep raw collections and credentials
+outside the public repository; only reviewed synthetic aggregate evidence belongs here.
 
 For release, synchronize `pyproject.toml` and both version fields in
 `server.json`, update `CHANGELOG.md`, build with `python -m build`, check with

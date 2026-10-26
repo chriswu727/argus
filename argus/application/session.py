@@ -6,6 +6,8 @@ from argus.application.context import current_runtime
 from argus.domain.contracts import ErrorCode, OperationError, Rejection
 from argus.domain.replay import InputVault
 
+from .guidance import ExplorationProgress
+
 if TYPE_CHECKING:
     from argus.ports import BrowserPort
 from argus.domain.detector import Detector
@@ -52,6 +54,7 @@ class Session:
         self.time_budget_minutes: int = 0
         self.discovered_pages: List[str] = []
         self.verification_checks: List[dict] = []
+        self.exploration = ExplorationProgress()
         self._coverage_goal_cursors: dict[int, dict] = {}
         self._coverage_evidence_cursor: dict = {
             "actions": 0,

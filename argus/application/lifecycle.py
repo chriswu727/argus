@@ -142,19 +142,21 @@ async def start_session(
         f"Found {element_count} interactive elements.{hint}"
     )
     introduction = summary + "\n\n" + _session_protocol(current_runtime().session)
+    payload = observation_data(current_runtime().session, state)
+    payload["protocol"] = _session_protocol(current_runtime().session)
     if not include_observation:
         return ToolText(
             introduction
             + _coverage_line(current_runtime().session, state)
             + "\nCall observe() to inspect the page.",
-            observation_data(current_runtime().session, state),
+            payload,
         )
     return ToolText(
         introduction
         + "\n\nInitial observation:\n"
         + _format_observation(state)
         + _coverage_line(current_runtime().session, state),
-        observation_data(current_runtime().session, state),
+        payload,
     )
 
 

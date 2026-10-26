@@ -188,7 +188,11 @@ async def record_bug(
             f"Not recorded — near-duplicate of an already-logged finding: "
             f"{dup.title!r}. A tight report beats a repetitive one; sharpen the "
             f"angle or move on to a feature you haven't tested yet.",
-            {"recorded": False, "reason": "duplicate"},
+            {
+                "recorded": False,
+                "reason": "duplicate",
+                "duplicate_of": f"{s.run_id}:{s.bugs.index(dup) + 1}",
+            },
         )
 
     screenshot_directive = ev.get("screenshot", "auto")
@@ -376,6 +380,8 @@ async def record_bug(
         "\n".join(out),
         {
             "recorded": True,
+            "finding_id": f"{s.run_id}:{len(s.bugs)}",
+            "evidence_status": "observed" if receipt is None else code,
             "verdict": code,
             "receipt": receipt,
             "finding": {

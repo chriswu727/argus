@@ -13,6 +13,10 @@ async function refresh() {
     }));
     byId('operation').textContent=status.operation ? `${status.operation} · ${status.operation_seconds.toFixed(1)} seconds` : 'No active operation';
     byId('progress').textContent=`Last progress: ${new Date(status.last_progress_at*1000).toLocaleTimeString()} · Uptime: ${Math.floor(status.uptime_seconds)} seconds`;
+    const testing = status.testing;
+    const total = Object.values(testing.goals).reduce((a,b)=>a+b,0);
+    byId('testing').textContent=`Phase: ${status.stage || 'idle'} · Goals exercised: ${testing.goals.exercised}/${total} · Blocked: ${testing.goals.blocked} · Checks: ${testing.checks} · Reproduced symptoms: ${testing.verdicts.reproduced} · Inconclusive: ${testing.verdicts.inconclusive} · Observed without recheck: ${testing.verdicts.observed}`;
+    byId('goal').textContent=testing.active_goal_indices.length ? `Active goal numbers: ${testing.active_goal_indices.join(', ')}` : 'No goal currently marked in progress';
   } catch { byId('connection').textContent='Status unavailable'; }
 }
 const events = new EventSource('/api/events');

@@ -36,7 +36,9 @@ _RECOVERY = {
 }
 
 
-def to_mcp_result(name: str, result: OperationResult, progress: Progress) -> CallToolResult:
+def to_mcp_result(
+    name: str, result: OperationResult, progress: Progress, mode: str = "compatible"
+) -> CallToolResult:
     value = result.value
     code = result.error.value if result.error else None
     values = value if isinstance(value, list) else [value]
@@ -54,6 +56,13 @@ def to_mcp_result(name: str, result: OperationResult, progress: Progress) -> Cal
     ]
     if artifacts:
         data["artifacts"] = artifacts
+    if mode == "compact" and not code and isinstance(value, ToolText) and data:
+        content = [
+            TextContent(
+                type="text",
+                text=f"{name}: completed. Read structuredContent.data for evidence; completion is not a test verdict.",
+            )
+        ]
     envelope = AgentResult(
         operation=name,
         status="error" if code else "completed",

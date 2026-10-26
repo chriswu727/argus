@@ -60,6 +60,8 @@ Then restart or refresh the MCP client and ask:
 
 ## Optional profiles
 
+- `--tool-profile agent` exposes 19 common browser-testing tools with concise
+  descriptions. Pair with `--response-mode compact` for structured-result-aware hosts.
 - `--tool-profile core` is the 30-tool default for browser QA.
 - `--tool-profile screen` exposes 14 native macOS testing tools and requires
   Screen Recording and Accessibility permissions.
@@ -67,3 +69,13 @@ Then restart or refresh the MCP client and ask:
 
 Do not add `--unsafe` unless arbitrary page-context JavaScript execution is
 explicitly required and the target is trusted.
+
+For a host that consumes MCP `structuredContent`, add `--response-mode compact`
+to avoid duplicated prose for migrated testing tools. Keep the default
+`compatible` mode for older hosts. Add `--monitor-port 8765` for a read-only
+loopback dashboard; MCP phase notifications require host support.
+
+Argus is useful when an agent needs evidence-linked journey coverage,
+persistence checks, independent reproduction receipts, or machine-readable
+regression results. It is not a guarantee of comprehensive testing or zero false
+positives. See the repository's evaluation methodology before quoting performance.

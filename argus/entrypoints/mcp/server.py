@@ -14,6 +14,7 @@ from argus.application.progress import progress_scope
 from argus.domain.contracts import ImageArtifact
 
 from .catalog import (
+    _AGENT_TOOL_DESCRIPTIONS,
     _CLOSED_WORLD_TOOL_NAMES,
     _CORE_TOOL_NAMES,
     _DESTRUCTIVE_TOOL_NAMES,
@@ -48,13 +49,15 @@ def bind_operation(runtime: SessionManager, operation, *, raise_errors=False):
 
 
 def tool_names(profile: str) -> set[str]:
+    if profile == "agent":
+        return set(_AGENT_TOOL_DESCRIPTIONS)
     if profile == "core":
         return set(_CORE_TOOL_NAMES)
     if profile == "screen":
         return set(_SCREEN_TOOL_NAMES)
     if profile == "full":
         return set(OPERATIONS)
-    raise ValueError("tool profile must be core, screen, or full")
+    raise ValueError("tool profile must be agent, core, screen, or full")
 
 
 def bind_tool(runtime: SessionManager, operation):
@@ -66,7 +69,7 @@ def bind_tool(runtime: SessionManager, operation):
 
         with progress_scope(notify if ctx is not None else None) as progress:
             result = await runtime.execute(operation.__name__, operation, *args, **kwargs)
-        return to_mcp_result(operation.__name__, result, progress)
+        return to_mcp_result(operation.__name__, result, progress, runtime.settings.response_mode)
 
     signature = inspect.signature(operation, eval_str=True)
     parameters = [
@@ -90,6 +93,7 @@ def create_server(runtime: SessionManager, profile: str = "core") -> FastMCP:
         server.add_tool(
             bind_tool(runtime, OPERATIONS[name]),
             name=name,
+            description=_AGENT_TOOL_DESCRIPTIONS[name] if profile == "agent" else None,
             title=_TOOL_TITLES[name],
             annotations=ToolAnnotations(
                 readOnlyHint=read_only,

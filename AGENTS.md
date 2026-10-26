@@ -25,7 +25,9 @@ argus-mcp --list-tools    # show the selected profile and public tools
 argus-mcp --doctor        # macOS Screen Recording + Accessibility check
 ```
 
-The default profile is `core`. Use `--tool-profile screen` for native
+The default profile is `core`. For structured-result-aware hosts, use
+`--tool-profile agent --response-mode compact` for 19 focused tools.
+Use `--tool-profile screen` for native
 macOS review and `--tool-profile full` only when the broader network,
 storage, tabs, crawl, and coordinate surface is needed. The
 `ARGUS_TOOL_PROFILE` environment variable provides the same setting.
@@ -48,9 +50,9 @@ the user's broader task. The short version:
   Map → **Use it** (walk each goal end-to-end, carrying real state) →
   Hypothesize → Act → Observe → Verify → Record → Cover.
 
-## Structured results (development on main)
+## Structured results (0.8)
 
-These additions are not included in PyPI 0.7.1. Read `structuredContent.data`
+Read `structuredContent.data`
 for operation-specific evidence where available; text and images remain for
 compatibility. `status: completed` means the tool ran, not that the application
 passed. Inspect expectation matches, finding verdicts and export warnings.
@@ -65,12 +67,12 @@ result includes captured stages. See [the protocol](docs/agent-protocol.md).
 | Tool | Purpose |
 |------|---------|
 | `start_session(url, review_mode=..., goals=[...], constraints=[...], time_budget_minutes=...)` | Launch Playwright, establish the review contract, and return the one-time QA protocol plus initial observation. The budget is advisory; `0` means none. |
-| `observe()` | URL + interactive elements (description-keyed) + visible feedback + counts + ARIA + viewport state. Read this first, after every action. |
-| `coverage_update(goal, status, evidence)` | Mark a goal `in_progress` before its journey to open a precise evidence window. `exercised` and `blocked` require an explanation and automatically link URLs, value-redacted actions, screenshots, checks, and findings; Argus never guesses semantic completion. |
+| `observe()` | URL, targets, feedback, counts, coverage and next-check hints. Reuse post-action observations; call again only for missing or stale evidence. |
+| `coverage_update(goal, status, evidence)` | Accepts one goal or a list of related goals. Mark `in_progress` before the shared journey. `exercised` and `blocked` require observed evidence and link URLs, value-redacted actions, screenshots, checks and findings. Invalid batches make no changes. |
 | `click_what(description)` | Click the element matching `description`. Returns the top candidates if ambiguous — rephrase rather than guess. |
 | `type_into(description, text)` / `select_into(description, value)` | Inputs and dropdowns by description. |
 | `test_action(target, expect=...)` | Click + before/after diff in one call. Pass `expect` to PREDICT the outcome ({"count":{"label":"tasks","delta":1}}, {"gains":"Buy milk"}, {"removes":...}, {"text_present":...}, {"toast":...}, {"url_changed":true}) and Argus reports MATCH / SURPRISE — a surprise is a bug lead. Also shows CROSS-STACK: which requests the click fired (methods/statuses) and a CHECK nudge when a message appeared without a matching write. |
-| `verify_persistence(expect, target_text, after_url)` | Forces a fresh GET; reports whether `target_text` is `present` / `absent`. The "Saved!" toast is not proof — this is. |
+| `verify_persistence(expect, target_text, after_url)` | Forces a fresh GET; returns target presence and the page observation. Check persistence once, repeat only to resolve uncertainty. A matching symptom is not proof of a semantic defect. |
 | `capsule_save(name, liveness_marker)` / `capsule_restore(name)` | Snapshot the logged-in/seeded state (cookies+storage) after minting it through the UI, then restore it later (with a mandatory live/stale re-check). Restore is a CLEAN replace, so save→branch A→restore→branch B runs two journeys from a byte-identical state for differential testing. |
 | `regression_check()` | Re-test the findings journaled in prior runs against the CURRENT build: STILL-PRESENT / NO-LONGER-REPRODUCES / INCONCLUSIVE. "Did my fix land, did anything come back?" |
 | `inspect_element(description)` | Computed styles + ARIA + outerHTML + truncation flag for interactive or visible non-interactive content. |
@@ -101,16 +103,16 @@ result includes captured stages. See [the protocol](docs/agent-protocol.md).
 ```
 start_session(url, goals=[...], constraints=[...], time_budget_minutes=15)
                                        # initial result already MAPS the page
-coverage_update(goal, "in_progress")   # opens this goal's evidence window
+coverage_update([goal_a, goal_b], "in_progress")
                                        # USE IT — pick a real goal, walk it
                                        #   end-to-end, carrying state across pages
                                        # HYPOTHESIZE — what could go wrong
 click_what(...) / type_into(...) /     # ACT — one probe per call
 test_form({...})
-observe()                              # OBSERVE — what changed?
+                                       # read returned observation; observe only if needed
 verify_persistence(...)                # VERIFY (delete / save / submit / toggle)
 record_bug(..., verify={...})          # RECORD — verify clause attaches a receipt
-coverage_update(goal, "exercised",    # COVER — preserve the observed evidence
+coverage_update([goal_a, goal_b], "exercised",
                 evidence)
 ... repeat ...
 end_session()                          # reports completed + unfinished coverage
@@ -167,7 +169,7 @@ Don't record speculation, polish nits, or static a11y / SEO that
 - `argus-mcp --version` — what version your MCP host actually loaded.
 - `argus-mcp --doctor` — macOS permission probes for screen mode.
 - `argus-mcp --list-tools` — selected tool profile and exported names.
-- `argus-mcp --tool-profile core|screen|full` — control discovery size.
+- `argus-mcp --tool-profile agent|core|screen|full` — control discovery size.
 - `argus-mcp --unsafe` — turn on `eval_js` (off by default).
 - `argus-mcp --monitor-port 8765` — enable the read-only loopback dashboard,
   health/readiness endpoints, SSE events and metrics; use `0` for a free port.

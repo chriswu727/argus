@@ -6,6 +6,7 @@ from argus.domain.contracts import Rejection, ToolText
 from .capture import _file_event_bugs
 from .coverage import _coverage_reference_url
 from .evidence import _auto_screenshot
+from .payloads import observation_data
 from .progress import Stage
 from .session import _require_session
 from .text import _present_with_scroll, _resolve_url, _short
@@ -84,6 +85,7 @@ async def verify_persistence(
             "clear_storage": clear_storage,
         }
     )
+    s.exploration.last_verified_action = len(s.action_trace)
 
     if expect_norm == "absent":
         verdict = (
@@ -105,7 +107,11 @@ async def verify_persistence(
         f"  Decide: if this mismatch is a real bug (silent delete failure, "
         f"edit not persisting, etc.), call record_bug. Argus does not infer "
         f"that for you.",
-        {"verification": dict(s.verification_checks[-1]), "finding_confirmed": False},
+        {
+            "verification": dict(s.verification_checks[-1]),
+            "observation": observation_data(s, after_state),
+            "finding_confirmed": False,
+        },
     )
 
 

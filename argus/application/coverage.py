@@ -243,11 +243,11 @@ def _session_protocol(s: Session) -> str:
     lines = [
         "Session protocol (returned once; observe keeps the coverage ledger visible):",
         "1. MAP the supplied goals and the real user journeys that satisfy them.",
-        "2. USE the product end-to-end with real state; make one deliberate probe, then observe.",
+        "2. USE the product end-to-end with real state. Read post-action observations already returned; call observe only when evidence is missing or stale.",
         "3. HYPOTHESIZE user-affecting failures, including cross-page and persistence failures.",
-        "4. VERIFY saves, edits, deletes, submits, and toggles; visible success feedback is not proof.",
+        "4. VERIFY persistence-changing actions once with a fresh load; visible success feedback is not proof. Repeat only to resolve uncertainty.",
         "5. RECORD only reproducible bugs. Use record_observation for qualitative visual or UX evidence.",
-        "6. COVER every important goal and discovered page. Mark a goal in_progress before its journey, then call coverage_update with evidence.",
+        "6. COVER important goals and pages. Batch related goals in one coverage_update(goal=[...], status='in_progress') before their shared journey, then one update with observed evidence. Never mark untested goals exercised.",
         "Severity: HIGH for security, data loss, payment, or a blocked primary flow; MEDIUM for workflow friction, deceptive feedback, or inconsistency; LOW for minor UX.",
         "Authority: do not purchase, publish, delete real data, or cause another irreversible external effect unless explicitly authorized.",
     ]

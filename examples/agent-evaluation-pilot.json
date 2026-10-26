@@ -1,0 +1,409 @@
+{
+  "schema_version": 1,
+  "experiment": "agent-first-08-pilot",
+  "mode": "agent",
+  "cases": [
+    {
+      "id": "profile-buggy",
+      "expected_bugs": [
+        "profile-contract"
+      ],
+      "goals": [
+        "edit-name",
+        "reload-name"
+      ]
+    },
+    {
+      "id": "profile-fixed",
+      "expected_bugs": [],
+      "goals": [
+        "edit-name",
+        "reload-name"
+      ]
+    },
+    {
+      "id": "form-buggy",
+      "expected_bugs": [
+        "form-contract"
+      ],
+      "goals": [
+        "invalid-email",
+        "valid-email"
+      ]
+    },
+    {
+      "id": "form-fixed",
+      "expected_bugs": [
+        "form-localpart"
+      ],
+      "goals": [
+        "invalid-email",
+        "valid-email"
+      ]
+    }
+  ],
+  "trials": [
+    {
+      "arm": "baseline",
+      "case_id": "profile-buggy",
+      "repetition": 0,
+      "model": "gpt-6-astra",
+      "model_settings": {
+        "reasoning_effort": "high",
+        "model_seed_supported": false
+      },
+      "host": "codex-cli 0.155.0-alpha.16.4",
+      "fixture_revision": "d1aa615b9c97518ebe5a1e1f5163861bdaf9710eff4bde104484ceeabc5e3574",
+      "task_revision": "9bc46b4bc2b59cca8eb7ca1598c8d462232a7e5591b122ec546849801809bc06",
+      "seed": 0,
+      "budget": {
+        "tool_calls": 60,
+        "wall_seconds": 300.0,
+        "tokens": null
+      },
+      "completed": true,
+      "error": null,
+      "duration_seconds": 19.792419416015036,
+      "tool_calls": 4,
+      "input_tokens": 68525,
+      "output_tokens": 375,
+      "findings": [
+        {
+          "id": "run-000-claim-0",
+          "matched_bug": "profile-contract",
+          "evidence": [
+            "run-000/call-3",
+            "run-000/call-4"
+          ]
+        }
+      ],
+      "covered_goals": {
+        "edit-name": [
+          "run-000/call-2",
+          "run-000/call-3"
+        ],
+        "reload-name": [
+          "run-000/call-3",
+          "run-000/call-4"
+        ]
+      },
+      "adjudicator": "trace-and-server-oracle-review-v1"
+    },
+    {
+      "arm": "argus",
+      "case_id": "profile-buggy",
+      "repetition": 0,
+      "model": "gpt-6-astra",
+      "model_settings": {
+        "reasoning_effort": "high",
+        "model_seed_supported": false
+      },
+      "host": "codex-cli 0.155.0-alpha.16.4",
+      "fixture_revision": "d1aa615b9c97518ebe5a1e1f5163861bdaf9710eff4bde104484ceeabc5e3574",
+      "task_revision": "9bc46b4bc2b59cca8eb7ca1598c8d462232a7e5591b122ec546849801809bc06",
+      "seed": 0,
+      "budget": {
+        "tool_calls": 60,
+        "wall_seconds": 300.0,
+        "tokens": null
+      },
+      "completed": true,
+      "error": null,
+      "duration_seconds": 48.837229916942306,
+      "tool_calls": 13,
+      "input_tokens": 175375,
+      "output_tokens": 819,
+      "findings": [
+        {
+          "id": "run-001-claim-0",
+          "matched_bug": "profile-contract",
+          "evidence": [
+            "run-001/call-4",
+            "run-001/call-5",
+            "run-001/call-7",
+            "run-001/call-8",
+            "run-001/call-10"
+          ]
+        }
+      ],
+      "covered_goals": {
+        "edit-name": [
+          "run-001/call-4",
+          "run-001/call-7"
+        ],
+        "reload-name": [
+          "run-001/call-5",
+          "run-001/call-8"
+        ]
+      },
+      "adjudicator": "trace-and-server-oracle-review-v1"
+    },
+    {
+      "arm": "argus",
+      "case_id": "profile-fixed",
+      "repetition": 0,
+      "model": "gpt-6-astra",
+      "model_settings": {
+        "reasoning_effort": "high",
+        "model_seed_supported": false
+      },
+      "host": "codex-cli 0.155.0-alpha.16.4",
+      "fixture_revision": "d1aa615b9c97518ebe5a1e1f5163861bdaf9710eff4bde104484ceeabc5e3574",
+      "task_revision": "9bc46b4bc2b59cca8eb7ca1598c8d462232a7e5591b122ec546849801809bc06",
+      "seed": 0,
+      "budget": {
+        "tool_calls": 60,
+        "wall_seconds": 300.0,
+        "tokens": null
+      },
+      "completed": true,
+      "error": null,
+      "duration_seconds": 28.014206040999852,
+      "tool_calls": 9,
+      "input_tokens": 120572,
+      "output_tokens": 542,
+      "findings": [],
+      "covered_goals": {
+        "edit-name": [
+          "run-002/call-4"
+        ],
+        "reload-name": [
+          "run-002/call-5",
+          "run-002/call-6"
+        ]
+      },
+      "adjudicator": "trace-and-server-oracle-review-v1"
+    },
+    {
+      "arm": "baseline",
+      "case_id": "profile-fixed",
+      "repetition": 0,
+      "model": "gpt-6-astra",
+      "model_settings": {
+        "reasoning_effort": "high",
+        "model_seed_supported": false
+      },
+      "host": "codex-cli 0.155.0-alpha.16.4",
+      "fixture_revision": "d1aa615b9c97518ebe5a1e1f5163861bdaf9710eff4bde104484ceeabc5e3574",
+      "task_revision": "9bc46b4bc2b59cca8eb7ca1598c8d462232a7e5591b122ec546849801809bc06",
+      "seed": 0,
+      "budget": {
+        "tool_calls": 60,
+        "wall_seconds": 300.0,
+        "tokens": null
+      },
+      "completed": true,
+      "error": null,
+      "duration_seconds": 27.862789375009015,
+      "tool_calls": 4,
+      "input_tokens": 68552,
+      "output_tokens": 494,
+      "findings": [],
+      "covered_goals": {
+        "edit-name": [
+          "run-003/call-2",
+          "run-003/call-3"
+        ],
+        "reload-name": [
+          "run-003/call-3",
+          "run-003/call-4"
+        ]
+      },
+      "adjudicator": "trace-and-server-oracle-review-v1"
+    },
+    {
+      "arm": "baseline",
+      "case_id": "form-buggy",
+      "repetition": 0,
+      "model": "gpt-6-astra",
+      "model_settings": {
+        "reasoning_effort": "high",
+        "model_seed_supported": false
+      },
+      "host": "codex-cli 0.155.0-alpha.16.4",
+      "fixture_revision": "d1aa615b9c97518ebe5a1e1f5163861bdaf9710eff4bde104484ceeabc5e3574",
+      "task_revision": "9bc46b4bc2b59cca8eb7ca1598c8d462232a7e5591b122ec546849801809bc06",
+      "seed": 0,
+      "budget": {
+        "tool_calls": 60,
+        "wall_seconds": 300.0,
+        "tokens": null
+      },
+      "completed": true,
+      "error": null,
+      "duration_seconds": 37.7186713750707,
+      "tool_calls": 10,
+      "input_tokens": 142851,
+      "output_tokens": 631,
+      "findings": [
+        {
+          "id": "run-004-claim-0",
+          "matched_bug": "form-contract",
+          "evidence": [
+            "run-004/call-1",
+            "run-004/call-2",
+            "run-004/call-3",
+            "run-004/call-4",
+            "run-004/call-5"
+          ]
+        }
+      ],
+      "covered_goals": {
+        "invalid-email": [
+          "run-004/call-2",
+          "run-004/call-3",
+          "run-004/call-4",
+          "run-004/call-5"
+        ],
+        "valid-email": [
+          "run-004/call-7",
+          "run-004/call-8",
+          "run-004/call-9",
+          "run-004/call-10"
+        ]
+      },
+      "adjudicator": "trace-and-server-oracle-review-v1"
+    },
+    {
+      "arm": "argus",
+      "case_id": "form-buggy",
+      "repetition": 0,
+      "model": "gpt-6-astra",
+      "model_settings": {
+        "reasoning_effort": "high",
+        "model_seed_supported": false
+      },
+      "host": "codex-cli 0.155.0-alpha.16.4",
+      "fixture_revision": "d1aa615b9c97518ebe5a1e1f5163861bdaf9710eff4bde104484ceeabc5e3574",
+      "task_revision": "9bc46b4bc2b59cca8eb7ca1598c8d462232a7e5591b122ec546849801809bc06",
+      "seed": 0,
+      "budget": {
+        "tool_calls": 60,
+        "wall_seconds": 300.0,
+        "tokens": null
+      },
+      "completed": true,
+      "error": null,
+      "duration_seconds": 71.25332345895004,
+      "tool_calls": 21,
+      "input_tokens": 220114,
+      "output_tokens": 1426,
+      "findings": [
+        {
+          "id": "run-005-claim-0",
+          "matched_bug": "form-contract",
+          "evidence": [
+            "run-005/call-1",
+            "run-005/call-3",
+            "run-005/call-7"
+          ]
+        }
+      ],
+      "covered_goals": {
+        "invalid-email": [
+          "run-005/call-3",
+          "run-005/call-7"
+        ],
+        "valid-email": [
+          "run-005/call-12",
+          "run-005/call-13",
+          "run-005/call-15",
+          "run-005/call-17"
+        ]
+      },
+      "adjudicator": "trace-and-server-oracle-review-v1"
+    },
+    {
+      "arm": "argus",
+      "case_id": "form-fixed",
+      "repetition": 0,
+      "model": "gpt-6-astra",
+      "model_settings": {
+        "reasoning_effort": "high",
+        "model_seed_supported": false
+      },
+      "host": "codex-cli 0.155.0-alpha.16.4",
+      "fixture_revision": "d1aa615b9c97518ebe5a1e1f5163861bdaf9710eff4bde104484ceeabc5e3574",
+      "task_revision": "9bc46b4bc2b59cca8eb7ca1598c8d462232a7e5591b122ec546849801809bc06",
+      "seed": 0,
+      "budget": {
+        "tool_calls": 60,
+        "wall_seconds": 300.0,
+        "tokens": null
+      },
+      "completed": true,
+      "error": null,
+      "duration_seconds": 84.387387958006,
+      "tool_calls": 28,
+      "input_tokens": 369970,
+      "output_tokens": 1773,
+      "findings": [
+        {
+          "id": "run-006-claim-0",
+          "matched_bug": "form-localpart",
+          "evidence": [
+            "run-006/call-15",
+            "run-006/call-17"
+          ]
+        }
+      ],
+      "covered_goals": {
+        "invalid-email": [
+          "run-006/call-3",
+          "run-006/call-5",
+          "run-006/call-15",
+          "run-006/call-17"
+        ],
+        "valid-email": [
+          "run-006/call-9",
+          "run-006/call-20",
+          "run-006/call-22"
+        ]
+      },
+      "adjudicator": "trace-and-server-oracle-review-v1"
+    },
+    {
+      "arm": "baseline",
+      "case_id": "form-fixed",
+      "repetition": 0,
+      "model": "gpt-6-astra",
+      "model_settings": {
+        "reasoning_effort": "high",
+        "model_seed_supported": false
+      },
+      "host": "codex-cli 0.155.0-alpha.16.4",
+      "fixture_revision": "d1aa615b9c97518ebe5a1e1f5163861bdaf9710eff4bde104484ceeabc5e3574",
+      "task_revision": "9bc46b4bc2b59cca8eb7ca1598c8d462232a7e5591b122ec546849801809bc06",
+      "seed": 0,
+      "budget": {
+        "tool_calls": 60,
+        "wall_seconds": 300.0,
+        "tokens": null
+      },
+      "completed": true,
+      "error": null,
+      "duration_seconds": 48.29770029196516,
+      "tool_calls": 11,
+      "input_tokens": 155902,
+      "output_tokens": 844,
+      "findings": [],
+      "covered_goals": {
+        "invalid-email": [
+          "run-007/call-2",
+          "run-007/call-3",
+          "run-007/call-4",
+          "run-007/call-5"
+        ],
+        "valid-email": [
+          "run-007/call-6",
+          "run-007/call-7",
+          "run-007/call-8",
+          "run-007/call-9",
+          "run-007/call-10",
+          "run-007/call-11"
+        ]
+      },
+      "adjudicator": "trace-and-server-oracle-review-v1"
+    }
+  ]
+}

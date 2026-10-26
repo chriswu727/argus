@@ -24,17 +24,21 @@ def test_release_metadata_stays_in_sync():
     assert server["packages"][0]["version"] == version
     assert project["project"]["scripts"]["argus-testing"] == "argus.mcp_server:main"
     assert project["project"]["urls"]["Homepage"] == server["websiteUrl"]
-    assert "testing engineer" in project["project"]["description"].lower()
+    assert all(
+        term in project["project"]["description"].lower()
+        for term in ("agent-first", "testing mcp", "evidence", "persistence")
+    )
     assert len(server["description"]) <= 100
     assert all(
         term in server["description"].lower()
-        for term in ("qa", "mcp", "web", "macos", "bugs", "verifies")
+        for term in ("mcp", "web", "macos", "coverage", "persistence", "progress")
     )
     assert f"mcp-name: {server['name']}" in (ROOT / "README.md").read_text()
     assert "chriswu727" in glama["maintainers"]
 
 
 def test_readme_covers_every_public_tool_profile():
+    from argus.entrypoints.mcp.server import tool_names
     from argus.mcp_server import _CORE_TOOL_NAMES, _SCREEN_TOOL_NAMES, mcp
 
     readme = (ROOT / "README.md").read_text()
@@ -43,6 +47,7 @@ def test_readme_covers_every_public_tool_profile():
 
     assert full_tools <= documented_tools
     assert re.search(rf"\| `core` \| {len(_CORE_TOOL_NAMES)} \|", readme)
+    assert re.search(rf"\| `agent` \| {len(tool_names('agent'))} \|", readme)
     assert re.search(rf"\| `screen` \| {len(_SCREEN_TOOL_NAMES)} \|", readme)
     assert re.search(rf"\| `full` \| {len(full_tools)} \|", readme)
     assert "uvx --from argus-testing argus-mcp" in readme

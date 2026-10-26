@@ -10,12 +10,65 @@ from .text import _token_present
 _EXPECT_KEYS = {"count", "gains", "removes", "text_present", "text_absent", "toast", "url_changed"}
 
 
-def _as_bool(v) -> bool:
+def _as_bool(v) -> bool | None:
     if isinstance(v, bool):
         return v
     if isinstance(v, str):
-        return v.strip().lower() in ("true", "1", "yes", "y")
-    return bool(v)
+        value = v.strip().lower()
+        if value in {"true", "1", "yes", "y"}:
+            return True
+        if value in {"false", "0", "no", "n"}:
+            return False
+    return None
+
+
+def _validated_expectation(expect: dict) -> tuple[dict, list]:
+    valid, errors = {}, []
+    for key, value in expect.items():
+        error = None
+        if key in {"gains", "removes"}:
+            value = [value] if isinstance(value, str) else value
+            if (
+                not isinstance(value, list)
+                or not 1 <= len(value) <= 20
+                or any(
+                    not isinstance(item, str) or not item.strip() or len(item) > 500
+                    for item in value
+                )
+            ):
+                error = "expected 1-20 nonempty text markers of at most 500 characters"
+        elif key in {"text_present", "text_absent", "toast"}:
+            if not isinstance(value, str) or not value.strip() or len(value) > 500:
+                error = "expected a nonempty text marker of at most 500 characters"
+        elif key == "url_changed":
+            if _as_bool(value) is None:
+                error = "expected true or false"
+        elif key == "count":
+            if (
+                not isinstance(value, dict)
+                or not isinstance(value.get("label"), str)
+                or not value["label"].strip()
+            ):
+                error = "expected a count label"
+            elif len(set(value) & {"delta", "value"}) != 1:
+                error = "specify exactly one of delta or value"
+            else:
+                field = "delta" if "delta" in value else "value"
+                number = value[field]
+                try:
+                    if isinstance(number, bool) or not isinstance(number, (str, int)):
+                        raise ValueError
+                    number = int(number)
+                    if abs(number) > 1_000_000_000:
+                        raise ValueError
+                    value = {**value, field: number}
+                except (ValueError, TypeError):
+                    error = "expected a bounded integer"
+        if error:
+            errors.append((f"{key} (invalid)", None, error))
+        else:
+            valid[key] = value
+    return valid, errors
 
 
 def _evaluate_expectation(before: PageState, after: PageState, expect: dict) -> list:
@@ -37,7 +90,7 @@ def _evaluate_expectation(before: PageState, after: PageState, expect: dict) -> 
     Token matching is substring-on-word-boundary, so pass a distinctive item
     text to avoid bleed onto a sibling row.
     """
-    results = []
+    expect, results = _validated_expectation(expect)
 
     def _as_list(x):
         return [x] if isinstance(x, str) else list(x or [])
@@ -66,18 +119,24 @@ def _evaluate_expectation(before: PageState, after: PageState, expect: dict) -> 
                     (f"count {lab!r}", None, "label not among page counts — could not evaluate")
                 )
             elif "delta" in c:
-                try:
-                    want = int(c["delta"])
-                    actual = (a or 0) - (b or 0)
+                if b is None or a is None or before.url != after.url:
+                    results.append(
+                        (f"count {lab!r} delta", None, "requires both counts on the same page")
+                    )
+                else:
+                    want = c["delta"]
+                    actual = a - b
                     results.append(
                         (f"count {lab!r} change {want:+d}", actual == want, f"{b} -> {a}")
                     )
-                except (TypeError, ValueError):
-                    results.append(
-                        (f"count {lab!r} delta", None, f"non-numeric delta {c['delta']!r}")
-                    )
             elif "value" in c:
-                results.append((f"count {lab!r} == {c['value']}", a == c["value"], f"observed {a}"))
+                results.append(
+                    (
+                        f"count {lab!r} == {c['value']}",
+                        a == c["value"] if a is not None else None,
+                        f"observed {a}",
+                    )
+                )
             else:
                 results.append((f"count {lab!r} (malformed — need delta or value)", None, ""))
 
