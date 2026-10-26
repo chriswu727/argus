@@ -214,7 +214,7 @@ _AGENT_TOOL_DESCRIPTIONS = {
     "check_layout": "Read bounded overflow, clipping, target-size and overlay signals. These are leads, not automatic bugs.",
     "resize": "Resize the viewport to width and height for responsive checks.",
     "screenshot": "Capture viewport, full page or a described element. Returns image and evidence path. Screenshots may contain application data.",
-    "end_session": "Close the session and export HTML, JSON, JUnit and SARIF. Read unfinished coverage, finding verdicts and export warnings. Tool completion is not an application pass.",
+    "end_session": "Close and export reports. Optionally submit final coverage_updates (goal, exercised|blocked, evidence) atomically in this call. Invalid updates keep the session open. Read unfinished goals and warnings; completion is not an application pass.",
 }
 
 _SCREEN_TOOL_NAMES = frozenset(

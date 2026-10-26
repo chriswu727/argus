@@ -233,3 +233,70 @@ def test_independent_snapshot_encoders_do_not_share_retained_state():
     first, second = ObservationSnapshots(), ObservationSnapshots()
     first.encode(observation(), "start_session", "run")
     assert second.encode(observation(), "click_what", "run")["snapshot"]["mode"] == "full"
+
+
+@pytest.mark.parametrize("mode", ["compact", "delta"])
+def test_sparse_envelope_roundtrips_and_preserves_nondefault_metadata(mode):
+    from argus.entrypoints.mcp.results import AgentResult
+
+    value = OperationResult(ToolText("Evidence", {"matches": False}), run_id="fixture")
+    with progress_scope() as progress:
+        compatible = to_mcp_result("verify_persistence", value, progress)
+        compact = to_mcp_result("verify_persistence", value, progress, mode)
+        assert AgentResult.model_validate(compact.structuredContent) == AgentResult.model_validate(
+            compatible.structuredContent
+        )
+        assert (
+            not {"recovery", "progress_omitted", "progress_delivery_failed"}
+            & compact.structuredContent.keys()
+        )
+        progress.omitted = 3
+        progress.delivery_failed = True
+        explicit = to_mcp_result("verify_persistence", value, progress, mode)
+        assert explicit.structuredContent["progress_omitted"] == 3
+        assert explicit.structuredContent["progress_delivery_failed"] is True
+        failure = to_mcp_result(
+            "verify_persistence", OperationResult(value.value, ErrorCode.BACKEND), progress, mode
+        )
+        assert failure.isError and failure.structuredContent["recovery"]
+        assert "[backend_error]" in failure.content[0].text
+
+
+async def test_input_schema_cleanup_retains_constraints_and_literal_title_fields(isolated_runtime):
+    from jsonschema import Draft202012Validator
+
+    server = create_server(isolated_runtime, "agent")
+    tool = server._tool_manager.get_tool("end_session")
+    original = tool.fn_metadata.arg_model.model_json_schema(by_alias=True)
+    advertised = next(
+        item.inputSchema for item in await server.list_tools() if item.name == "end_session"
+    )
+    assert len(json.dumps(advertised)) < len(json.dumps(original))
+    valid = {
+        "coverage_updates": [
+            {"goal": ["save", "reload"], "status": "exercised", "evidence": "Observed reload"}
+        ]
+    }
+    for payload in (
+        valid,
+        {"coverage_updates": [{"goal": "save", "status": "passed", "evidence": "Observed"}]},
+        {"coverage_updates": [{"goal": 42, "status": "blocked"}]},
+    ):
+        assert Draft202012Validator(original).is_valid(payload) == Draft202012Validator(
+            advertised
+        ).is_valid(payload)
+    from argus.entrypoints.mcp.results import _omit_schema_titles
+
+    schema = {
+        "type": "object",
+        "properties": {
+            "title": {
+                "type": "object",
+                "default": {"title": "Preserve"},
+                "properties": {"title": {"title": "Display", "type": "string"}},
+            }
+        },
+    }
+    _omit_schema_titles(schema)
+    assert schema["properties"]["title"]["default"] == {"title": "Preserve"}
+    assert schema["properties"]["title"]["properties"]["title"] == {"type": "string"}

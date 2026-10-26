@@ -86,9 +86,13 @@ async def run_smoke() -> Dataset:
                                             "coverage_update",
                                             {"goal": "save-and-reload", "status": "in_progress"},
                                         )
-                                        await call("click_what", {"description": "Save"})
-                                        observed = await call("observe", {})
-                                        if "Saved value" not in observed.content[0].text:
+                                        observed = await call("click_what", {"description": "Save"})
+                                        if (
+                                            "Saved value"
+                                            not in observed.structuredContent["data"][
+                                                "visible_text"
+                                            ]
+                                        ):
                                             raise RuntimeError(
                                                 "Save did not produce visible feedback"
                                             )
@@ -96,20 +100,33 @@ async def run_smoke() -> Dataset:
                                             "verify_persistence",
                                             {"expect": "present", "target_text": "Saved value"},
                                         )
-                                        missing = not checked.structuredContent["data"][
-                                            "verification"
-                                        ]["matches"]
-                                        await call(
-                                            "coverage_update",
+                                        matched = checked.structuredContent["data"]["verification"][
+                                            "matches"
+                                        ]
+                                        if matched is None:
+                                            raise RuntimeError("Persistence check was inconclusive")
+                                        missing = not matched
+                                        ended = await call(
+                                            "end_session",
                                             {
-                                                "goal": "save-and-reload",
-                                                "status": "exercised",
-                                                "evidence": "Compared the saved state after a fresh page load.",
+                                                "coverage_updates": [
+                                                    {
+                                                        "goal": "save-and-reload",
+                                                        "status": "exercised",
+                                                        "evidence": "Compared the saved state after a fresh page load.",
+                                                    }
+                                                ]
                                             },
                                         )
-                                        ended = await call("end_session", {})
                                         if ended.structuredContent["data"]["warnings"]:
                                             raise RuntimeError("Report or teardown warnings")
+                                        if (
+                                            ended.structuredContent["data"]["coverage"]["goals"][0][
+                                                "status"
+                                            ]
+                                            != "exercised"
+                                        ):
+                                            raise RuntimeError("Final coverage was not recorded")
                 except Exception as exc:
                     failure = f"{type(exc).__name__}: smoke journey did not complete"
                 evidence = (
@@ -132,9 +149,9 @@ async def run_smoke() -> Dataset:
                         case_id=case.id,
                         repetition=0,
                         model="scripted-no-model",
-                        host="argus-evaluation-smoke-v1",
+                        host="argus-evaluation-smoke-v2",
                         fixture_revision=REVISION,
-                        task_revision="save-reload-v1",
+                        task_revision="save-reload-final-coverage-v2",
                         seed=0,
                         budget=Budget(tool_calls=10, wall_seconds=30),
                         completed=failure is None,

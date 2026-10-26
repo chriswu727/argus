@@ -19,9 +19,7 @@ from argus.resolver import (
 from argus.security import _redact
 
 from .coverage import (
-    _COVERAGE_STATUSES,
-    _coverage_cursor,
-    _coverage_evidence_refs,
+    _apply_coverage_updates,
     _coverage_goal_index,
     _coverage_snapshot,
     _format_coverage,
@@ -471,48 +469,12 @@ async def coverage_update(goal: str | list[str], status: str, evidence: str = ""
         evidence: Concrete observed result; required for exercised and blocked.
     """
     s = _require_session()
-    if not s.coverage_goals:
-        return Rejection(
-            "coverage_update: this session has no supplied goals. Continue exploring and report pages visited."
-        )
+    error = _apply_coverage_updates(s, [{"goal": goal, "status": status, "evidence": evidence}])
+    if error:
+        return Rejection(error)
     status = status.strip().lower()
-    if status not in _COVERAGE_STATUSES:
-        return Rejection(
-            "coverage_update: status must be untested, in_progress, exercised, or blocked."
-        )
-    evidence = " ".join(evidence.split())
-    if len(evidence) > 1000:
-        return Rejection("coverage_update: evidence must be at most 1000 characters.")
-    if status in {"exercised", "blocked"} and not evidence:
-        return Rejection(f"coverage_update: {status} requires concrete evidence.")
     queries = [goal] if isinstance(goal, str) else goal
-    if not isinstance(queries, list) or not 1 <= len(queries) <= 20:
-        return Rejection("coverage_update: provide 1-20 goals.")
-    indices = []
-    for query in queries:
-        if not isinstance(query, str):
-            return Rejection("coverage_update: each goal must be text.")
-        index, error = _coverage_goal_index(s, query)
-        if error:
-            return Rejection(error)
-        if index in indices:
-            return Rejection("coverage_update: goals must resolve to distinct entries.")
-        indices.append(index)
-    for index in indices:
-        selected = s.coverage_goals[index]
-        selected["status"] = status
-        selected["evidence"] = "" if status == "untested" else evidence
-        if status == "untested":
-            selected.pop("evidence_refs", None)
-            s._coverage_goal_cursors.pop(index, None)
-        elif status == "in_progress":
-            selected.pop("evidence_refs", None)
-            s._coverage_goal_cursors[index] = _coverage_cursor(s)
-        else:
-            cursor = s._coverage_goal_cursors.setdefault(index, dict(s._coverage_evidence_cursor))
-            selected["evidence_refs"] = _coverage_evidence_refs(s, cursor)
-    if status in {"exercised", "blocked"}:
-        s._coverage_evidence_cursor = _coverage_cursor(s)
+    indices = [_coverage_goal_index(s, query)[0] for query in queries]
     snapshot = _coverage_snapshot(s)
     names = "; ".join(s.coverage_goals[index]["goal"] for index in indices)
     result = f"Coverage updated: {names} → {status}.\n" + _format_coverage(snapshot)

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Accept explicit final coverage batches in end_session, validating the entire
+  batch before shutdown and preserving each goal's evidence window. Reuse the
+  same coverage rules for mid-session and final updates.
+- Remove redundant generated input-schema titles while preserving parameter
+  names, constraints, defaults, validation and tool display titles. Omit empty
+  optional success metadata in compact/delta envelopes using version-1 defaults.
+- Update the no-model smoke workflow to reuse post-action observations and
+  finalize coverage during close, reducing its Argus path from seven calls to
+  five without dropping the save/reload check or exported coverage.
 - Guide observed persistence failures toward fresh-load symptom checks instead
   of replaying writes. Keep login/error-page results inconclusive and preserve
   the distinction between a suggested check and a verified finding.

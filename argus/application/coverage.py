@@ -247,7 +247,7 @@ def _session_protocol(s: Session) -> str:
         "3. HYPOTHESIZE user-affecting failures, including cross-page and persistence failures.",
         "4. VERIFY persistence-changing actions once with a fresh load; visible success feedback is not proof. Repeat only to resolve uncertainty.",
         "5. RECORD only reproducible bugs. Use record_observation for qualitative visual or UX evidence.",
-        "6. COVER important goals and pages. Batch related goals in one coverage_update(goal=[...], status='in_progress') before their shared journey, then one update with observed evidence. Never mark untested goals exercised.",
+        "6. COVER important goals and pages. Batch related goals in coverage_update(goal=[...], status='in_progress') before their shared journey. Submit final exercised/blocked updates with observed evidence in end_session(coverage_updates=[...]); use coverage_update mid-session. Never mark untested goals exercised.",
         "Severity: HIGH for security, data loss, payment, or a blocked primary flow; MEDIUM for workflow friction, deceptive feedback, or inconsistency; LOW for minor UX.",
         "Authority: do not purchase, publish, delete real data, or cause another irreversible external effect unless explicitly authorized.",
     ]
@@ -287,3 +287,70 @@ def _coverage_goal_index(s: Session, query: str) -> tuple[Optional[int], Optiona
         return None, f"coverage_update: no goal matches {query!r}. Available: {available}"
     candidates = "; ".join(s.coverage_goals[i]["goal"] for i in matches)
     return None, f"coverage_update: {query!r} is ambiguous. Candidates: {candidates}"
+
+
+def _apply_coverage_updates(s: Session, updates: list[dict], *, final: bool = False) -> str | None:
+    if not isinstance(updates, list) or len(updates) > 20:
+        return "coverage_update: provide at most 20 updates."
+    if not updates:
+        return None
+    if not s.coverage_goals:
+        return "coverage_update: this session has no supplied goals. Continue exploring and report pages visited."
+    changes = []
+    seen = set()
+    for update in updates:
+        if not isinstance(update, dict) or set(update) - {"goal", "status", "evidence"}:
+            return "coverage_update: each update accepts only goal, status and evidence."
+        status = update.get("status")
+        if not isinstance(status, str) or status.strip().lower() not in _COVERAGE_STATUSES:
+            return "coverage_update: status must be untested, in_progress, exercised, or blocked."
+        status = status.strip().lower()
+        if final and status not in {"exercised", "blocked"}:
+            return "coverage_update: final updates must be exercised or blocked."
+        evidence = update.get("evidence", "")
+        if not isinstance(evidence, str):
+            return "coverage_update: evidence must be text."
+        evidence = " ".join(evidence.split())
+        if len(evidence) > 1000:
+            return "coverage_update: evidence must be at most 1000 characters."
+        if status in {"exercised", "blocked"} and not evidence:
+            return f"coverage_update: {status} requires concrete evidence."
+        goal = update.get("goal")
+        queries = [goal] if isinstance(goal, str) else goal
+        if not isinstance(queries, list) or not 1 <= len(queries) <= 20:
+            return "coverage_update: provide 1-20 goals."
+        for query in queries:
+            if not isinstance(query, str):
+                return "coverage_update: each goal must be text."
+            index, error = _coverage_goal_index(s, query)
+            if error:
+                return error
+            if index in seen:
+                return "coverage_update: goals must resolve to distinct entries."
+            seen.add(index)
+            changes.append((index, status, evidence))
+
+    cursor = _coverage_cursor(s)
+    cursors = dict(s._coverage_goal_cursors)
+    planned = []
+    for index, status, evidence in changes:
+        selected = dict(s.coverage_goals[index])
+        selected.update(status=status, evidence="" if status == "untested" else evidence)
+        if status == "untested":
+            selected.pop("evidence_refs", None)
+            cursors.pop(index, None)
+        elif status == "in_progress":
+            selected.pop("evidence_refs", None)
+            cursors[index] = dict(cursor)
+        else:
+            start = cursors.setdefault(index, dict(s._coverage_evidence_cursor))
+            selected["evidence_refs"] = _coverage_evidence_refs(s, start)
+        planned.append((index, selected))
+
+    for index, selected in planned:
+        s.coverage_goals[index].clear()
+        s.coverage_goals[index].update(selected)
+    s._coverage_goal_cursors = cursors
+    if any(status in {"exercised", "blocked"} for _, status, _ in changes):
+        s._coverage_evidence_cursor = cursor
+    return None

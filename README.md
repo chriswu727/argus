@@ -62,7 +62,9 @@ suite validates the harness; it is **not evidence of agent performance gains**.
 
 Development main (not yet in 0.9.1) adds read-only persistence-verification
 guidance, bounded rechecks by finding ID, shared coverage evidence in compact
-responses, and text/value-aware change summaries. See the
+responses, and text/value-aware change summaries. It also supports final
+coverage updates inside `end_session`, smaller input schemas, and compact
+envelopes that omit empty optional metadata. See the
 [protocol](docs/agent-protocol.md#bounded-verification-recovery-unreleased).
 
 The [0.8 Codex evaluation](docs/evaluation-0.8.md) includes ten matched pairs:
