@@ -16,6 +16,7 @@ from argus.storage import (
     storage_warning,
 )
 
+from .coverage import _coverage_reference_url, _current_coverage_url
 from .session import Session
 from .text import _short
 
@@ -38,6 +39,7 @@ def _record_coverage_action(s: "Session", tool: str, description: str = "") -> N
         {
             "tool": tool,
             "description": _short(_redact(description), 120),
+            "url": _coverage_reference_url(_current_coverage_url(s)),
         }
     )
 

@@ -63,8 +63,9 @@ titles, evidence, actual progress stages and verdicts are retained.
 | Delta result bytes, same fixture | 52,683 | 50,295 |
 | Argus scripted save/reload calls per control | 7 | 5 |
 
-Run `python -m argus.evaluation.overhead` and the scripted smoke check to
-reproduce the current figures. The five-call workflow starts, declares the
+These discovery figures describe the finalization snapshot, before typed finding
+evidence was added. Run `python -m argus.evaluation.overhead` for current discovery
+counts and the scripted smoke check for the five-call workflow. It starts, declares the
 goal in progress, clicks Save and reads its returned observation, checks a
 fresh load, then ends with explicit final coverage. It runs buggy, client-storage
 fixed and server-backed clean controls over real MCP stdio. Separate tests
@@ -75,6 +76,20 @@ These are byte counts and scripted call counts. This follow-up consumed no
 model calls and does not establish new token, subscription, latency or agent
 quality improvements. The model measurements below describe the earlier source
 snapshot, before this finalization change.
+
+## Evidence provenance regressions (development main)
+
+Local browser regressions cover deferred findings from two pages while the agent
+is on a third page, distinct correctly located screenshots, caller-page
+restoration, and exactly one original form POST. They also cover screenshot
+opt-outs/failures, login/error-page uncertainty, explicit URL mismatches, frozen
+coverage windows, revisited URLs, late goal-linked findings, atomic rejection,
+expected/actual report redaction and the real MCP stdio evidence schema.
+
+This verification uses deterministic fixtures and no model or subscription calls.
+It establishes these regression behaviors, not a new long-workflow model quality
+or token comparison. Typed evidence deliberately adds a small discovery schema;
+use the offline benchmark to measure bytes, not to infer model-token costs.
 
 ## Bounded verification-efficiency check (pre-batching snapshot)
 

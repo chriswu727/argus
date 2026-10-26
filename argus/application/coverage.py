@@ -66,21 +66,16 @@ def _coverage_cursor(s: Session) -> dict:
         "verifications": len(s.verification_checks),
         "bugs": len(s.bugs),
         "observations": len(s.observations),
+        "url": _current_coverage_url(s),
     }
 
 
-def _coverage_evidence_refs(s: Session, cursor: dict) -> dict:
+def _coverage_evidence_refs(
+    s: Session, cursor: dict, end: dict | None = None, goal: str = ""
+) -> dict:
+    end = end if end is not None else _coverage_cursor(s)
     urls = []
-    candidates = list(s.pages_visited[cursor["pages"] :])
-    current_url = _current_coverage_url(s)
-    if current_url:
-        candidates.append(current_url)
-    for url in candidates:
-        reference = _coverage_reference_url(url)
-        if reference not in urls:
-            urls.append(reference)
-
-    action_candidates = s.coverage_action_trace[cursor["actions"] :]
+    action_candidates = s.coverage_action_trace[cursor["actions"] : end["actions"]]
     actions = []
     for action in action_candidates[:25]:
         tool = action.get("tool") or "action"
@@ -92,7 +87,27 @@ def _coverage_evidence_refs(s: Session, cursor: dict) -> dict:
             }
         )
 
-    screenshot_candidates = s.screenshots[cursor["screenshots"] :]
+    bug_candidates = [
+        bug
+        for index, bug in enumerate(s.bugs)
+        if (goal and goal in bug.coverage_goals)
+        or (cursor["bugs"] <= index < end["bugs"] and not bug.coverage_goals)
+    ]
+    linked_screenshots = {bug.screenshot_path for bug in bug_candidates if bug.screenshot_path}
+    unrelated_screenshots = {
+        bug.screenshot_path
+        for bug in s.bugs
+        if bug.coverage_goals and goal not in bug.coverage_goals
+    }
+    screenshot_candidates = [
+        shot
+        for index, shot in enumerate(s.screenshots)
+        if (
+            cursor["screenshots"] <= index < end["screenshots"]
+            and shot.path not in unrelated_screenshots
+        )
+        or shot.path in linked_screenshots
+    ]
     screenshots = [
         {
             "name": screenshot.name,
@@ -101,11 +116,23 @@ def _coverage_evidence_refs(s: Session, cursor: dict) -> dict:
         }
         for screenshot in screenshot_candidates[:10]
     ]
-    verification_candidates = s.verification_checks[cursor["verifications"] :]
+    verification_candidates = s.verification_checks[cursor["verifications"] : end["verifications"]]
     verifications = [dict(check) for check in verification_candidates[:10]]
 
-    bug_candidates = s.bugs[cursor["bugs"] :]
-    observation_candidates = s.observations[cursor["observations"] :]
+    observation_candidates = s.observations[cursor["observations"] : end["observations"]]
+    candidates = (
+        list(s.pages_visited[cursor["pages"] : end["pages"]])
+        + [action.get("url", "") for action in action_candidates]
+        + [shot.url for shot in screenshot_candidates]
+        + [check.get("at_url", "") for check in verification_candidates]
+        + [bug.url for bug in bug_candidates]
+        + [observation.url for observation in observation_candidates]
+        + [end.get("url", "")]
+    )
+    for url in candidates:
+        reference = _coverage_reference_url(url)
+        if reference and reference not in urls:
+            urls.append(reference)
     findings = []
     for bug in bug_candidates[:20]:
         receipt = bug.reproduction_receipt or {}
@@ -145,6 +172,14 @@ def _coverage_evidence_refs(s: Session, cursor: dict) -> dict:
             "findings": max(0, len(bug_candidates) + len(observation_candidates) - 20),
         },
     }
+
+
+def _refresh_finding_coverage(s: Session, goals: list[str]) -> None:
+    for index, selected in enumerate(s.coverage_goals):
+        if selected["goal"] in goals and "evidence_refs" in selected:
+            selected["evidence_refs"] = _coverage_evidence_refs(
+                s, s._coverage_goal_cursors[index], s._coverage_goal_ends[index], selected["goal"]
+            )
 
 
 def _update_coverage_from_state(s: Session, state: PageState) -> None:
@@ -332,6 +367,12 @@ def _apply_coverage_updates(s: Session, updates: list[dict], *, final: bool = Fa
 
     cursor = _coverage_cursor(s)
     cursors = dict(s._coverage_goal_cursors)
+    ends = dict(s._coverage_goal_ends)
+    focused = {index for index, status, _ in changes if status == "in_progress"}
+    if focused:
+        for index in cursors:
+            if index not in focused and index not in ends:
+                ends[index] = dict(cursor)
     planned = []
     for index, status, evidence in changes:
         selected = dict(s.coverage_goals[index])
@@ -339,18 +380,22 @@ def _apply_coverage_updates(s: Session, updates: list[dict], *, final: bool = Fa
         if status == "untested":
             selected.pop("evidence_refs", None)
             cursors.pop(index, None)
+            ends.pop(index, None)
         elif status == "in_progress":
             selected.pop("evidence_refs", None)
             cursors[index] = dict(cursor)
+            ends.pop(index, None)
         else:
             start = cursors.setdefault(index, dict(s._coverage_evidence_cursor))
-            selected["evidence_refs"] = _coverage_evidence_refs(s, start)
+            end = ends.setdefault(index, dict(cursor))
+            selected["evidence_refs"] = _coverage_evidence_refs(s, start, end, selected["goal"])
         planned.append((index, selected))
 
     for index, selected in planned:
         s.coverage_goals[index].clear()
         s.coverage_goals[index].update(selected)
     s._coverage_goal_cursors = cursors
+    s._coverage_goal_ends = ends
     if any(status in {"exercised", "blocked"} for _, status, _ in changes):
         s._coverage_evidence_cursor = cursor
     return None

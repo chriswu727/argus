@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Capture fresh-load finding screenshots before returning to the caller's page,
+  and default the finding URL to the checked page. Preserve explicit URLs and
+  screenshot opt-outs; report unavailable or mismatched evidence without
+  changing the verification verdict or repeating application writes.
+- Freeze goal evidence windows when switching testing groups. Record revisited
+  action URLs and explicitly associate deferred findings with declared goals,
+  including already finalized goals, without completing them automatically.
+- Declare finding evidence fields in MCP discovery. Preserve expected/actual
+  outcomes across report formats and retain caller-supplied call numbers as
+  claimed references, never independent verification.
 - Accept explicit final coverage batches in end_session, validating the entire
   batch before shutdown and preserving each goal's evidence window. Reuse the
   same coverage rules for mid-session and final updates.

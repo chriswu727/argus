@@ -6,17 +6,20 @@ from typing import Optional
 
 from argus.application.context import current_runtime
 from argus.domain.contracts import Rejection, ToolText
+from argus.domain.findings import FindingEvidence
 from argus.domain.models import (
     Bug,
     Observation,
 )
+from argus.domain.verification import VerificationSpec
 
+from .coverage import _coverage_goal_index, _refresh_finding_coverage
 from .events import _BUG_TYPE_BY_NAME, _SEVERITY_BY_NAME
 from .evidence import _auto_screenshot
 from .observation import _near_duplicate
 from .progress import Stage
 from .session import Session, _require_session
-from .text import _marker_visible, _short
+from .text import _marker_visible, _resolve_url, _short
 from .verification import (
     _looks_logged_out,
 )
@@ -25,7 +28,7 @@ from .verification import (
 async def record_bug(
     title: str,
     severity: str,
-    evidence: Optional[dict] = None,
+    evidence: FindingEvidence | str | None = None,
     verify: Optional[dict] = None,
     finding_id: str = "",
 ) -> str:
@@ -36,8 +39,9 @@ async def record_bug(
         severity: critical | high | medium | low | info. High: data loss,
             security, payment or blocked flow; medium: workflow friction or
             deceptive feedback; low: minor UX.
-        evidence: Optional description, steps (list of strings), url, screenshot
-            (auto, skip, label or approved image path), and bug_type. Defaults:
+        evidence: Optional description, expected, actual, steps, goal (or goals),
+            evidence_calls (caller-claimed call numbers, not independent proof),
+            url, screenshot (auto, skip, label or approved image path), bug_type. Defaults:
             title as description, steps since the previous finding, current URL,
             automatic screenshot and ux_issue. Prefer state_verification for
             persistence failures, misleading_success for lying toasts,
@@ -92,6 +96,23 @@ async def record_bug(
     else:
         ev = {}
     description = ev.get("description") or title
+    expected, actual = ev.get("expected", ""), ev.get("actual", "")
+    if any(not isinstance(value, str) or len(value) > 4000 for value in (expected, actual)):
+        return Rejection("record_bug: expected and actual must be text of at most 4000 characters.")
+    coverage_goals, error = _finding_goals(s, ev)
+    if error:
+        return Rejection(error)
+    claimed_calls = ev.get("evidence_calls", [])
+    if (
+        not isinstance(claimed_calls, list)
+        or len(claimed_calls) > 50
+        or any(type(value) is not int or value < 1 for value in claimed_calls)
+    ):
+        return Rejection("record_bug: evidence_calls accepts at most 50 positive call numbers.")
+    if expected:
+        description += f"\nExpected: {expected}"
+    if actual:
+        description += f"\nActual: {actual}"
     # Default to the steps taken *since the last record_bug* — otherwise
     # consecutive bug reports accumulate earlier bugs' actions and the
     # reproducible-steps section reads as session noise.
@@ -152,26 +173,6 @@ async def record_bug(
             },
         )
 
-    screenshot_directive = ev.get("screenshot", "auto")
-    screenshot_path: Optional[str] = None
-    if screenshot_directive == "skip":
-        pass
-    elif screenshot_directive in ("auto", "", None):
-        label = "bug_" + "".join(c if c.isalnum() else "_" for c in title.lower())[:40]
-        screenshot_path = await _auto_screenshot(s, label, f"record_bug: {_short(title, 60)}")
-    elif "/" in screenshot_directive or screenshot_directive.endswith(".png"):
-        # Treat as an existing path
-        runtime = current_runtime()
-        screenshot_path = str(
-            runtime.settings.access.check_file(
-                screenshot_directive, extra_roots=(runtime.settings.output_dir,)
-            )
-        )
-    else:
-        # Treat as a label for a fresh screenshot
-        label = "".join(c if c.isalnum() else "_" for c in screenshot_directive.lower())[:40]
-        screenshot_path = await _auto_screenshot(s, label, f"record_bug: {_short(title, 60)}")
-
     # Lower the barrier to engaging the receipt: if no explicit verify clause was
     # passed but the evidence dict carries a checkable target, build one from it.
     # (The agent still supplies the target — we never GUESS it, which would risk
@@ -190,10 +191,80 @@ async def record_bug(
             verify.pop("expect")
             verify.pop("target_text")
 
+    fresh_load = False
+    if verify:
+        try:
+            fresh_load = (
+                VerificationSpec.parse(verify).kind in {"text", "http_status"}
+                and s.mode == "web"
+                and s.browser is not None
+                and s.browser.has_page
+            )
+        except ValueError:
+            pass
+    if fresh_load and not ev.get("url"):
+        url = _resolve_url(s, verify.get("at_url") or verify.get("after_url") or url)
+
+    screenshot_directive = ev.get("screenshot", "auto")
+    screenshot_path: Optional[str] = None
+    screenshot_label = None
+    warnings = []
+    if screenshot_directive != "skip":
+        if screenshot_directive and (
+            "/" in screenshot_directive or screenshot_directive.endswith(".png")
+        ):
+            runtime = current_runtime()
+            screenshot_path = str(
+                runtime.settings.access.check_file(
+                    screenshot_directive, extra_roots=(runtime.settings.output_dir,)
+                )
+            )
+        else:
+            label = title if screenshot_directive in ("auto", "", None) else screenshot_directive
+            screenshot_label = (
+                "bug_" + "".join(c if c.isalnum() else "_" for c in label.lower())[:40]
+            )
+            if fresh_load:
+                target_url = _resolve_url(
+                    s, verify.get("at_url") or verify.get("after_url") or s.browser.current_url
+                )
+                if _resolve_url(s, url) != target_url:
+                    warnings.append(
+                        "Finding URL differs from verification target; screenshot omitted."
+                    )
+                    screenshot_label = None
+            elif s.mode == "web" and s.browser and _resolve_url(s, url) != s.browser.current_url:
+                warnings.append("Finding URL differs from current page; screenshot omitted.")
+                screenshot_label = None
+            if screenshot_label and not fresh_load:
+                try:
+                    screenshot_path = await _auto_screenshot(
+                        s, screenshot_label, f"record_bug: {_short(title, 60)}"
+                    )
+                    if not screenshot_path:
+                        warnings.append("Finding screenshot was unavailable.")
+                except Exception:
+                    warnings.append("Finding screenshot capture failed.")
+
     replay_slice = list(s.action_trace[s._actions_since_last_bug :])
     if verify:
         await current_runtime().progress(Stage.VERIFYING)
-    receipt = await current_runtime().verifiers.verify(s, verify, replay_slice) if verify else None
+    receipt = (
+        await current_runtime().verifiers.verify(
+            s, verify, replay_slice, screenshot_label=screenshot_label if fresh_load else None
+        )
+        if verify
+        else None
+    )
+    if receipt and fresh_load:
+        if not ev.get("url"):
+            url = receipt.get("evidence_url") or receipt.get("at_url") or url
+        if screenshot_label:
+            screenshot_path = receipt.get("screenshot_path")
+            if not screenshot_path:
+                warnings.append(
+                    receipt.get("evidence_warning") or "Verification screenshot was unavailable."
+                )
 
     description, receipt = await _guard_capsule(s, description, receipt)
 
@@ -207,8 +278,14 @@ async def record_bug(
         screenshot_path=screenshot_path,
         reproduction_receipt=receipt,
         replay_steps=replay_slice,
+        expected=expected,
+        actual=actual,
+        coverage_goals=coverage_goals,
+        claimed_evidence_calls=list(claimed_calls),
+        evidence_warnings=warnings,
     )
     s.bugs.append(bug)
+    _refresh_finding_coverage(s, coverage_goals)
     verdict = (receipt or {}).get("reproduced")
     code = (
         "verified" if verdict is True else "not_reproduced" if verdict is False else "inconclusive"
@@ -237,6 +314,7 @@ async def record_bug(
     ]
     if screenshot_path:
         out.append(f"  screenshot: {screenshot_path}")
+    out.extend(f"  evidence warning: {warning}" for warning in warnings)
     if receipt is not None:
         is_replay = receipt.get("mode") == "replay"
         if not receipt.get("attempted"):
@@ -320,6 +398,7 @@ async def record_bug(
             "evidence_status": "observed" if receipt is None else code,
             "verdict": code,
             "receipt": receipt,
+            "warnings": warnings,
             "next_action": (
                 "Preserve this receipt; do not repeat the journey."
                 if verdict is True
@@ -334,6 +413,25 @@ async def record_bug(
             },
         },
     )
+
+
+def _finding_goals(s: Session, evidence: dict) -> tuple[list[str], str | None]:
+    queries = evidence.get("goals", evidence.get("goal", []))
+    if isinstance(queries, str):
+        queries = [queries]
+    if not isinstance(queries, list) or len(queries) > 20:
+        return [], "record_bug: goal/goals accepts at most 20 declared goals."
+    goals = []
+    for query in queries:
+        if not isinstance(query, str):
+            return [], "record_bug: each goal must be text."
+        index, error = _coverage_goal_index(s, query)
+        if error:
+            return [], error.replace("coverage_update:", "record_bug:", 1)
+        goal = s.coverage_goals[index]["goal"]
+        if goal not in goals:
+            goals.append(goal)
+    return goals, None
 
 
 async def _guard_capsule(s: Session, description: str, receipt: dict | None) -> tuple:
@@ -395,6 +493,7 @@ async def _recheck_finding(
     bug.description, receipt = await _guard_capsule(s, bug.description, receipt)
     history["receipt"] = receipt
     bug.reproduction_receipt = receipt
+    _refresh_finding_coverage(s, bug.coverage_goals)
     verdict = (receipt or {}).get("reproduced")
     code = (
         "verified" if verdict is True else "not_reproduced" if verdict is False else "inconclusive"

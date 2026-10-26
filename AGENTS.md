@@ -145,6 +145,15 @@ those references before judging coverage. See the protocol for exact semantics.
 Successful compact/delta envelopes may omit empty recovery and zero/false
 progress metadata; use their documented defaults. Verdicts remain explicit.
 
+On development main, a new `in_progress` goal group freezes the previous group's
+evidence window without changing its status. Batch only genuinely shared
+journeys. Reopening a goal starts a new window. For a deferred bug, provide
+`evidence.goal` or `evidence.goals` from the declared goals and `expected`/`actual`.
+Fresh-load verification supplies the default finding URL and captures that page
+before returning to the caller. Explicit URLs and screenshot opt-outs are kept;
+missing/mismatched screenshots produce warnings, not guessed evidence.
+`evidence_calls` are caller-claimed references, not machine-verified call IDs.
+
 ## When `record_bug` is appropriate
 
 The bug bar:

@@ -213,6 +213,13 @@ That's it. The agent drives; Argus keeps it honest and writes the report.
 
 For a scoped review, the host can give `start_session` explicit `goals`, `constraints`, and an advisory `time_budget_minutes`. Argus returns the full testing protocol once and keeps outstanding goals and discovered pages visible in later observations. Mark a goal `in_progress` before its journey; when `coverage_update` marks it `exercised` or `blocked`, Argus requires a concrete explanation and automatically links the URLs, value-redacted actions, screenshots, persistence checks, bugs, and observations produced in that testing window. The final HTML and JSON reports preserve both completed and unfinished coverage instead of implying that an incomplete pass was comprehensive.
 
+On development main, switching to another goal group freezes the previous
+evidence window without completing those goals. Deferred findings can name
+`evidence.goal` or `evidence.goals`; their expected/actual outcomes are preserved
+in reports. Fresh-load findings capture the checked page before returning to the
+agent's current page, so recording a bug later does not attach an unrelated
+screenshot. See the [evidence contract](docs/agent-protocol.md#finding-evidence-provenance-unreleased).
+
 <details>
 <summary><b>pip installation</b></summary>
 
