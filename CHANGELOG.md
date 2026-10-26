@@ -2,6 +2,8 @@
 
 ## 0.7.1 - 2026-10-25
 
+- Require Python 3.11 or newer and raise Pillow/filelock/certifi minimum versions to
+  patched releases. Upgrade the Python interpreter before upgrading Argus.
 - Restrict source distributions to explicitly selected product files and validate
   built archive contents before publication. Use private vulnerability reporting
   for security disclosures and omit personal contact details from package metadata.

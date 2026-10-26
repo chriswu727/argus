@@ -6,7 +6,7 @@ Argus is a local stdio MCP server for exploratory QA. Install the published
 
 ## Requirements
 
-- Python 3.10 or newer
+- Python 3.11 or newer
 - [`uv`](https://docs.astral.sh/uv/) so the client can launch `uvx`
 
 Install the Playwright Chromium browser once:

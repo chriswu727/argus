@@ -59,6 +59,10 @@ remain distinct from verified findings.
 
 ## Quick start
 
+Argus 0.7.1 and newer require **Python 3.11+**. If your default interpreter is
+older, use `uvx --python 3.12 --from argus-testing argus-mcp` in your MCP
+configuration. Upgrade Python before upgrading an existing pip installation.
+
 With [`uv`](https://docs.astral.sh/uv/) installed, no global Python package install is required. Install Chromium once:
 
 ```bash

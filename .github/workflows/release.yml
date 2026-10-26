@@ -22,7 +22,9 @@ jobs:
       - name: Install build and test dependencies
         run: python -m pip install --upgrade pip 'setuptools>=83.0.0' && python -m pip install build twine -e '.[dev]'
       - name: Smoke-test package import
-        run: python -c "from argus.mcp_server import mcp; assert mcp is not None"
+        run: |
+          python -m pip check
+          python -c "from argus.mcp_server import mcp; assert mcp is not None"
       - name: Audit installed dependencies
         run: python -m pip_audit --vulnerability-service osv --progress-spinner off --skip-editable
       - name: Install Chromium
@@ -58,6 +60,7 @@ jobs:
           python -m venv /tmp/argus-wheel
           /tmp/argus-wheel/bin/python -m pip install --upgrade pip 'setuptools>=83.0.0'
           /tmp/argus-wheel/bin/python -m pip install dist/*.whl
+          /tmp/argus-wheel/bin/python -m pip check
           /tmp/argus-wheel/bin/argus-testing --version
           /tmp/argus-wheel/bin/argus-testing --list-tools
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

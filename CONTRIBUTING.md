@@ -3,7 +3,7 @@
 Keep public repository content in English and focused on product usage,
 implementation, verification and contribution guidance.
 
-Use Python 3.10 or newer. CI runs 3.10 and 3.12. Browser checks are local and do
+Use Python 3.11 or newer. CI runs 3.11 and 3.12. Browser checks are local and do
 not call a model provider:
 
 ```bash
