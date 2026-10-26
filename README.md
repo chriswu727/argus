@@ -17,6 +17,8 @@ Argus is an [MCP](https://modelcontextprotocol.io/) server that gives your codin
 [![Capability ceiling](https://img.shields.io/badge/bench-34%2F34-brightgreen)](#benchmarks)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
+[![Argus Testing — Autonomous QA MCP server](https://mcprush.com/badge/argus-testing-autonomous-qa-mcp/card.svg)](https://mcprush.com/to/argus-testing-autonomous-qa-mcp?ref=badge)
+
 [Product page](https://yichenwu.dev/projects/argus) · [Quick start](#quick-start) · [Why Argus](#why-argus-is-different) · [Compared](#how-it-compares) · [Tools](#tool-surface) · [Benchmarks](#benchmarks)
 
 </div>
