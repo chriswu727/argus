@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Optional
 
 from argus.application.context import current_runtime
+from argus.domain.contracts import Rejection, ToolText
 from argus.domain.models import (
     Bug,
     Observation,
@@ -13,6 +14,7 @@ from argus.domain.models import (
 from .events import _BUG_TYPE_BY_NAME, _SEVERITY_BY_NAME
 from .evidence import _auto_screenshot
 from .observation import _near_duplicate
+from .progress import Stage
 from .session import _require_session
 from .text import _marker_visible, _short
 from .verification import (
@@ -114,8 +116,10 @@ async def record_bug(
     s = _require_session()
 
     sev_key = (severity or "").strip().lower()
+    if not title.strip():
+        return Rejection("record_bug: title must not be empty.")
     if sev_key not in _SEVERITY_BY_NAME:
-        return (
+        return Rejection(
             f"record_bug: invalid severity {severity!r}. "
             f"Use one of: {', '.join(_SEVERITY_BY_NAME)}."
         )
@@ -168,7 +172,7 @@ async def record_bug(
 
     type_key = (ev.get("bug_type") or "ux_issue").strip().lower()
     if type_key not in _BUG_TYPE_BY_NAME:
-        return (
+        return Rejection(
             f"record_bug: invalid bug_type {type_key!r}. "
             f"Use one of: {', '.join(_BUG_TYPE_BY_NAME)}."
         )
@@ -180,10 +184,11 @@ async def record_bug(
     # genuinely distinct findings are never merged.
     dup = _near_duplicate(title, description, s.bugs)
     if dup is not None:
-        return (
+        return ToolText(
             f"Not recorded — near-duplicate of an already-logged finding: "
             f"{dup.title!r}. A tight report beats a repetitive one; sharpen the "
-            f"angle or move on to a feature you haven't tested yet."
+            f"angle or move on to a feature you haven't tested yet.",
+            {"recorded": False, "reason": "duplicate"},
         )
 
     screenshot_directive = ev.get("screenshot", "auto")
@@ -225,6 +230,8 @@ async def record_bug(
             verify.pop("target_text")
 
     replay_slice = list(s.action_trace[s._actions_since_last_bug :])
+    if verify:
+        await current_runtime().progress(Stage.VERIFYING)
     receipt = await current_runtime().verifiers.verify(s, verify, replay_slice) if verify else None
 
     # If a state capsule is in play, flag the finding ONLY when there's positive
@@ -268,6 +275,14 @@ async def record_bug(
         "verified" if verdict is True else "not_reproduced" if verdict is False else "inconclusive"
     )
     runtime = current_runtime()
+    if verify:
+        await runtime.progress(
+            Stage.VERIFIED
+            if verdict is True
+            else Stage.NOT_REPRODUCED
+            if verdict is False
+            else Stage.INCONCLUSIVE
+        )
     runtime.events.publish("finding_recorded", runtime.state.value, "record_bug", code)
     s.steps.append(f"record_bug: [{sev.value}] {title}")
     # Reset the per-bug cursors so the *next* record_bug only carries actions
@@ -357,7 +372,20 @@ async def record_bug(
             '"...","at_url":"/path"} so Argus re-confirms it from a clean load.'
         )
     out.append(f"  total bugs in session: {len(s.bugs)}")
-    return "\n".join(out)
+    return ToolText(
+        "\n".join(out),
+        {
+            "recorded": True,
+            "verdict": code,
+            "receipt": receipt,
+            "finding": {
+                "title": title,
+                "severity": sev.value,
+                "url": url,
+                "screenshot": screenshot_path,
+            },
+        },
+    )
 
 
 async def record_observation(
@@ -385,14 +413,17 @@ async def record_observation(
     allowed_categories = {"visual", "usability", "content", "responsive", "accessibility"}
 
     if not title or not evidence:
-        return "record_observation: title and evidence are required."
+        return Rejection("record_observation: title and evidence are required.")
     if category not in allowed_categories:
-        return "record_observation: category must be one of: " + ", ".join(
-            sorted(allowed_categories)
+        return Rejection(
+            "record_observation: category must be one of: " + ", ".join(sorted(allowed_categories))
         )
     normalized = " ".join(title.lower().split())
     if any(" ".join(item.title.lower().split()) == normalized for item in s.observations):
-        return f"record_observation: duplicate title not recorded: {title!r}."
+        return ToolText(
+            f"record_observation: duplicate title not recorded: {title!r}.",
+            {"recorded": False, "reason": "duplicate"},
+        )
 
     if s.mode == "web" and s.browser is not None and s.browser.has_page:
         url = s.browser.current_url
@@ -433,8 +464,15 @@ async def record_observation(
             screenshot_path=screenshot_path,
         )
     )
-    return (
+    return ToolText(
         f"Recorded {category} observation: {title}\n"
         f"  screenshot: {screenshot_path or 'none'}\n"
-        f"  total observations in session: {len(s.observations)}"
+        f"  total observations in session: {len(s.observations)}",
+        {
+            "recorded": True,
+            "category": category,
+            "title": title,
+            "screenshot": screenshot_path,
+            "finding_confirmed": False,
+        },
     )

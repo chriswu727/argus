@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Add versioned structured MCP results alongside compatible text/image content,
+  including structured evidence for core observation, coverage, verification, findings
+  and report flows, with explicit runtime error codes and recovery guidance.
+- Emit bounded, request-local phase progress over MCP and local monitoring;
+  retain a final summary when a host does not display notifications.
+- Add paired evaluation schemas and offline metrics with matched controls,
+  retained failures, duplicate/false-positive accounting and unknown usage.
+  A no-model browser/stdio smoke suite exercises buggy, fixed and clean controls.
+
 ## 0.7.1 - 2026-10-25
 
 - Require Python 3.11 or newer and raise Pillow/filelock/certifi minimum versions to

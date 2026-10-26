@@ -5,11 +5,13 @@ from typing import List, Optional
 from urllib.parse import urlparse
 
 from argus.application.context import current_runtime
-from argus.domain.contracts import ErrorCode, OperationError, Rejection, SessionState
+from argus.domain.contracts import ErrorCode, OperationError, Rejection, SessionState, ToolText
 
 from .coverage import _contract_items, _session_protocol, _update_coverage_from_state
 from .evidence import _journal_entries, _screenshot_dir
 from .observation import _coverage_line, _format_observation
+from .payloads import observation_data
+from .progress import Stage
 from .session import Session, _teardown_active_session
 
 
@@ -80,6 +82,7 @@ async def start_session(
         viewport_height=viewport_height,
     )
     try:
+        await current_runtime().progress(Stage.LAUNCHING)
         await new_session.browser.start()
     except Exception as exc:
         await current_runtime().close_backends()
@@ -91,6 +94,7 @@ async def start_session(
             f"Run `playwright install chromium` and try again.",
         )
     try:
+        await current_runtime().progress(Stage.NAVIGATING)
         await new_session.browser.goto(url)
     except Exception as exc:
         # Don't leak the Playwright stack-trace; classify the common shapes.
@@ -114,6 +118,7 @@ async def start_session(
     current_runtime().session.tool_calls = 1
     current_runtime().session.pages_visited.append(url)
 
+    await current_runtime().progress(Stage.OBSERVING)
     state = await current_runtime().session.browser.get_state()
     current_runtime().session._last_elements = state.elements
     current_runtime().session._last_observed_counts = dict(state.counts)
@@ -138,16 +143,18 @@ async def start_session(
     )
     introduction = summary + "\n\n" + _session_protocol(current_runtime().session)
     if not include_observation:
-        return (
+        return ToolText(
             introduction
             + _coverage_line(current_runtime().session, state)
-            + "\nCall observe() to inspect the page."
+            + "\nCall observe() to inspect the page.",
+            observation_data(current_runtime().session, state),
         )
-    return (
+    return ToolText(
         introduction
         + "\n\nInitial observation:\n"
         + _format_observation(state)
-        + _coverage_line(current_runtime().session, state)
+        + _coverage_line(current_runtime().session, state),
+        observation_data(current_runtime().session, state),
     )
 
 

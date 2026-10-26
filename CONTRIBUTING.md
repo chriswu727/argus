@@ -41,6 +41,12 @@ separate macOS manual check; Linux CI does not claim to test that integration.
   access `_page`, `_context`, `_locator` or other adapter private state.
 - Monitor additions: `adapters/monitoring.py` and its packaged `assets/`.
   Never add raw inputs, arbitrary URLs, page contents or credentials to events.
+- MCP result schemas: `entrypoints/mcp/results.py`; application evidence uses
+  `ToolText` without importing MCP. Keep text/image compatibility and test real stdio.
+- Progress: fixed phases in `application/progress.py`, emitted at actual work
+  boundaries through the runtime. Never accept page-supplied progress messages.
+- Paired evaluation: `evaluation/`; keep model calls and external adjudication
+  outside the product runtime. Preserve both arms, failures and unknown usage.
 - Access rules: `access.py`; keep operator policy outside tool-controlled data.
   File tests must explicitly grant their temporary fixture directory.
 - Redaction: `security.py` and the shared reporting privacy wrapper. Test every
@@ -63,6 +69,10 @@ For the scripted benchmark, start `test-site/app.py` and
 `human-eye-fixture/app.py`, then run `python -m argus.bench --target all`. This is
 a capability ceiling, not a real-agent success rate. Model-provider benchmarks
 consume subscription/API usage and must be explicitly authorized.
+
+Run `python -m argus.evaluation --smoke` for the isolated, no-model paired
+protocol check. See [evaluation methodology](docs/evaluation.md) before reporting
+agent effectiveness. Protocol details are in [agent protocol](docs/agent-protocol.md).
 
 For release, synchronize `pyproject.toml` and both version fields in
 `server.json`, update `CHANGELOG.md`, build with `python -m build`, check with

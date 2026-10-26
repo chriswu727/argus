@@ -3,13 +3,14 @@ from __future__ import annotations
 import inspect
 from functools import wraps
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.fastmcp.utilities.types import Image
 from mcp.types import ToolAnnotations
 
 from argus.application.manager import SessionManager
 from argus.application.operations import OPERATIONS
+from argus.application.progress import progress_scope
 from argus.domain.contracts import ImageArtifact
 
 from .catalog import (
@@ -20,11 +21,12 @@ from .catalog import (
     _SCREEN_TOOL_NAMES,
     _TOOL_TITLES,
 )
+from .results import AgentResult, to_mcp_result
 
 INSTRUCTIONS = (
-    "Start with start_session and follow the session protocol it returns. "
-    "Exercise real user journeys, verify text-checkable findings before record_bug, "
-    "and never exceed the user's authority."
+    "Start with start_session; follow its protocol. Exercise real journeys and "
+    "verify findings before record_bug. Read structured data: completed means "
+    "the tool ran, not the application passed. Never exceed the user's authority."
 )
 
 
@@ -55,12 +57,38 @@ def tool_names(profile: str) -> set[str]:
     raise ValueError("tool profile must be core, screen, or full")
 
 
+def bind_tool(runtime: SessionManager, operation):
+    @wraps(operation)
+    async def call(*args, ctx: Context | None = None, **kwargs):
+        async def notify(sequence: int, message: str) -> None:
+            if ctx is not None:
+                await ctx.report_progress(sequence, message=message)
+
+        with progress_scope(notify if ctx is not None else None) as progress:
+            result = await runtime.execute(operation.__name__, operation, *args, **kwargs)
+        return to_mcp_result(operation.__name__, result, progress)
+
+    signature = inspect.signature(operation, eval_str=True)
+    parameters = [
+        *signature.parameters.values(),
+        inspect.Parameter(
+            "ctx", inspect.Parameter.KEYWORD_ONLY, default=None, annotation=Context | None
+        ),
+    ]
+    call.__signature__ = signature.replace(parameters=parameters, return_annotation=AgentResult)
+    call.__annotations__ = {
+        **{parameter.name: parameter.annotation for parameter in parameters},
+        "return": AgentResult,
+    }
+    return call
+
+
 def create_server(runtime: SessionManager, profile: str = "core") -> FastMCP:
     server = FastMCP("argus", instructions=INSTRUCTIONS)
     for name in sorted(tool_names(profile)):
         read_only = name in _READ_ONLY_TOOL_NAMES
         server.add_tool(
-            bind_operation(runtime, OPERATIONS[name], raise_errors=True),
+            bind_tool(runtime, OPERATIONS[name]),
             name=name,
             title=_TOOL_TITLES[name],
             annotations=ToolAnnotations(
@@ -69,6 +97,6 @@ def create_server(runtime: SessionManager, profile: str = "core") -> FastMCP:
                 idempotentHint=read_only,
                 openWorldHint=name not in _CLOSED_WORLD_TOOL_NAMES,
             ),
-            structured_output=False if name in {"screenshot", "screenshot_diff"} else None,
+            structured_output=True,
         )
     return server

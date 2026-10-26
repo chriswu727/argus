@@ -81,3 +81,35 @@ Trade-off: full backend substitutability is incremental; the mature browser
 adapter has a broader action surface than the currently typed core protocols.
 New capability families should add focused protocols and contract tests rather
 than growing a single universal driver interface.
+
+## ADR 7 — Additive agent results and best-effort progress
+
+Status: accepted on main, after 0.7.1.
+
+Keep existing tool names, arguments and text/image content; add a versioned
+structured envelope with evidence supplied by the application layer. Do not
+parse English messages to infer verification outcomes. A completed tool call
+and a passing application check are separate concepts.
+
+Emit fixed phase events rather than estimates or model reasoning. MCP progress
+uses an ordinal without a total. Bound retained phases and delivery latency;
+slow clients must not indefinitely stall testing. Hosts without visible progress
+still receive the final phase summary.
+
+Trade-off: text and structured data can duplicate information, and not all tools
+have rich data payloads yet. Compatibility comes before claiming token savings.
+Measure actual agent costs with paired trials before changing default verbosity.
+
+## ADR 8 — Separate protocol controls from agent effectiveness
+
+Status: accepted on main, after 0.7.1.
+
+Use exact externally adjudicated bug IDs, matched experimental controls, and
+evidence-backed coverage. Reject incomplete pairs instead of silently dropping
+failures. Keep unknown usage unknown and report duplicate findings separately.
+Local deterministic smoke cases include buggy, fixed and clean variants and
+do not call any model.
+
+Trade-off: the scorer trusts supplied adjudication and cannot certify an external
+experiment. Independent evidence review and sufficient repeated trials are
+required before publishing claims about an agent's quality or efficiency.

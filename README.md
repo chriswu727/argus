@@ -23,7 +23,26 @@ Argus is an [MCP](https://modelcontextprotocol.io/) server. It adds evidence-fir
 
 ---
 
-## The output
+## Agent-first testing
+
+Argus adds a testing workflow to the agent you already use: inspect, act,
+check persistence, independently reproduce a symptom, and link the evidence.
+HTML reports are an optional way to review the evidence, not the agent interface.
+
+On `main` (not yet in the 0.7.1 package), tool responses preserve their text and
+images while adding a versioned `structuredContent` envelope and output schema.
+Core observation, verification, findings, coverage and report operations expose
+machine-readable data; other tools currently expose status/error metadata with
+their existing content. Long workflows emit real phase notifications to MCP
+clients that request progress. Clients that do not display them still receive
+the phase summary in the final result. See the [agent protocol](docs/agent-protocol.md).
+
+Does installing Argus improve an agent? Measure it with the
+[paired evaluation harness](docs/evaluation.md): the same model, task, fixture,
+seed and budget, with both arms and failures retained. The local scripted smoke
+suite validates the harness; it is **not evidence of agent performance gains**.
+
+## Evidence and reports
 
 Give it a URL; get a report of bugs — each tagged with whether Argus **independently reproduced it** or only observed it:
 
@@ -295,7 +314,7 @@ $ python -m argus.bench --target all
 1. **Real recall sits well below the `34/34` ceiling.** A live driver finds a fraction of the seeded bugs per pass — the ceiling is what's *findable*, this is what a model *finds*.
 2. **Variance is large — never rank models on a few runs.** Per-trial recall swings widely; we report the spread, not a single hero number.
 3. **Dogfooding the bench found real bugs in Argus itself** — a `record_bug` crash on a string argument that silently dropped findings, resolver misses on common phrasings. The tool-testing tool got tested.
-4. **Precision holds regardless of driver.** Across every trial, the reproduction receipt kept false-certifications at zero — a weak model finds fewer bugs, but the ones marked VERIFIED are still real.
+4. **Reproduction is narrower than defect correctness.** A receipt verifies a specified symptom. Whether that symptom is actually a bug must be judged against independent ground truth; the paired evaluation harness separates those questions.
 
 </details>
 
