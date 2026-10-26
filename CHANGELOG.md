@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.1 - 2026-10-25
+
+- Publish a distribution-alignment patch following a stale-commit Glama build
+  associated with its 0.9.0 release. Runtime behavior is unchanged from 0.9.0.
+- Document manually gated directory releases: synchronize the repository and
+  verify the source commit and MCP handshake before publishing.
+
 ## 0.9.0 - 2026-10-25
 
 - Report the Argus product version in the MCP handshake instead of the SDK

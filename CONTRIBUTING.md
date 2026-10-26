@@ -92,3 +92,20 @@ files must satisfy the public-content policy before publication.
 Publish only after CI passes. The GitHub release workflow builds/tests again,
 publishes to PyPI through Trusted Publishing, then publishes MCP Registry
 metadata. Do not commit keys, capsules, generated reports or local test data.
+
+Keep Glama's automatic release switch off: its build configuration can retain a
+resolved commit even after the pin field is cleared. Before creating the GitHub
+release, synchronize Glama's repository index and explicitly select the tested
+main commit. Build without publishing first and verify the source SHA, installed
+Argus version and MCP `serverInfo.version`. After the GitHub release and package
+publication succeed, manually publish that verified Glama build under the same
+version. A version label does not prove which source was built. Do not reuse an
+occupied version label for a different build.
+
+After publication, verify the PyPI wheel and source archive, official MCP
+Registry package version, and directory release associations. Run
+`python -m argus.install_check` against the published package outside the checkout.
+MCPRush's default listing should expose the 30-tool core profile, not the
+`evaluation` baseline tools; preserve manually declared schemas when refreshing
+its source. Directory scans and version badges are not substitutes for these
+installation and handshake checks.
