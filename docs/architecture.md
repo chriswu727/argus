@@ -1,4 +1,4 @@
-# Architecture: Argus 0.7
+# Architecture: Argus 0.10
 
 Argus is a local, single-session QA runtime with MCP and CLI entry points. It is
 a modular monolith, not a distributed service. The host model decides what to
@@ -77,6 +77,24 @@ regression refuses replay and custom strategies because their side effects are
 unknown. Invalid/corrupt journals are operational failures, not empty clean
 runs. Exit 3 means inconclusive; exit 0 can also mean there were no findings to
 check. The older autonomous LiteLLM explorer is a separate workflow.
+
+## Finding and coverage evidence
+
+`domain/findings.py` declares the optional MCP evidence shape; domain `Bug`
+records retain expected/actual outcomes, explicit goal associations and
+caller-claimed call references separately from independent receipts.
+`application/findings.py` validates metadata and coordinates evidence capture.
+Fresh-load verifiers capture on the checked page before restoring the caller;
+screenshot failure does not change the three-state verification outcome. The
+registry keeps the three-argument strategy extension interface.
+
+`application/coverage.py` owns validated atomic coverage updates and start/end
+cursors. Switching groups closes prior ranges without inferring completion.
+Action URLs preserve revisits; late explicitly linked findings can refresh a
+closed goal's references without entering unrelated goals. Reopening a goal
+starts a new range. Batched related goals intentionally share a journey window.
+Final batches validate before teardown; compact evidence sharing belongs to
+the MCP presentation layer, not report persistence or domain verification.
 
 ## Privacy and persistence
 

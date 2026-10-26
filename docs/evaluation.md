@@ -4,7 +4,8 @@ Available in 0.8.0 and newer.
 
 ## Response overhead
 
-Version 0.9 provides an offline, deterministic encoding benchmark:
+Version 0.9 introduced an offline, deterministic encoding benchmark; the figures
+below are reproduced with 0.10.0:
 
 ```bash
 python -m argus.evaluation.overhead
@@ -20,15 +21,15 @@ versions and byte-category definitions.
 
 | Workload (6 responses each) | Compact JSON bytes | Delta JSON bytes | Reduction |
 |---|---:|---:|---:|
-| Repeated catalog observation | 31,494 | 8,406 | 73.31% |
-| Catalog with changing feedback | 31,590 | 8,572 | 72.86% |
-| Navigation on every step | 31,494 | 31,716 | -0.70% |
-| Small repeated page | 4,992 | 3,989 | 20.09% |
-| Total | 99,570 | 52,683 | 47.09% |
+| Repeated catalog observation | 30,897 | 7,809 | 74.73% |
+| Catalog with changing feedback | 30,993 | 7,975 | 74.27% |
+| Navigation on every step | 30,897 | 31,119 | -0.72% |
+| Small repeated page | 4,395 | 3,392 | 22.82% |
+| Total | 97,182 | 50,295 | 48.25% |
 
-Removing redundant display titles from output schemas reduces agent-profile
-tool-definition JSON from 28,812 to 23,891 bytes (17.08%) with the same validation
-constraints. Tool display titles remain intact. These counts exclude server
+The checked-in result includes current discovery sizes for each profile.
+Discovery includes the typed finding evidence introduced in 0.10.0; it is not
+directly interchangeable with earlier source snapshots. Counts exclude server
 instructions; delta mode adds decoding instructions at initialization.
 
 These are **encoding results, not a new agent evaluation**. They do not show
@@ -48,7 +49,7 @@ runs local protocol smoke checks and offline scoring. A separate, explicit opt-i
 Codex collector consumes the operator's subscription; it is never invoked by the
 MCP server, package import or test suite. No API-provider fallback is implemented.
 
-## Development encoding and finalization follow-up
+## 0.10 encoding and finalization
 
 A subsequent offline change removes generated input-schema display titles,
 omits empty optional success metadata in compact/delta results, and lets agents
@@ -77,7 +78,7 @@ model calls and does not establish new token, subscription, latency or agent
 quality improvements. The model measurements below describe the earlier source
 snapshot, before this finalization change.
 
-## Evidence provenance regressions (development main)
+## Evidence provenance regressions (0.10)
 
 Local browser regressions cover deferred findings from two pages while the agent
 is on a third page, distinct correctly located screenshots, caller-page

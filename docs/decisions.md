@@ -147,3 +147,23 @@ Trade-off: this measures one pinned host/model and synthetic task sample. The
 small baseline adapter is not the official Playwright MCP. Host configuration
 and fixture correctness require preflight checks; invalid preflights consume
 budget and must remain visible in the evaluation report.
+
+## ADR 11 — Bounded rechecks and explicit evidence provenance
+
+Status: shipped in 0.10.0.
+
+Use fresh-load symptom checks for observed persistence failures instead of
+replaying writes. Recheck an existing finding by session ID at most twice,
+preserving its earlier receipts and original replay trace. A confirmed finding
+does not need another retry, and uncertainty must not be converted into a pass.
+
+Capture fresh-load screenshots before restoring the caller's page. Keep stated
+expected/actual outcomes and caller-claimed references separate from independent
+verification. Close goal evidence ranges on focus changes; attach late findings
+only through explicit goal associations, not semantic guesses. Final coverage
+batches validate before teardown and do not infer completion from activity.
+
+Trade-off: a reopened goal starts a new evidence range, and untagged deferred
+findings cannot be reliably assigned to earlier journeys. The host must supply
+the correct goal and requirements. A reproduced predicate still does not prove
+a root cause or a semantic defect.
