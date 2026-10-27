@@ -1,6 +1,7 @@
 # Install Argus Testing MCP
 
-Argus is a local stdio MCP server for exploratory QA. Install the published
+Argus helps coding agents test the apps they build: a local stdio MCP server
+that exercises real user journeys, finds bugs and verifies them with evidence. Install the published
 `argus-testing` package; do not clone the repository when the goal is MCP setup.
 
 ## Requirements

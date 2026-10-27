@@ -1,8 +1,8 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.chriswu727/argus",
-  "title": "Argus Testing — Agent-first Testing MCP",
-  "description": "Testing MCP for web and macOS: evidence-backed coverage, persistence checks and live progress.",
+  "title": "Argus — Testing for Coding Agents",
+  "description": "Testing MCP for coding agents: exercise real user journeys, find bugs, verify them with evidence.",
   "version": "0.10.0",
   "repository": {
     "url": "https://github.com/chriswu727/argus",

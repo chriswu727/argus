@@ -162,8 +162,13 @@ Tests cover fake-backend faults, independent runtimes, input privacy, lock
 contention, report formats, browser fixtures, real MCP stdio and live HTTP/SSE.
 Ruff covers Python sources/tests. Mypy is intentionally scoped to the new core,
 not advertised as whole-project strict typing. CI tests Python 3.11/3.12 and
-Chromium. Native macOS UI permissions and behavior require manual integration
-testing; unit tests alone do not establish native app correctness.
+Chromium. Mandatory browser tests fail, rather than skip, when the browser
+runtime is unavailable in CI, and release installation is tested outside the
+source checkout. Native macOS UI permissions and behavior require manual
+integration testing; unit tests alone do not establish native app correctness.
+
+Deliberate non-goals: a distributed scheduler, multi-tenant authentication,
+encrypted capsules and whole-repository strict typing.
 
 See [design decisions](decisions.md) and the [extension guide](../CONTRIBUTING.md).
 

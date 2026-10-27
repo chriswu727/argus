@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Lead with testing: "Argus — Testing for Coding Agents" helps coding agents
+  test the apps they build, find bugs and verify them with evidence. Package
+  name, commands, links and registry identity are unchanged. Describe Playwright
+  MCP accurately, including its opt-in test assertions.
+- Fold the 0.7 implementation ledger's lasting validation rules and non-goals
+  into the architecture guide; the ledger remains in git history. Mark the 0.8
+  evaluation as a historical result under its stated conditions.
 - Move the report service to `argus.adapters.reporting.reporter` and migrate
   every internal and test import to `argus.domain` and `argus.adapters`.
   `argus.models`, `argus.detector` and `argus.reporter` remain as

@@ -21,7 +21,6 @@ PUBLIC_FILES = {
     "glama.json",
     "docs/architecture.md",
     "docs/decisions.md",
-    "docs/implementation-0.7.md",
     "docs/agent-protocol.md",
     "docs/evaluation.md",
     "docs/evaluation-0.8.md",

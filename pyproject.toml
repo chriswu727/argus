@@ -1,7 +1,7 @@
 [project]
 name = "argus-testing"
 version = "0.10.0"
-description = "Agent-first testing MCP with evidence-backed coverage, persistence checks and reproduction receipts"
+description = "Testing MCP for coding agents: exercise real user journeys, find bugs, and verify them with evidence and persistence checks"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
@@ -60,7 +60,7 @@ packages = ["argus"]
 only-include = [
     "argus", "argus_lab", "tests", "examples", "scripts/check_distributions.py",
     "test-site/app.py", "human-eye-fixture/app.py",
-    "docs/architecture.md", "docs/decisions.md", "docs/implementation-0.7.md",
+    "docs/architecture.md", "docs/decisions.md",
     "docs/agent-protocol.md", "docs/evaluation.md", "docs/evaluation-0.8.md",
     "pyproject.toml", "README.md", "README.zh-CN.md", "LICENSE", "CHANGELOG.md", "CONTRIBUTING.md",
     "SECURITY.md", "PRIVACY.md", "AGENTS.md", "llms-install.md", "server.json", "glama.json",

@@ -1,6 +1,6 @@
-# Argus
+# Argus — Testing for Coding Agents
 
-**让 AI agent 像测试工程师一样探索用户流程、检查真实结果，并用证据复现缺陷现象的 MCP 工具集。**
+**帮 coding agent 把写好的应用实际测一遍，发现问题，并用证据核实。**
 
 [English — 主文档](README.md) · 简体中文 · [产品主页](https://yichenwu.dev/projects/argus) · [更新日志](CHANGELOG.md)
 
@@ -12,7 +12,7 @@
 
 ## Argus 提供什么
 
-Argus 是本地运行的 MCP server，为现有 coding agent 增加一套可追踪的测试工作流：
+Argus 是本地运行的 MCP server，自带浏览器操作，无需再拼装另一个浏览器 MCP。目标覆盖、持久化检查、独立复查、报告和回归检查用来支撑测试，而不是取代测试本身：
 
 - 围绕用户目标探索真实流程，而不只是读取页面或执行预写脚本。
 - 点击、输入、导航后直接返回页面观察，减少重复调用 `observe`。
@@ -22,6 +22,7 @@ Argus 是本地运行的 MCP server，为现有 coding agent 增加一套可追�
 - 通过 MCP 进度通知和本地 dashboard 展示实际执行阶段。
 - 导出 HTML、JSON、JUnit 和 SARIF，并支持对符合条件的已知缺陷做无模型回归检查。
 
+每个发现都会注明依据：由独立检查复现、由 agent 观察得出（例如视觉判断）、未复现或无法判断。
 宿主 agent 负责判断产品需求和选择下一步；Argus 提供执行、证据与确定性检查。
 它不会保证发现所有 bug，也不会因为工具执行成功就认定应用通过测试。
 浏览器模式跨平台可用；原生 macOS 模式使用独立工具配置。

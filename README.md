@@ -2,13 +2,13 @@
 
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/chriswu727/argus/main/assets/argus-icon.png" alt="Argus Testing logo — an eye with a verified check" width="112">
+<img src="https://raw.githubusercontent.com/chriswu727/argus/main/assets/argus-icon.png" alt="Argus logo — an eye with a verified check" width="112">
 
-# Argus Testing
+# Argus — Testing for Coding Agents
 
-**A testing-engineer toolkit for AI agents—explore user journeys, check outcomes, and reproduce bug symptoms with evidence, through MCP.**
+**Argus helps coding agents test the apps they build—exercise real user journeys, find bugs, and verify them with evidence.**
 
-Argus is an [MCP](https://modelcontextprotocol.io/) server that gives your coding agent a testing workflow: evidence-backed coverage, action-and-observation tools, persistence checks, independent reproduction receipts, and live progress. The host agent decides what to investigate; Argus helps it check what actually happened. Browser QA works across platforms, with a separate native macOS tool profile.
+Argus is an [MCP](https://modelcontextprotocol.io/) server that drives the browser itself, so your agent gets a complete testing experience without assembling another browser server. Goal coverage, persistence checks, independent rechecks, reports and regression rechecks support that testing; they do not replace it. Every finding states how it is supported: reproduced by an independent check, observed by the agent (for example, a visual judgment), not reproduced, or inconclusive. The host agent decides what to investigate and whether behavior is wrong. Browser testing works across platforms, with a separate native macOS profile.
 
 [![PyPI](https://img.shields.io/pypi/v/argus-testing?color=1a7f37)](https://pypi.org/project/argus-testing/)
 [![Python](https://img.shields.io/pypi/pyversions/argus-testing)](https://pypi.org/project/argus-testing/)
@@ -381,11 +381,15 @@ receipt is supporting evidence, not a guarantee of correctness or zero false pos
 
 ## How it compares
 
-Use Argus when your agent can operate a browser but needs a repeatable QA
-workflow: track unfinished journeys, check saved/deleted state after reload,
-reproduce a reported symptom, and preserve evidence for a regression check.
-It complements general browser automation and debugging tools; it does not
-replace the host model's judgment or guarantee discovery of every defect.
+[Microsoft's Playwright MCP](https://github.com/microsoft/playwright-mcp#readme)
+provides browser automation, with opt-in test assertions (`--caps=testing`) such
+as verifying visible text or element values. Argus is organized around the whole
+testing process instead: goals declared up front and tracked to evidence,
+persistence checks after writes, findings linked to the actions, checks and
+screenshots behind them, independent rechecks, and regression rechecks of earlier
+findings against later builds. Argus includes its own browser control and can
+also run alongside other tools. It does not replace the host model's judgment or
+guarantee discovery of every defect.
 
 The [paired evaluation](docs/evaluation.md) compares a conventional Playwright
 MCP adapter with Argus using the same host and tasks. That adapter is not the

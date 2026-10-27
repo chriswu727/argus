@@ -1,5 +1,9 @@
 # Argus 0.8 evaluation — 2026-10-25
 
+> Historical result for Argus 0.8 under the conditions below (19-tool `agent`
+> profile, compact responses). It does not measure the current release. Commands
+> use the current repository layout (`argus_lab`).
+
 The focused workflow reduced Argus's own overhead in this sample and found one
 email-validation boundary defect the conventional-browser agent missed. It did
 **not** beat the baseline on latency or token usage. Declared journey coverage
