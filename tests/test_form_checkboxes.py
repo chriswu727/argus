@@ -46,3 +46,29 @@ def test_token_boundaries_apply_only_to_word_edges():
     assert not _token_present("cat", "category")
     assert not _token_present("Delete", "Deleted")
     assert not _token_present("$5", "$50")
+
+
+_RADIOS = """<html><body>
+<form onsubmit="event.preventDefault();
+  document.getElementById('out').textContent =
+    'size=' + document.querySelector('input[name=size]:checked').value;">
+  <label><input type="radio" name="size" value="small" checked> Small</label>
+  <label><input type="radio" name="size" value="large"> Large</label>
+  <button type="submit">Save</button>
+</form>
+<p id="out"></p>
+</body></html>"""
+
+
+async def test_test_form_sets_the_resolved_option_of_a_shared_name():
+    # Radios share a name, so a name selector matches the first option; the
+    # resolved option (Large) must be the one that changes.
+    await _session_on_page(_RADIOS)
+    try:
+        fn = getattr(m.test_form, "fn", m.test_form)
+        out = await fn({"Large": True}, "Save")
+        assert "[FAIL]" not in out
+        state = await m.runtime.session.browser.get_state()
+        assert "size=large" in state.page_text
+    finally:
+        await _end()

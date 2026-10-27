@@ -250,7 +250,9 @@ async def test_form(
                 if wanted is None:
                     raise ValueError(f"{kind_of(el)} takes true or false, not {value!r}")
                 if el.checked != wanted:
-                    await s.browser.set_checked_selector(selector, wanted, timeout=5000)
+                    await s.browser.set_checked_resolved(
+                        state.elements.index(el), state.elements, wanted
+                    )
                     # Replays start from the same state, so one click reproduces it.
                     _record_action(s, "click_what", field_desc)
                 field_results.append(
