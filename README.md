@@ -172,6 +172,10 @@ Then connect Argus to your MCP client.
 claude mcp add argus -- uvx --from argus-testing argus-mcp
 ```
 
+An optional [Claude plugin bundle](https://github.com/chriswu727/argus/tree/main/plugins/claude) pins the published
+runtime and the default `web` profile. Use it instead of, not alongside, the manual
+MCP connection. The bundle is project-maintained; directory approval is separate.
+
 ### Codex and the ChatGPT desktop app
 
 Codex CLI, the Codex IDE extension, and the ChatGPT desktop app share the same local MCP configuration:

@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "argus": {
+      "command": "uvx",
+      "args": [
+        "--python", "3.12",
+        "--from", "argus-testing==0.11.0",
+        "argus-mcp",
+        "--tool-profile", "web"
+      ]
+    }
+  }
+}

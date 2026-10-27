@@ -1,0 +1,13 @@
+{
+  "name": "argus-testing",
+  "version": "0.11.0",
+  "description": "Testing for coding agents: exercise real user journeys, find bugs, and verify them with evidence.",
+  "author": {
+    "name": "Yichen Wu",
+    "url": "https://yichenwu.dev"
+  },
+  "homepage": "https://github.com/chriswu727/argus/tree/main/plugins/claude",
+  "repository": "https://github.com/chriswu727/argus",
+  "license": "MIT",
+  "keywords": ["testing", "qa", "playwright", "regression", "mcp"]
+}
