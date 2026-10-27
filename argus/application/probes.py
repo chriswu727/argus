@@ -112,6 +112,9 @@ async def verify_persistence(
             "before_matches": before_matches,
             "conclusive": conclusive,
             "status": status,
+            "expect_status": expect_status or None,
+            "text_matches": text_matches,
+            "status_matches": status_matches,
         }
     )
     s.exploration.last_verified_action = len(s.action_trace)

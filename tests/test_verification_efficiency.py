@@ -104,6 +104,9 @@ async def test_only_absence_on_error_or_login_pages_is_inconclusive(
     check = result.data["verification"]
     assert check["matches"] is matches and check["status"] == status
     assert check["conclusive"] is (matches is not None)
+    assert check["expect_status"] == (expect_status or None)
+    assert check["text_matches"] is ((page == target) == (expect == "present"))
+    assert check["status_matches"] is ((status == expect_status) if expect_status else None)
     assert ("INCONCLUSIVE" in result) is (matches is None)
 
 

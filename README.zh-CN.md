@@ -38,7 +38,7 @@ Argus 是本地运行的 MCP server，自带浏览器操作，无需再拼装另
 
 **从 0.10 升级：**`agent` 和 `core` 仍可启动，但都会加载 `web`，工具集因此变化：
 原 `agent` 用户从 19 个变为 28 个工具（discovery 体积 34,379 字节，原为 24,386），
-原 `core` 用户从 30 个变为 28 个（原为 50,564 字节），`check_links` 与 `check_performance`
+原 `core` 用户从 30 个变为 28 个（原为 51,732 字节，Python 3.13 下为 50,564），`check_links` 与 `check_performance`
 移到 `advanced`。`argus <url>` 命令已移除。详见 [更新日志](CHANGELOG.md)。
 
 ## 快速开始

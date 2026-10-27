@@ -189,4 +189,4 @@ Trade-off: earlier names guarantee that the server starts, not that the tool
 set is unchanged. `agent` users see nine more tools and a larger discovery
 payload (34,379 versus 24,386 bytes); `core` users lose `check_links` and
 `check_performance` from the default (now in `advanced`) and receive a smaller
-payload (versus 50,564 bytes).
+payload (versus 51,732 bytes on Python 3.11/3.12 or 50,564 on 3.13).

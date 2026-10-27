@@ -135,7 +135,10 @@ def create_server(runtime: SessionManager, profile: str = "web") -> FastMCP:
         server.add_tool(
             bind_tool(runtime, OPERATIONS[name], snapshots),
             name=name,
-            description=_CONCISE_TOOL_DESCRIPTIONS.get(name) if concise else None,
+            description=(_CONCISE_TOOL_DESCRIPTIONS.get(name) if concise else None)
+            # Python 3.13 dedents docstrings at compile time; earlier versions do
+            # not, so normalize to advertise identical descriptions everywhere.
+            or inspect.cleandoc(OPERATIONS[name].__doc__ or ""),
             title=_TOOL_TITLES[name],
             annotations=ToolAnnotations(
                 readOnlyHint=read_only,

@@ -114,6 +114,9 @@ presence is always conclusive. Absence on an HTTP error page or login wall is
 inconclusive (`matches: null`), because the target may be missing for the wrong
 reason. Pass `expect_status` when that status is the intended outcome, such as
 404 for a deleted item's own page; a different status is a conclusive mismatch.
+Each check records `expect_status` (or `null`), `text_matches` and
+`status_matches` (`null` without an expected status), so an exported mismatch
+shows whether the text, the status or both failed.
 For an observed match-to-mismatch transition it supplies `suggested_verify`: the inverse
 text predicate at the checked URL, carrying the same storage policy. Review the
 user requirement before passing it to `record_bug`. This is a fresh-load symptom

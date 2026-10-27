@@ -27,21 +27,31 @@ versions and byte-category definitions.
 | Small repeated page | 4,395 | 3,392 | 22.82% |
 | Total | 97,182 | 50,295 | 48.25% |
 
-Encoding sizes are unchanged from 0.10.0. The checked-in result includes
-current discovery sizes for each profile; counts exclude server instructions,
-and delta mode adds decoding instructions at initialization. 0.11.0 replaced the
-`agent` and `core` profiles with `web`. Full discovery payloads (tool JSON plus
-the 223-byte server instructions) compare as follows:
+Encoding sizes are unchanged from 0.10.0. The checked-in result records the
+Argus, MCP SDK (1.30.0) and Python versions used, and includes current discovery
+sizes for each profile; counts exclude server instructions, and delta mode adds
+decoding instructions at initialization.
+
+Since 0.11.0, tool descriptions taken from docstrings are normalized with
+`inspect.cleandoc`, so the whole result, apart from the recorded Python version,
+is byte-identical on Python 3.11, 3.12 and 3.13. Earlier releases advertised raw
+docstrings: Python 3.13 strips their indentation at compile time and older
+versions do not, so 0.10 discovery sizes for profiles using docstrings depend on
+the Python version.
+
+0.11.0 replaced the `agent` and `core` profiles with `web`. Full discovery
+payloads (tool JSON plus the 223-byte server instructions) compare as follows:
 
 | Profile | Tools | Discovery bytes |
 |---|---:|---:|
-| 0.10 `agent` | 19 | 24,386 |
-| 0.10 `core` (former default) | 30 | 50,564 |
-| 0.11 `web` (default) | 28 | 34,379 |
-| 0.11 `advanced` | 61 | 79,085 |
+| 0.10 `agent` | 19 | 24,386 (any Python) |
+| 0.10 `core` (former default) | 30 | 51,732 on Python 3.11/3.12; 50,564 on 3.13 |
+| 0.11 `web` (default) | 28 | 34,379 (any Python) |
+| 0.11 `advanced` | 61 | 79,039 (any Python) |
 
-`web` is 41.0% larger than 0.10 `agent` and 32.0% smaller than 0.10 `core`. These
-are bytes for discovery only, not model tokens or whole-session context.
+`web` is 41.0% larger than 0.10 `agent`, and 33.5% (Python 3.11/3.12) or 32.0%
+(Python 3.13) smaller than 0.10 `core`. These are bytes for discovery only, not
+model tokens or whole-session context.
 
 These are **encoding results, not a new agent evaluation**. They do not show
 token savings, coverage gains, fewer false positives, lower billed costs or faster

@@ -2,6 +2,7 @@
   "schema_version": 1,
   "argus_version": "0.11.0",
   "mcp_sdk_version": "1.30.0",
+  "python_version": "3.13.17",
   "method": "synthetic-identical-input-encoding-v1",
   "baseline": "0.8-compatible compact encoder semantics; same structured evidence",
   "limitations": [
@@ -21,25 +22,25 @@
     },
     "advanced": {
       "tools": 61,
-      "tools_json_bytes": 78862,
+      "tools_json_bytes": 78816,
       "instructions_utf8_bytes": 223,
-      "description_utf8_bytes": 16368,
+      "description_utf8_bytes": 16345,
       "input_schema_json_bytes": 8650,
       "output_schema_json_bytes": 40687
     },
     "screen": {
       "tools": 14,
-      "tools_json_bytes": 23877,
+      "tools_json_bytes": 23851,
       "instructions_utf8_bytes": 223,
-      "description_utf8_bytes": 8058,
+      "description_utf8_bytes": 8045,
       "input_schema_json_bytes": 3282,
       "output_schema_json_bytes": 9338
     },
     "full": {
       "tools": 77,
-      "tools_json_bytes": 115251,
+      "tools_json_bytes": 115129,
       "instructions_utf8_bytes": 223,
-      "description_utf8_bytes": 36001,
+      "description_utf8_bytes": 35940,
       "input_schema_json_bytes": 10655,
       "output_schema_json_bytes": 51359
     }

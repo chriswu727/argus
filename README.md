@@ -77,9 +77,9 @@ suite validates the harness; it is **not evidence of agent performance gains**.
 
 **Upgrading from 0.10:** `agent` and `core` still start the server but now load
 `web`. Former `agent` users get 28 tools instead of 19 (discovery payload 34,379
-bytes versus 24,386); former `core` users get 28 instead of 30 (versus 50,564
-bytes) and find `check_links` and `check_performance` in `advanced`. The `argus
-<url>` command is removed. See the [changelog](CHANGELOG.md) for details.
+bytes versus 24,386); former `core` users get 28 instead of 30 (versus 51,732
+bytes on Python 3.11/3.12, 50,564 on 3.13) and find `check_links` and
+`check_performance` in `advanced`. The `argus <url>` command is removed. See the [changelog](CHANGELOG.md) for details.
 
 The [0.8 Codex evaluation](docs/evaluation-0.8.md) includes ten matched pairs:
 Argus found 6/6 defect opportunities versus 5/6 for the browser baseline, including

@@ -132,6 +132,28 @@ async def test_inconclusive_evidence_keeps_actual_page_and_restores_caller(
         await m.end_session()
 
 
+async def test_status_mismatch_explains_itself_in_exported_coverage(
+    isolated_runtime, evidence_site
+):
+    origin, _ = evidence_site
+    await m.start_session(origin + "/tasks", goals=["delete task"])
+    await m.coverage_update("delete task", "in_progress")
+    result = await m.verify_persistence("absent", "Buy milk", after_url="/tasks", expect_status=404)
+    check = result.data["verification"]
+    assert check["matches"] is False and check["conclusive"] is True
+    assert (check["status"], check["expect_status"]) == (200, 404)
+    assert check["text_matches"] is True and check["status_matches"] is False
+    await m.end_session(
+        [{"goal": "delete task", "status": "exercised", "evidence": "Item page still loads"}]
+    )
+    report = next(isolated_runtime.settings.output_dir.glob("report_*.json"))
+    (exported,) = json.loads(report.read_text())["coverage"]["goals"][0]["evidence_refs"][
+        "verifications"
+    ]
+    assert {key: exported[key] for key in check if key in exported} == check
+    assert exported["expect_status"] == 404 and exported["status_matches"] is False
+
+
 async def test_unsuccessful_scan_captures_evidence_from_page_top(
     isolated_runtime, evidence_site, monkeypatch
 ):

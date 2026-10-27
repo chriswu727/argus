@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import platform
 from collections import Counter
 from importlib.metadata import version
 
@@ -95,6 +96,7 @@ async def benchmark() -> dict:
         "schema_version": 1,
         "argus_version": __version__,
         "mcp_sdk_version": version("mcp"),
+        "python_version": platform.python_version(),
         "method": "synthetic-identical-input-encoding-v1",
         "baseline": "0.8-compatible compact encoder semantics; same structured evidence",
         "limitations": [

@@ -202,6 +202,7 @@ async def test_fixed_encoding_benchmark_preserves_evidence_and_measures_tradeoff
     from argus_lab.evaluation.overhead import benchmark
 
     result = await benchmark()
+    assert result["python_version"] and result["mcp_sdk_version"]
     assert result["aggregate"]["reduction_percent"] > 20
     cases = {case["case"]: case for case in result["cases"]}
     assert all(case["lossless_roundtrip"] for case in cases.values())
@@ -267,6 +268,15 @@ async def test_advertised_input_schemas_carry_no_generated_titles(isolated_runti
     server = create_server(isolated_runtime, profile)
     for tool in await server.list_tools():
         assert '"title": "' not in json.dumps(tool.inputSchema), tool.name
+
+
+async def test_advertised_descriptions_do_not_depend_on_python_docstring_handling(
+    isolated_runtime,
+):
+    import inspect
+
+    for tool in await create_server(isolated_runtime, "full").list_tools():
+        assert tool.description and tool.description == inspect.cleandoc(tool.description)
 
 
 async def test_input_schema_cleanup_retains_constraints_and_literal_title_fields(isolated_runtime):
