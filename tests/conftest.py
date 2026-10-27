@@ -15,9 +15,9 @@ import pytest
 from argus.access import AccessPolicy
 from argus.application.context import runtime_scope
 from argus.bootstrap import create_runtime
-from argus.detector import Detector
+from argus.domain.detector import Detector
+from argus.domain.models import InteractiveElement, PageState
 from argus.entrypoints.mcp.server import create_server
-from argus.models import InteractiveElement, PageState
 from argus.settings import Settings
 
 

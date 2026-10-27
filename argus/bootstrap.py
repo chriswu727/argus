@@ -3,11 +3,11 @@ from __future__ import annotations
 from functools import partial
 
 from argus.adapters.journal import FileJournal
+from argus.adapters.reporting.reporter import Reporter
 from argus.application.manager import SessionManager
 from argus.application.verification import _run_replay_receipt, _run_reproduction_check
 from argus.application.verifiers import VerificationRegistry
 from argus.browser import BrowserDriver
-from argus.reporter import Reporter
 from argus.settings import Settings
 
 

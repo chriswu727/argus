@@ -132,6 +132,14 @@ class Monitor:
                     f"argus_operation_duration_seconds_count{{operation={label}}} {count}",
                 ]
             )
+        for name, value in sorted(runtime.response_totals.items()):
+            lines.append(f"argus_response_total{{measurement={json.dumps(name)}}} {value}")
+        for name, value in sorted(runtime.component_seconds.items()):
+            label = json.dumps(name)
+            lines.append(f"argus_component_seconds_sum{{component={label}}} {value}")
+            lines.append(
+                f"argus_component_seconds_count{{component={label}}} {runtime.component_calls[name]}"
+            )
         return PlainTextResponse("\n".join(lines) + "\n", media_type="text/plain; version=0.0.4")
 
     async def asset(self, request: Request) -> Response:

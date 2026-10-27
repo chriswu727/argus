@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Protocol
 
-from argus.models import PageState
+from argus.domain.models import PageState
 
 
 class LifecyclePort(Protocol):

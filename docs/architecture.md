@@ -1,4 +1,4 @@
-# Architecture: Argus 0.7
+# Architecture: Argus 0.10
 
 Argus is a local, single-session QA runtime with MCP and CLI entry points. It is
 a modular monolith, not a distributed service. The host model decides what to
@@ -76,7 +76,25 @@ CLI and MCP regression share `check_entries` and the same registry. Automatic
 regression refuses replay and custom strategies because their side effects are
 unknown. Invalid/corrupt journals are operational failures, not empty clean
 runs. Exit 3 means inconclusive; exit 0 can also mean there were no findings to
-check. The older autonomous LiteLLM explorer is a separate workflow.
+check.
+
+## Finding and coverage evidence
+
+`domain/findings.py` declares the optional MCP evidence shape; domain `Bug`
+records retain expected/actual outcomes, explicit goal associations and
+caller-claimed call references separately from independent receipts.
+`application/findings.py` validates metadata and coordinates evidence capture.
+Fresh-load verifiers capture on the checked page before restoring the caller;
+screenshot failure does not change the three-state verification outcome. The
+registry keeps the three-argument strategy extension interface.
+
+`application/coverage.py` owns validated atomic coverage updates and start/end
+cursors. Switching groups closes prior ranges without inferring completion.
+Action URLs preserve revisits; late explicitly linked findings can refresh a
+closed goal's references without entering unrelated goals. Reopening a goal
+starts a new range. Batched related goals intentionally share a journey window.
+Final batches validate before teardown; compact evidence sharing belongs to
+the MCP presentation layer, not report persistence or domain verification.
 
 ## Privacy and persistence
 
@@ -143,8 +161,58 @@ review budget is not an enforced web-session lifetime limit.
 Tests cover fake-backend faults, independent runtimes, input privacy, lock
 contention, report formats, browser fixtures, real MCP stdio and live HTTP/SSE.
 Ruff covers Python sources/tests. Mypy is intentionally scoped to the new core,
-not advertised as whole-project strict typing. CI tests Python 3.10/3.12 and
-Chromium. Native macOS UI permissions and behavior require manual integration
-testing; unit tests alone do not establish native app correctness.
+not advertised as whole-project strict typing. CI tests Python 3.11/3.12 and
+Chromium. Mandatory browser tests fail, rather than skip, when the browser
+runtime is unavailable in CI, and release installation is tested outside the
+source checkout. Native macOS UI permissions and behavior require manual
+integration testing; unit tests alone do not establish native app correctness.
+
+Deliberate non-goals: a distributed scheduler, multi-tenant authentication,
+encrypted capsules and whole-repository strict typing.
 
 See [design decisions](decisions.md) and the [extension guide](../CONTRIBUTING.md).
+
+## Agent interface and evaluation
+
+The MCP adapter adds a versioned `AgentResult` envelope while preserving text
+and image blocks. Application services expose `ToolText` evidence without MCP
+dependencies; the adapter does not scrape prose to reconstruct evidence. The
+runtime captures result state while holding the operation lock. Core payloads
+bound target/feedback counts and identify omissions.
+
+Progress is a request-local context with a bounded stage list and a best-effort
+notification sink. Fixed phases are emitted at actual work boundaries into both
+MCP progress and the existing monitor event stream. Delivery has a short deadline
+and cannot prevent lock release or convert a failed reproduction into success.
+
+`evaluation/` owns paired records, validation, deterministic local smoke fixtures
+and offline scoring. The production runtime never imports it. Real model drivers
+and independent adjudication remain external inputs; scripted controls are
+explicitly not agent-effectiveness evidence. See [protocol](agent-protocol.md)
+and [evaluation](evaluation.md) for compatibility and measurement limits.
+
+`application/guidance.py` owns deterministic next-check hints and a per-session
+visible-state fingerprint. It imports no model provider and executes no actions.
+`payloads.py` joins post-action state, coverage and hints; MCP response mode is an
+operator setting interpreted only by the presentation adapter. The monitor gets
+numeric summaries, not free-text goals or evidence.
+
+`entrypoints/mcp/snapshots.py` owns the optional one-observation delta cache; it
+operates only on redacted presentation data and never changes domain verdicts,
+browser state, coverage accounting or report persistence. Its explicit base IDs,
+bounded retention and full-observation recovery keep cache loss visible. The
+default compatible output and application APIs are unchanged.
+
+`measurement.py` provides request-local, framework-independent timing scopes.
+Browser/report adapters instrument fixed categories; the MCP boundary aggregates
+numeric measurements in the runtime. `entrypoints/mcp/overhead.py` measures
+serialized transport content without retaining it. Monitoring exposes those
+numbers only. Discovery measurements and reproducible encoding comparisons
+belong to the separate evaluation package, not the production testing workflow.
+
+The opt-in evaluation collector is a separate POSIX process supervisor. Its MCP
+gateway enforces the tool budget; its host subprocess has no shell or web tools.
+Fixture state and oracle events stay in the supervising process. Collection and
+adjudication are separate steps, so model self-certification cannot directly
+become a benchmark true positive. This is a synthetic evaluation boundary, not a
+general-purpose sandbox for hostile web content.

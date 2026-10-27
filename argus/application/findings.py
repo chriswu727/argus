@@ -5,16 +5,21 @@ from pathlib import Path
 from typing import Optional
 
 from argus.application.context import current_runtime
+from argus.domain.contracts import Rejection, ToolText
+from argus.domain.findings import FindingEvidence
 from argus.domain.models import (
     Bug,
     Observation,
 )
+from argus.domain.verification import VerificationSpec
 
+from .coverage import _coverage_goal_index, _refresh_finding_coverage
 from .events import _BUG_TYPE_BY_NAME, _SEVERITY_BY_NAME
 from .evidence import _auto_screenshot
 from .observation import _near_duplicate
-from .session import _require_session
-from .text import _marker_visible, _short
+from .progress import Stage
+from .session import Session, _require_session
+from .text import _marker_visible, _resolve_url, _short
 from .verification import (
     _looks_logged_out,
 )
@@ -23,103 +28,62 @@ from .verification import (
 async def record_bug(
     title: str,
     severity: str,
-    evidence: Optional[dict] = None,
+    evidence: FindingEvidence | str | None = None,
     verify: Optional[dict] = None,
+    finding_id: str = "",
 ) -> str:
-    """Record a confirmed bug you have identified during testing.
-
-    Call this only after you have observed something that meets the bug
-    bar: reproducible, user-affecting, persistent. Do not record
-    speculation or polish nits. The session report is built from these
-    records — be specific.
+    """Record an observed, reproducible, user-affecting bug, not speculation or polish.
 
     Args:
-        title: One-line headline, specific. Bad: "Form has issues."
-               Good: "Login form accepts any password — no authentication."
-        severity: "critical" | "high" | "medium" | "low" | "info".
-                  HIGH = data loss / security / payment / blocked flow.
-                  MEDIUM = workflow friction / confusing UX / cross-page bug.
-                  LOW = polish / suggestion-grade.
-        verify: Optional reproduction clause. When the bug has a
-            machine-checkable symptom (something present/absent on a fresh
-            page load), pass it and Argus will INDEPENDENTLY re-load the
-            page and confirm the symptom before recording — turning the
-            bug into a verified, reproducible finding instead of your
-            unverified say-so. This is Argus's anti-false-positive guard;
-            use it whenever the symptom is text-checkable. Shape:
-                {"expect": "present"|"absent",
-                 "target_text": "the text that proves the bug",
-                 "at_url": "/path"}   # optional, defaults to current page
-            Examples:
-              - Fake delete (item survives): {"expect":"present",
-                "target_text":"Buy groceries","at_url":"/tasks"}
-              - Save didn't persist (new value missing): {"expect":"absent",
-                "target_text":"EDITED-XYZ","at_url":"/tasks/1/edit"}
-            IMPORTANT — the target must PROVE the symptom, not a nearby fact.
-            target_text has to be the exact string whose presence/absence ALONE
-            is the bug. For a COUNT or LOGIC inconsistency ("7 pending + 2 done
-            != 8 total") no single text check establishes it — verifying that
-            "8 total" merely EXISTS does not confirm the inconsistency and would
-            stamp a misleading VERIFIED on tangential evidence. Record those as
-            observation-based (omit verify), or verify the specific wrong value
-            that should not be there.
-            For a broken URL or API response whose HTTP status is the proof, use
-            {"expect_status": 404, "at_url": "/missing"} instead of matching
-            error-page copy. Status verification and text verification are
-            alternatives and cannot be combined in one clause.
-            For a MULTI-STEP bug (the symptom only appears after a journey),
-            add "replay": true — Argus re-drives the recorded action trace
-            (click_what/type_into/select_into/navigate) in a fresh cold context
-            and checks the symptom there, giving a stronger "reproduced by
-            replaying N steps from a cold start" receipt (or INCONCLUSIVE if a
-            step no longer resolves). Shape:
-                {"replay": true, "expect": "present"|"absent",
-                 "target_text": "the text that proves the bug"}
-            CAUTION: replay re-EXECUTES the journey's steps against the live
-            backend, so any Save/Delete/Add/checkout in the trace runs a second
-            time (real side effect; the receipt reports writes_replayed). Use the
-            plain clean-load verify (no replay) for destructive flows, or accept
-            the re-run.
-            Add "minimize": true to also narrow a confirmed reproduction to the
-            minimal sufficient steps ("you don't need all 7 — 2 and 5 suffice").
-            Minimization runs ONLY for a write-free journey (it re-runs subsets,
-            which would repeat any writes); it is skipped with a note otherwise.
-            Omit verify entirely for visual/layout/UX-judgment bugs that no
-            single text check captures — those record as observation-based.
-        evidence: Optional dict with extra context. Recommended keys:
-            description (str): Longer explanation including user impact.
-                Default = same as title.
-            steps (list[str]): Reproduction steps. Default = current
-                session step log (everything you did so far).
-            url (str): Page or screen URL. Default = current page URL.
-            screenshot (str): One of "auto" (default — take one now and
-                attach), "skip" (no screenshot), or a label to use as
-                the screenshot filename. Pre-existing screenshot paths
-                are also accepted.
-            bug_type (str): A category for the report. Default
-                "ux_issue". One of: console_error, network_error,
-                visual_anomaly, ux_issue, crash, broken_link,
-                form_error, state_verification, misleading_success,
-                count_mismatch, text_anomaly, broken_image, seo_issue,
-                accessibility, performance, mixed_content.
-                Pick the SPECIFIC type, not the generic ux_issue: a "Saved!" /
-                success toast that lied -> misleading_success; a delete or edit
-                that did not persist -> state_verification; a wrong/inconsistent
-                count or total -> count_mismatch; a JS exception or dead page ->
-                crash; a form losing data / rejecting valid input -> form_error.
-                Reserve ux_issue for genuine usability friction with no better
-                fit — a data-loss or persistence bug labeled "ux_issue" reads as
-                cosmetic next to its HIGH severity.
+        title: Specific one-line headline.
+        severity: critical | high | medium | low | info. High: data loss,
+            security, payment or blocked flow; medium: workflow friction or
+            deceptive feedback; low: minor UX.
+        evidence: Optional description, expected, actual, steps, goal (or goals),
+            evidence_calls (caller-claimed call numbers, not independent proof),
+            url, screenshot (auto, skip, label or approved image path), bug_type. Defaults:
+            title as description, steps since the previous finding, current URL,
+            automatic screenshot and ux_issue. Prefer state_verification for
+            persistence failures, misleading_success for lying toasts,
+            count_mismatch for counts, form_error for form failures, crash for
+            dead pages. Other types: console_error, network_error, visual_anomaly,
+            broken_link, text_anomaly, broken_image, seo_issue, accessibility,
+            performance, mixed_content.
+        verify: Optional independent fresh-load check:
+            {"expect":"present|absent", "target_text":"...", "at_url":"/path"}.
+            Absence needs the URL where the target should appear. The target
+            must prove the claimed symptom, not a tangential fact; a text's
+            presence alone cannot prove a count/logic inconsistency. HTTP failures
+            use {"expect_status":404, "at_url":"/missing"} instead, never both.
+            For persistence failures use verify_persistence's suggested_verify:
+            fresh loads without repeating Save/Delete. clear_storage=true wipes
+            client storage before checks, only when authorized; auth loss makes
+            results inconclusive. Default reloads preserve cookies and storage.
+            replay=true re-drives the recorded journey in a fresh context, then
+            checks visible text. The symptom must hold after but not before;
+            an unrecorded refresh is NOT replayed. Replay repeats real writes
+            and requires authority. minimize=true only minimizes write-free
+            confirmed journeys. Omit verify for visual/semantic judgments.
+            No receipt means observed, not confirmed; inconclusive is not proof.
+        finding_id: Recheck an existing session finding instead of adding one.
+            Keep title/severity unchanged, supply verify and omit evidence.
+            At most two rechecks; confirmed findings need no retry. Original
+            receipts remain in verification_history. Do not repeat a journey
+            just to attach a receipt.
     """
     s = _require_session()
 
     sev_key = (severity or "").strip().lower()
+    if not title.strip():
+        return Rejection("record_bug: title must not be empty.")
     if sev_key not in _SEVERITY_BY_NAME:
-        return (
+        return Rejection(
             f"record_bug: invalid severity {severity!r}. "
             f"Use one of: {', '.join(_SEVERITY_BY_NAME)}."
         )
     sev = _SEVERITY_BY_NAME[sev_key]
+    if finding_id:
+        return await _recheck_finding(s, finding_id, title, sev, evidence, verify)
 
     # Be forgiving about `evidence`: agents (esp. weaker models) pass a bare
     # string instead of a dict. A string used to crash record_bug
@@ -132,6 +96,23 @@ async def record_bug(
     else:
         ev = {}
     description = ev.get("description") or title
+    expected, actual = ev.get("expected", ""), ev.get("actual", "")
+    if any(not isinstance(value, str) or len(value) > 4000 for value in (expected, actual)):
+        return Rejection("record_bug: expected and actual must be text of at most 4000 characters.")
+    coverage_goals, error = _finding_goals(s, ev)
+    if error:
+        return Rejection(error)
+    claimed_calls = ev.get("evidence_calls", [])
+    if (
+        not isinstance(claimed_calls, list)
+        or len(claimed_calls) > 50
+        or any(type(value) is not int or value < 1 for value in claimed_calls)
+    ):
+        return Rejection("record_bug: evidence_calls accepts at most 50 positive call numbers.")
+    if expected:
+        description += f"\nExpected: {expected}"
+    if actual:
+        description += f"\nActual: {actual}"
     # Default to the steps taken *since the last record_bug* — otherwise
     # consecutive bug reports accumulate earlier bugs' actions and the
     # reproducible-steps section reads as session noise.
@@ -168,7 +149,7 @@ async def record_bug(
 
     type_key = (ev.get("bug_type") or "ux_issue").strip().lower()
     if type_key not in _BUG_TYPE_BY_NAME:
-        return (
+        return Rejection(
             f"record_bug: invalid bug_type {type_key!r}. "
             f"Use one of: {', '.join(_BUG_TYPE_BY_NAME)}."
         )
@@ -180,31 +161,17 @@ async def record_bug(
     # genuinely distinct findings are never merged.
     dup = _near_duplicate(title, description, s.bugs)
     if dup is not None:
-        return (
+        return ToolText(
             f"Not recorded — near-duplicate of an already-logged finding: "
-            f"{dup.title!r}. A tight report beats a repetitive one; sharpen the "
-            f"angle or move on to a feature you haven't tested yet."
+            f"{dup.title!r}. To attach a receipt, call record_bug with its finding_id, "
+            "unchanged title/severity and verify; do not repeat the journey.",
+            {
+                "recorded": False,
+                "reason": "duplicate",
+                "duplicate_of": f"{s.run_id}:{s.bugs.index(dup) + 1}",
+                "next_action": "Use finding_id with verify to recheck this finding (maximum two rechecks).",
+            },
         )
-
-    screenshot_directive = ev.get("screenshot", "auto")
-    screenshot_path: Optional[str] = None
-    if screenshot_directive == "skip":
-        pass
-    elif screenshot_directive in ("auto", "", None):
-        label = "bug_" + "".join(c if c.isalnum() else "_" for c in title.lower())[:40]
-        screenshot_path = await _auto_screenshot(s, label, f"record_bug: {_short(title, 60)}")
-    elif "/" in screenshot_directive or screenshot_directive.endswith(".png"):
-        # Treat as an existing path
-        runtime = current_runtime()
-        screenshot_path = str(
-            runtime.settings.access.check_file(
-                screenshot_directive, extra_roots=(runtime.settings.output_dir,)
-            )
-        )
-    else:
-        # Treat as a label for a fresh screenshot
-        label = "".join(c if c.isalnum() else "_" for c in screenshot_directive.lower())[:40]
-        screenshot_path = await _auto_screenshot(s, label, f"record_bug: {_short(title, 60)}")
 
     # Lower the barrier to engaging the receipt: if no explicit verify clause was
     # passed but the evidence dict carries a checkable target, build one from it.
@@ -224,32 +191,87 @@ async def record_bug(
             verify.pop("expect")
             verify.pop("target_text")
 
-    replay_slice = list(s.action_trace[s._actions_since_last_bug :])
-    receipt = await current_runtime().verifiers.verify(s, verify, replay_slice) if verify else None
-
-    # If a state capsule is in play, flag the finding ONLY when there's positive
-    # evidence the session died — the marker is absent AND the page is a login
-    # wall. (A marker simply not rendering on a legitimate authenticated page —
-    # checkout, settings, a modal — must not falsely flag a real bug.) When it
-    # does fire, also neutralize the receipt so an expired-session artifact can't
-    # read as VERIFIED.
-    if s._capsule_marker and s.mode == "web" and s.browser is not None and s.browser.has_page:
+    fresh_load = False
+    if verify:
         try:
-            cur = await s.browser.get_state()
-            if not _marker_visible(s._capsule_marker, cur) and _looks_logged_out(cur):
-                description = (
-                    description.rstrip()
-                    + "\n\n[UNRELIABLE: the restored state capsule's session appears expired "
-                    "(login wall present, marker absent) — re-mint state and re-confirm.]"
-                )
-                if isinstance(receipt, dict) and receipt.get("attempted"):
-                    receipt = {
-                        **receipt,
-                        "reproduced": None,
-                        "reason": "recorded against an expired capsule session",
-                    }
-        except Exception:
+            fresh_load = (
+                VerificationSpec.parse(verify).kind in {"text", "http_status"}
+                and s.mode == "web"
+                and s.browser is not None
+                and s.browser.has_page
+            )
+        except ValueError:
             pass
+    if fresh_load and not ev.get("url"):
+        url = _resolve_url(s, verify.get("at_url") or verify.get("after_url") or url)
+
+    screenshot_directive = ev.get("screenshot", "auto")
+    screenshot_path: Optional[str] = None
+    screenshot_label = None
+    warnings = []
+    if screenshot_directive != "skip":
+        if screenshot_directive and (
+            "/" in screenshot_directive or screenshot_directive.endswith(".png")
+        ):
+            runtime = current_runtime()
+            screenshot_path = str(
+                runtime.settings.access.check_file(
+                    screenshot_directive, extra_roots=(runtime.settings.output_dir,)
+                )
+            )
+        else:
+            label = title if screenshot_directive in ("auto", "", None) else screenshot_directive
+            screenshot_label = (
+                "bug_" + "".join(c if c.isalnum() else "_" for c in label.lower())[:40]
+            )
+            if fresh_load:
+                target_url = _resolve_url(
+                    s, verify.get("at_url") or verify.get("after_url") or s.browser.current_url
+                )
+                if _resolve_url(s, url) != target_url:
+                    warnings.append(
+                        "Finding URL differs from verification target; screenshot omitted."
+                    )
+                    screenshot_label = None
+            elif s.mode == "web" and s.browser and _resolve_url(s, url) != s.browser.current_url:
+                warnings.append("Finding URL differs from current page; screenshot omitted.")
+                screenshot_label = None
+            if screenshot_label and not fresh_load:
+                try:
+                    screenshot_path = await _auto_screenshot(
+                        s, screenshot_label, f"record_bug: {_short(title, 60)}"
+                    )
+                    if not screenshot_path:
+                        warnings.append("Finding screenshot was unavailable.")
+                except Exception:
+                    warnings.append("Finding screenshot capture failed.")
+
+    replay_slice = list(s.action_trace[s._actions_since_last_bug :])
+    if verify:
+        await current_runtime().progress(Stage.VERIFYING)
+    receipt = (
+        await current_runtime().verifiers.verify(
+            s, verify, replay_slice, screenshot_label=screenshot_label if fresh_load else None
+        )
+        if verify
+        else None
+    )
+    if receipt and fresh_load:
+        if not ev.get("url"):
+            url = receipt.get("at_url") or url
+        landed = receipt.get("evidence_url")
+        if screenshot_label and landed and _resolve_url(s, landed) != _resolve_url(s, url):
+            warnings.append(
+                f"Verification load ended at {_short(landed, 120)}; screenshot shows that page."
+            )
+        if screenshot_label:
+            screenshot_path = receipt.get("screenshot_path")
+            if not screenshot_path:
+                warnings.append(
+                    receipt.get("evidence_warning") or "Verification screenshot was unavailable."
+                )
+
+    description, receipt = await _guard_capsule(s, description, receipt)
 
     bug = Bug(
         type=bug_type,
@@ -261,13 +283,27 @@ async def record_bug(
         screenshot_path=screenshot_path,
         reproduction_receipt=receipt,
         replay_steps=replay_slice,
+        expected=expected,
+        actual=actual,
+        coverage_goals=coverage_goals,
+        claimed_evidence_calls=list(claimed_calls),
+        evidence_warnings=warnings,
     )
     s.bugs.append(bug)
+    _refresh_finding_coverage(s, coverage_goals)
     verdict = (receipt or {}).get("reproduced")
     code = (
         "verified" if verdict is True else "not_reproduced" if verdict is False else "inconclusive"
     )
     runtime = current_runtime()
+    if verify:
+        await runtime.progress(
+            Stage.VERIFIED
+            if verdict is True
+            else Stage.NOT_REPRODUCED
+            if verdict is False
+            else Stage.INCONCLUSIVE
+        )
     runtime.events.publish("finding_recorded", runtime.state.value, "record_bug", code)
     s.steps.append(f"record_bug: [{sev.value}] {title}")
     # Reset the per-bug cursors so the *next* record_bug only carries actions
@@ -283,6 +319,7 @@ async def record_bug(
     ]
     if screenshot_path:
         out.append(f"  screenshot: {screenshot_path}")
+    out.extend(f"  evidence warning: {warning}" for warning in warnings)
     if receipt is not None:
         is_replay = receipt.get("mode") == "replay"
         if not receipt.get("attempted"):
@@ -340,8 +377,9 @@ async def record_bug(
                 )
             elif is_replay:
                 out.append(
-                    "  reproduction: INCONCLUSIVE — the symptom already held before the journey, "
-                    "so it can't be attributed to these steps. Not a confirmation."
+                    f"  reproduction: INCONCLUSIVE — {receipt.get('reason', 'unknown cause')}. "
+                    "Not a confirmation. For persistence failures, use a clean-load check "
+                    "with this finding_id instead of repeating writes."
                 )
             elif receipt.get("reason"):
                 out.append(f"  reproduction: INCONCLUSIVE — {receipt['reason']}")
@@ -353,11 +391,162 @@ async def record_bug(
         out.append(
             "  reproduction: NONE — this finding is unverified (your say-so). If the "
             "symptom is text-checkable (an item present/absent, a wrong count, a lying "
-            'toast), re-record with verify={"expect":"present|absent","target_text":'
+            'toast), recheck this finding_id with verify={"expect":"present|absent","target_text":'
             '"...","at_url":"/path"} so Argus re-confirms it from a clean load.'
         )
     out.append(f"  total bugs in session: {len(s.bugs)}")
-    return "\n".join(out)
+    return ToolText(
+        "\n".join(out),
+        {
+            "recorded": True,
+            "finding_id": f"{s.run_id}:{len(s.bugs)}",
+            "evidence_status": "observed" if receipt is None else code,
+            "verdict": code,
+            "receipt": receipt,
+            "warnings": warnings,
+            "next_action": (
+                "Preserve this receipt; do not repeat the journey."
+                if verdict is True
+                else "If further evidence is needed, recheck this finding_id with verify. "
+                "Prefer fresh loads for persistence failures; do not repeat writes to force confirmation."
+            ),
+            "finding": {
+                "title": title,
+                "severity": sev.value,
+                "url": url,
+                "screenshot": screenshot_path,
+            },
+        },
+    )
+
+
+def _finding_goals(s: Session, evidence: dict) -> tuple[list[str], str | None]:
+    queries = evidence.get("goals", evidence.get("goal", []))
+    if isinstance(queries, str):
+        queries = [queries]
+    if not isinstance(queries, list) or len(queries) > 20:
+        return [], "record_bug: goal/goals accepts at most 20 declared goals."
+    goals = []
+    for query in queries:
+        if not isinstance(query, str):
+            return [], "record_bug: each goal must be text."
+        index, error = _coverage_goal_index(s, query)
+        if error:
+            return [], error.replace("coverage_update:", "record_bug:", 1)
+        goal = s.coverage_goals[index]["goal"]
+        if goal not in goals:
+            goals.append(goal)
+    return goals, None
+
+
+async def _guard_capsule(s: Session, description: str, receipt: dict | None) -> tuple:
+    # A missing marker alone is not evidence of expiry on a legitimate page.
+    if s._capsule_marker and s.mode == "web" and s.browser is not None and s.browser.has_page:
+        try:
+            cur = await s.browser.get_state()
+            if not _marker_visible(s._capsule_marker, cur) and _looks_logged_out(cur):
+                description = (
+                    description.rstrip()
+                    + "\n\n[UNRELIABLE: the restored state capsule's session appears expired "
+                    "(login wall present, marker absent) — re-mint state and re-confirm.]"
+                )
+                if isinstance(receipt, dict) and receipt.get("attempted"):
+                    receipt = {
+                        **receipt,
+                        "reproduced": None,
+                        "reason": "recorded against an expired capsule session",
+                    }
+        except Exception:
+            pass
+    return description, receipt
+
+
+def _verdict_code(receipt: dict | None) -> str:
+    if receipt is None:
+        return "observed"
+    verdict = receipt.get("reproduced")
+    return (
+        "verified" if verdict is True else "not_reproduced" if verdict is False else "inconclusive"
+    )
+
+
+async def _recheck_finding(
+    s: Session, finding_id: str, title: str, severity, evidence, verify
+) -> str:
+    bug = next(
+        (bug for index, bug in enumerate(s.bugs, 1) if finding_id == f"{s.run_id}:{index}"),
+        None,
+    )
+    if bug is None:
+        return Rejection("record_bug: finding_id must identify a finding in this session.")
+    if title != bug.title or severity != bug.severity or evidence is not None:
+        return Rejection("record_bug: rechecks keep title/severity unchanged and omit evidence.")
+    if not isinstance(verify, dict) or not verify:
+        return Rejection("record_bug: a recheck requires a non-empty verify clause.")
+    previous = bug.reproduction_receipt
+    if (previous or {}).get("reproduced") is True or len(bug.verification_history) >= 2:
+        return ToolText(
+            "Recheck not run: already verified or two rechecks exhausted. Preserve the evidence; "
+            "do not repeat writes to force confirmation.",
+            {
+                "recorded": False,
+                "updated": False,
+                "finding_id": finding_id,
+                "reason": "already_verified"
+                if (previous or {}).get("reproduced") is True
+                else "recheck_limit",
+                "receipt": previous,
+                "rechecks_remaining": 0,
+            },
+        )
+    runtime = current_runtime()
+    await runtime.progress(Stage.VERIFYING)
+    # The slot is consumed up front: an interrupted replay may already have
+    # repeated writes, so it must not become an unlimited retry.
+    history = {
+        "previous_receipt": previous,
+        "verify": {key: value for key, value in verify.items() if not key.startswith("_")},
+        "receipt": {
+            "attempted": True,
+            "reproduced": None,
+            "reason": "recheck did not complete; it may have run partially",
+        },
+    }
+    bug.verification_history.append(history)
+    receipt = await runtime.verifiers.verify(s, verify, list(bug.replay_steps))
+    bug.description, receipt = await _guard_capsule(s, bug.description, receipt)
+    if isinstance(receipt, dict):
+        receipt = {
+            **receipt,
+            "recheck": len(bug.verification_history),
+            "previous_verdict": _verdict_code(previous),
+        }
+    history["receipt"] = receipt
+    bug.reproduction_receipt = receipt
+    _refresh_finding_coverage(s, bug.coverage_goals)
+    verdict = (receipt or {}).get("reproduced")
+    code = _verdict_code(receipt)
+    await runtime.progress(
+        Stage.VERIFIED
+        if verdict is True
+        else Stage.NOT_REPRODUCED
+        if verdict is False
+        else Stage.INCONCLUSIVE
+    )
+    runtime.events.publish("finding_rechecked", runtime.state.value, "record_bug", code)
+    s.steps.append(f"record_bug recheck: {finding_id} ({code})")
+    return ToolText(
+        f"Rechecked {finding_id}: {code}. No new finding created.",
+        {
+            "recorded": False,
+            "updated": True,
+            "finding_id": finding_id,
+            "evidence_status": code,
+            "verdict": code,
+            "receipt": receipt,
+            "rechecks_remaining": 0 if verdict is True else 2 - len(bug.verification_history),
+        },
+    )
 
 
 async def record_observation(
@@ -385,14 +574,17 @@ async def record_observation(
     allowed_categories = {"visual", "usability", "content", "responsive", "accessibility"}
 
     if not title or not evidence:
-        return "record_observation: title and evidence are required."
+        return Rejection("record_observation: title and evidence are required.")
     if category not in allowed_categories:
-        return "record_observation: category must be one of: " + ", ".join(
-            sorted(allowed_categories)
+        return Rejection(
+            "record_observation: category must be one of: " + ", ".join(sorted(allowed_categories))
         )
     normalized = " ".join(title.lower().split())
     if any(" ".join(item.title.lower().split()) == normalized for item in s.observations):
-        return f"record_observation: duplicate title not recorded: {title!r}."
+        return ToolText(
+            f"record_observation: duplicate title not recorded: {title!r}.",
+            {"recorded": False, "reason": "duplicate"},
+        )
 
     if s.mode == "web" and s.browser is not None and s.browser.has_page:
         url = s.browser.current_url
@@ -433,8 +625,15 @@ async def record_observation(
             screenshot_path=screenshot_path,
         )
     )
-    return (
+    return ToolText(
         f"Recorded {category} observation: {title}\n"
         f"  screenshot: {screenshot_path or 'none'}\n"
-        f"  total observations in session: {len(s.observations)}"
+        f"  total observations in session: {len(s.observations)}",
+        {
+            "recorded": True,
+            "category": category,
+            "title": title,
+            "screenshot": screenshot_path,
+            "finding_confirmed": False,
+        },
     )

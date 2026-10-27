@@ -4,6 +4,7 @@ from argus.domain.models import (
     PageState,
 )
 
+from .evidence import _auto_screenshot
 from .session import Session
 from .text import _present_with_scroll, _resolve_url, _visible_text_in_state
 
@@ -90,6 +91,7 @@ async def _run_reproduction_check(
     # otherwise an injected 500 re-fires on reload and certifies itself.
     suspended_mocks = await s.browser.suspend_mocks()
     inconclusive = None
+    evidence = {}
     try:
         if verify.get("clear_storage"):
             # Opt-in: prove SERVER persistence by wiping client storage first, so
@@ -115,6 +117,22 @@ async def _run_reproduction_check(
                 inconclusive = "clean load hit a login wall — the session may have expired"
                 break
             observations.append(await _present_with_scroll(s, target, state))
+        evidence["evidence_url"] = s.browser.current_url
+        if verify.get("_screenshot_label"):
+            try:
+                if expected_status is None and observations and not observations[-1]:
+                    # An unsuccessful scan ends at the page bottom; capture from the top.
+                    await s.browser.scroll_by(-1_000_000)
+                # Capture before restoring the caller's page, without another navigation.
+                path = await _auto_screenshot(
+                    s, verify["_screenshot_label"], "fresh-load verification"
+                )
+                if path:
+                    evidence["screenshot_path"] = path
+                else:
+                    evidence["evidence_warning"] = "Verification screenshot was unavailable."
+            except Exception:
+                evidence["evidence_warning"] = "Verification screenshot capture failed."
     except Exception as e:  # navigation/render failure — report, don't crash record_bug
         return {
             "attempted": True,
@@ -122,6 +140,7 @@ async def _run_reproduction_check(
             "at_url": nav_url,
             "error": str(e)[:200],
             "mocks_suspended": suspended_mocks,
+            **evidence,
         }
     finally:
         await s.browser.restore_mocks(suspended_mocks)
@@ -144,6 +163,7 @@ async def _run_reproduction_check(
             "target_text": target[:120],
             "expect": expect,
             "mocks_suspended": suspended_mocks,
+            **evidence,
         }
 
     if expected_status is not None:
@@ -157,6 +177,7 @@ async def _run_reproduction_check(
             "observed_statuses": observed_statuses,
             "method": "fresh-load HTTP status re-check",
             "at_url": nav_url,
+            **evidence,
         }
         if suspended_mocks:
             receipt["mocks_suspended"] = suspended_mocks
@@ -169,6 +190,7 @@ async def _run_reproduction_check(
             "target_text": target[:120],
             "at_url": nav_url,
             "observed_present": observations,
+            **evidence,
         }
     )
     if suspended_mocks:

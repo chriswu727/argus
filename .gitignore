@@ -11,6 +11,7 @@ argus-reports/
 .argus/
 **/.argus/
 *.png
+!plugins/claude/.claude-plugin/icon.png
 .env
 .env.*
 .codex/
@@ -19,4 +20,6 @@ CLAUDE.md
 docs/*
 !docs/architecture.md
 !docs/decisions.md
-!docs/implementation-0.7.md
+!docs/agent-protocol.md
+!docs/evaluation.md
+!docs/evaluation-0.8.md

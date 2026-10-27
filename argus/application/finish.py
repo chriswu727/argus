@@ -3,25 +3,42 @@ from __future__ import annotations
 import asyncio
 
 from argus.application.context import current_runtime
-from argus.domain.contracts import SessionState
+from argus.domain.contracts import Rejection, SessionState, ToolText
+from argus.domain.coverage import FinalCoverageUpdate
 from argus.domain.models import (
     ExplorationResult,
 )
 
-from .coverage import _coverage_snapshot
+from .coverage import _apply_coverage_updates, _coverage_snapshot
 from .evidence import _output_dir, _write_journal
+from .progress import Stage
 from .session import Session
 
 
-async def end_session() -> str:
+async def end_session(coverage_updates: list[FinalCoverageUpdate] | None = None) -> str:
     """End the testing session, close the browser, and generate an HTML error report.
 
     Returns the path to the generated report and a summary of findings.
+
+    Args:
+        coverage_updates: Optional final goal updates, each with goal (text or
+            list), status (exercised or blocked) and concrete evidence. All
+            updates validate before any change or shutdown. Unlisted goals keep
+            their status; exercised does not mean passed. Invalid updates leave
+            the session open. Use this instead of a separate final coverage_update.
     """
     s = current_runtime().session
     if not s.active and s.start_time is None:
+        if coverage_updates:
+            return Rejection("end_session: no active session for coverage updates.")
         return "No active session. Session resources are already closed."
     s.tool_calls += 1
+    if coverage_updates is not None:
+        error = _apply_coverage_updates(s, coverage_updates, final=True)
+        if error:
+            return Rejection(error.replace("coverage_update:", "end_session:", 1))
+        if coverage_updates:
+            await current_runtime().progress(Stage.COVERAGE)
     current_runtime().transition(SessionState.STOPPING)
     warnings: list[str] = []
 
@@ -62,6 +79,7 @@ async def end_session() -> str:
 
     output_dir = _output_dir()
     reporter = current_runtime().reporter_factory()
+    await current_runtime().progress(Stage.EXPORTING)
     try:
         report_path = await asyncio.to_thread(reporter.generate, result, output_dir)
         warnings.extend(reporter.warnings)
@@ -116,4 +134,19 @@ async def end_session() -> str:
         for bug in result.bugs:
             lines.append(f"  [{bug.severity.value.upper()}] {bug.title}")
 
-    return "\n".join(lines)
+    return ToolText(
+        "\n".join(lines),
+        {
+            "run_id": result.run_id,
+            "report_path": report_path or None,
+            "warnings": warnings,
+            "coverage": coverage,
+            "summary": {
+                "tool_calls": result.tool_calls,
+                "actions": result.actions_taken,
+                "findings": len(result.bugs),
+                "observations": len(result.observations),
+                "duration_seconds": duration,
+            },
+        },
+    )

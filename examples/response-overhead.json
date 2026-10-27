@@ -1,0 +1,171 @@
+{
+  "schema_version": 1,
+  "argus_version": "0.11.0",
+  "mcp_sdk_version": "1.30.0",
+  "python_version": "3.13.17",
+  "method": "synthetic-identical-input-encoding-v1",
+  "baseline": "0.8-compatible compact encoder semantics; same structured evidence",
+  "limitations": [
+    "No model calls or token measurement",
+    "Not an end-to-end latency or testing-quality benchmark",
+    "Result JSON excludes JSON-RPC framing; byte categories overlap",
+    "Synthetic repeated catalog content favors deltas; navigation invalidates them"
+  ],
+  "discovery": {
+    "web": {
+      "tools": 28,
+      "tools_json_bytes": 34156,
+      "instructions_utf8_bytes": 223,
+      "description_utf8_bytes": 4267,
+      "input_schema_json_bytes": 5314,
+      "output_schema_json_bytes": 18676
+    },
+    "advanced": {
+      "tools": 61,
+      "tools_json_bytes": 78816,
+      "instructions_utf8_bytes": 223,
+      "description_utf8_bytes": 16345,
+      "input_schema_json_bytes": 8650,
+      "output_schema_json_bytes": 40687
+    },
+    "screen": {
+      "tools": 14,
+      "tools_json_bytes": 23851,
+      "instructions_utf8_bytes": 223,
+      "description_utf8_bytes": 8045,
+      "input_schema_json_bytes": 3282,
+      "output_schema_json_bytes": 9338
+    },
+    "full": {
+      "tools": 77,
+      "tools_json_bytes": 115129,
+      "instructions_utf8_bytes": 223,
+      "description_utf8_bytes": 35940,
+      "input_schema_json_bytes": 10655,
+      "output_schema_json_bytes": 51359
+    }
+  },
+  "cases": [
+    {
+      "case": "unchanged-page",
+      "calls": 6,
+      "lossless_roundtrip": true,
+      "modes": {
+        "compatible": {
+          "result_json_bytes": 64143,
+          "text_utf8_bytes": 30744,
+          "structured_json_bytes": 30447,
+          "image_base64_bytes": 0,
+          "images": 0
+        },
+        "compact": {
+          "result_json_bytes": 30897,
+          "text_utf8_bytes": 402,
+          "structured_json_bytes": 30039,
+          "image_base64_bytes": 0,
+          "images": 0
+        },
+        "delta": {
+          "result_json_bytes": 7809,
+          "text_utf8_bytes": 402,
+          "structured_json_bytes": 6951,
+          "image_base64_bytes": 0,
+          "images": 0
+        }
+      },
+      "delta_vs_compact_reduction_percent": 74.73
+    },
+    {
+      "case": "changed-page",
+      "calls": 6,
+      "lossless_roundtrip": true,
+      "modes": {
+        "compatible": {
+          "result_json_bytes": 64347,
+          "text_utf8_bytes": 30840,
+          "structured_json_bytes": 30543,
+          "image_base64_bytes": 0,
+          "images": 0
+        },
+        "compact": {
+          "result_json_bytes": 30993,
+          "text_utf8_bytes": 402,
+          "structured_json_bytes": 30135,
+          "image_base64_bytes": 0,
+          "images": 0
+        },
+        "delta": {
+          "result_json_bytes": 7975,
+          "text_utf8_bytes": 402,
+          "structured_json_bytes": 7117,
+          "image_base64_bytes": 0,
+          "images": 0
+        }
+      },
+      "delta_vs_compact_reduction_percent": 74.27
+    },
+    {
+      "case": "navigation",
+      "calls": 6,
+      "lossless_roundtrip": true,
+      "modes": {
+        "compatible": {
+          "result_json_bytes": 64143,
+          "text_utf8_bytes": 30744,
+          "structured_json_bytes": 30447,
+          "image_base64_bytes": 0,
+          "images": 0
+        },
+        "compact": {
+          "result_json_bytes": 30897,
+          "text_utf8_bytes": 402,
+          "structured_json_bytes": 30039,
+          "image_base64_bytes": 0,
+          "images": 0
+        },
+        "delta": {
+          "result_json_bytes": 31119,
+          "text_utf8_bytes": 402,
+          "structured_json_bytes": 30261,
+          "image_base64_bytes": 0,
+          "images": 0
+        }
+      },
+      "delta_vs_compact_reduction_percent": -0.72
+    },
+    {
+      "case": "small-page",
+      "calls": 6,
+      "lossless_roundtrip": true,
+      "modes": {
+        "compatible": {
+          "result_json_bytes": 7599,
+          "text_utf8_bytes": 2826,
+          "structured_json_bytes": 3945,
+          "image_base64_bytes": 0,
+          "images": 0
+        },
+        "compact": {
+          "result_json_bytes": 4395,
+          "text_utf8_bytes": 402,
+          "structured_json_bytes": 3537,
+          "image_base64_bytes": 0,
+          "images": 0
+        },
+        "delta": {
+          "result_json_bytes": 3392,
+          "text_utf8_bytes": 402,
+          "structured_json_bytes": 2534,
+          "image_base64_bytes": 0,
+          "images": 0
+        }
+      },
+      "delta_vs_compact_reduction_percent": 22.82
+    }
+  ],
+  "aggregate": {
+    "compact_result_json_bytes": 97182,
+    "delta_result_json_bytes": 50295,
+    "reduction_percent": 48.25
+  }
+}

@@ -1,4 +1,4 @@
-"""Argus reproducible benchmark — `python -m argus.bench`.
+"""Argus reproducible benchmark — `python -m argus_lab.bench`.
 
 Drives Argus's MCP tools against one or more seeded fixtures and
 reports recall as a matrix. The "agent" is a fixed Python sequence
@@ -8,11 +8,11 @@ any one LLM.
 
 Usage:
     # one fixture at a time
-    python -m argus.bench --target buggytasks
-    python -m argus.bench --target darkshop
+    python -m argus_lab.bench --target buggytasks
+    python -m argus_lab.bench --target darkshop
 
     # both, write a matrix report
-    python -m argus.bench --target all \\
+    python -m argus_lab.bench --target all \\
         --json bench-results/matrix.json \\
         --md   bench-results/matrix.md
 """
@@ -215,7 +215,7 @@ async def run(targets: List[str], out_json: Optional[Path], out_md: Optional[Pat
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(prog="python -m argus.bench")
+    p = argparse.ArgumentParser(prog="python -m argus_lab.bench")
     p.add_argument(
         "--target",
         choices=list(_TARGETS) + ["all"],

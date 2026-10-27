@@ -34,6 +34,8 @@ async def test_start_returns_observation_and_screenshot_returns_mcp_image(tmp_pa
         content = await m.mcp._tool_manager.call_tool(
             "screenshot", {"name": "contract"}, convert_result=True
         )
+        assert content.structuredContent["status"] == "completed"
+        content = content.content
         assert [block.type for block in content] == ["text", "image"]
         screenshot_path = content[0].text.split(": ", 1)[1]
         assert Path(screenshot_path).is_absolute()
@@ -59,7 +61,7 @@ async def test_core_tool_profile_is_small_and_keeps_the_primary_workflow():
 
 
 def test_core_mcp_context_has_a_regression_budget():
-    tools = [m.mcp._tool_manager._tools[name] for name in m._CORE_TOOL_NAMES]
+    tools = [m.mcp._tool_manager._tools[name] for name in m._WEB_TOOL_NAMES]
     footprint = sum(
         len(m.mcp.instructions)
         + len(tool.description or "")
@@ -163,7 +165,7 @@ async def test_session_contract_requires_evidence_and_reaches_reports(tmp_path, 
             time_budget_minutes=5,
         )
         assert "Session protocol (returned once" in started
-        assert "Mark a goal in_progress before its journey" in started
+        assert "Batch related goals" in started
         assert "Change the account settings" in started
         assert "Do not submit external forms" in started
 

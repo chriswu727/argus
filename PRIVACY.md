@@ -10,7 +10,8 @@ console and network events, testing goals and constraints, verification targets,
 cookies or storage when the corresponding tools are called, screenshots,
 downloaded-file metadata, and native macOS accessibility information in screen
 mode. Coverage reports omit typed and pasted input values from action references,
-but goals, constraints, verification targets, finding titles, and screenshots are
+but goals, constraints, verification targets, finding titles, expected/actual
+outcomes, caller-supplied evidence references, and screenshots are
 evidence and may contain application data; do not put secrets in those fields.
 
 Reports, screenshots, reproduction receipts, state capsules, and regression
@@ -46,11 +47,15 @@ inputs require approved directories in `ARGUS_FILE_ROOTS`; see [Security](SECURI
   apply independently of Argus.
 - Browser tests connect to the URLs the user or agent chooses to test, along
   with resources those pages load.
-- CLI mode uses LiteLLM and sends planner context to the model provider selected
-  by the user. MCP mode does not require an Argus API key or an Argus-operated
-  model service.
+- Argus does not call a model itself and does not require an Argus API key or
+  an Argus-operated model service.
 - Installing or upgrading through PyPI, `pip`, or `uvx` contacts those package
   distribution services under their own policies.
+- The optional `argus_lab.evaluation.codex_runner` sends synthetic testing prompts
+  and tool evidence to the operator's ChatGPT-backed Codex session only after
+  explicit subscription-usage opt-in. It stores local answers, usage, tool traces
+  and fixture oracle logs, not model reasoning. Raw traces can contain local
+  paths and should remain private. Normal MCP operation never starts this runner.
 
 Argus does not intentionally transmit test artifacts to the project maintainer.
 Review reports and screenshots before sharing them because they can contain

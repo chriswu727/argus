@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 import argus.mcp_server as m
-from argus.models import Bug, BugType, Severity
+from argus.domain.models import Bug, BugType, Severity
 
 
 class _H(http.server.BaseHTTPRequestHandler):

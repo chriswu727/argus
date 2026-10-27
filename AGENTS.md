@@ -6,6 +6,9 @@ task; it does not replace the host agent's identity or authority.
 
 ## Setup
 
+Use Python 3.11 or newer. With an older default interpreter, launch with
+`uvx --python 3.12 --from argus-testing argus-mcp`.
+
 ```bash
 # Web mode (works everywhere)
 pip install argus-testing
@@ -22,9 +25,22 @@ argus-mcp --list-tools    # show the selected profile and public tools
 argus-mcp --doctor        # macOS Screen Recording + Accessibility check
 ```
 
-The default profile is `core`. Use `--tool-profile screen` for native
-macOS review and `--tool-profile full` only when the broader network,
-storage, tabs, crawl, and coordinate surface is needed. The
+The default `web` profile has 28 tools covering the complete testing loop,
+including `regression_check`. For structured-result-aware hosts, add
+`--response-mode compact`. Earlier `agent` and `core` names select `web`.
+
+`--response-mode delta` is opt-in for snapshot-aware clients. Only observation
+fields listed in the protocol may be inherited from an exact `base_id`; action
+and verification results are current-call-only. If context or a base is missing,
+call `observe` for full state. Never infer a passing check from unchanged fields.
+Use `python -m argus.install_check` to verify installed versions and stdio without
+a browser or model. From a source checkout, `python -m argus_lab.evaluation.overhead`
+gives deterministic byte measurements. Bytes are not model tokens. Monitoring retains numeric
+overhead only; do not add page content or arguments to metrics.
+Use `--tool-profile screen` for native
+macOS review and `--tool-profile advanced` only when network mocks,
+cookies/storage, tabs, coordinates, crawling or link/performance probes are
+needed. `full` adds every screen tool as well. The
 `ARGUS_TOOL_PROFILE` environment variable provides the same setting.
 
 After `pip install -U argus-testing`, restart your MCP host so it picks
@@ -45,6 +61,16 @@ the user's broader task. The short version:
   Map → **Use it** (walk each goal end-to-end, carrying real state) →
   Hypothesize → Act → Observe → Verify → Record → Cover.
 
+## Structured results (0.8)
+
+Read `structuredContent.data`
+for operation-specific evidence where available; text and images remain for
+compatibility. `status: completed` means the tool ran, not that the application
+passed. Inspect expectation matches, finding verdicts and export warnings.
+Progress notifications describe actual phases, not percentages or proof of
+coverage. Missing live notifications do not mean execution stopped; the final
+result includes captured stages. See [the protocol](docs/agent-protocol.md).
+
 ## Tools you'll use most
 
 ### Web mode
@@ -52,13 +78,13 @@ the user's broader task. The short version:
 | Tool | Purpose |
 |------|---------|
 | `start_session(url, review_mode=..., goals=[...], constraints=[...], time_budget_minutes=...)` | Launch Playwright, establish the review contract, and return the one-time QA protocol plus initial observation. The budget is advisory; `0` means none. |
-| `observe()` | URL + interactive elements (description-keyed) + visible feedback + counts + ARIA + viewport state. Read this first, after every action. |
-| `coverage_update(goal, status, evidence)` | Mark a goal `in_progress` before its journey to open a precise evidence window. `exercised` and `blocked` require an explanation and automatically link URLs, value-redacted actions, screenshots, checks, and findings; Argus never guesses semantic completion. |
+| `observe()` | URL, targets, feedback, counts, coverage and next-check hints. Reuse post-action observations; call again only for missing or stale evidence. |
+| `coverage_update(goal, status, evidence)` | Accepts one goal or a list of related goals. Mark `in_progress` before the shared journey. `exercised` and `blocked` require observed evidence and link URLs, value-redacted actions, screenshots, checks and findings. Invalid batches make no changes. |
 | `click_what(description)` | Click the element matching `description`. Returns the top candidates if ambiguous — rephrase rather than guess. |
 | `type_into(description, text)` / `select_into(description, value)` | Inputs and dropdowns by description. |
 | `test_action(target, expect=...)` | Click + before/after diff in one call. Pass `expect` to PREDICT the outcome ({"count":{"label":"tasks","delta":1}}, {"gains":"Buy milk"}, {"removes":...}, {"text_present":...}, {"toast":...}, {"url_changed":true}) and Argus reports MATCH / SURPRISE — a surprise is a bug lead. Also shows CROSS-STACK: which requests the click fired (methods/statuses) and a CHECK nudge when a message appeared without a matching write. |
-| `verify_persistence(expect, target_text, after_url)` | Forces a fresh GET; reports whether `target_text` is `present` / `absent`. The "Saved!" toast is not proof — this is. |
-| `capsule_save(name, liveness_marker)` / `capsule_restore(name)` | Snapshot the logged-in/seeded state (cookies+storage) after minting it through the UI, then restore it later (with a mandatory live/stale re-check). Restore is a CLEAN replace, so save→branch A→restore→branch B runs two journeys from a byte-identical state for differential testing. |
+| `verify_persistence(expect, target_text, after_url)` | Forces a fresh GET; returns target presence and the page observation. Check persistence once, repeat only to resolve uncertainty. A matching symptom is not proof of a semantic defect. |
+| `capsule_save(name, liveness_marker)` / `capsule_restore(name)` | Snapshot cookies and page storage after establishing state through the UI. Restore replaces the captured client state and checks a saved liveness marker when provided; without one, validity remains unverified. It does not reset backend data or guarantee identical application state across journeys. |
 | `regression_check()` | Re-test the findings journaled in prior runs against the CURRENT build: STILL-PRESENT / NO-LONGER-REPRODUCES / INCONCLUSIVE. "Did my fix land, did anything come back?" |
 | `inspect_element(description)` | Computed styles + ARIA + outerHTML + truncation flag for interactive or visible non-interactive content. |
 | `check_layout()` | Bounded viewport signals for horizontal overflow, clipped text, small targets, and fixed/sticky overlays. |
@@ -70,7 +96,7 @@ the user's broader task. The short version:
 | `get_errors()` | Drain captured console + network events. Events retain the page where they occurred; matching console/network symptoms attach to an existing root cause, while new causes are tagged "auto-captured / not independently verified". |
 | `check_links()` / `check_performance()` | Probe-style helpers — return raw data, no auto-bug. |
 | `crawl_site()` | Page discovery: crawls internal links, auto-capturing only console/network events (tagged). Walk the surfaced pages and record_bug what you confirm. |
-| `end_session()` | Close session; write HTML, JSON, JUnit, and SARIF reports with separate tool-call and recorded-step counts. |
+| `end_session(coverage_updates=...)` | Optionally submit explicit final exercised/blocked goals with evidence, then close and export reports. The entire batch validates before shutdown; invalid updates keep the session open. |
 
 ### Screen mode (macOS)
 
@@ -88,19 +114,19 @@ the user's broader task. The short version:
 ```
 start_session(url, goals=[...], constraints=[...], time_budget_minutes=15)
                                        # initial result already MAPS the page
-coverage_update(goal, "in_progress")   # opens this goal's evidence window
+coverage_update([goal_a, goal_b], "in_progress")
                                        # USE IT — pick a real goal, walk it
                                        #   end-to-end, carrying state across pages
                                        # HYPOTHESIZE — what could go wrong
 click_what(...) / type_into(...) /     # ACT — one probe per call
 test_form({...})
-observe()                              # OBSERVE — what changed?
+                                       # read returned observation; observe only if needed
 verify_persistence(...)                # VERIFY (delete / save / submit / toggle)
-record_bug(..., verify={...})          # RECORD — verify clause attaches a receipt
-coverage_update(goal, "exercised",    # COVER — preserve the observed evidence
-                evidence)
-... repeat ...
-end_session()                          # reports completed + unfinished coverage
+record_bug(..., verify={...})          # RECORD — use suggested_verify for persistence
+... repeat; use coverage_update for mid-session milestones ...
+end_session(coverage_updates=[         # final coverage + reports in one call
+  {"goal": [goal_a, goal_b], "status": "exercised", "evidence": evidence}
+])                                    # preserves unfinished goals
 ```
 
 Reports preserve original screenshot evidence and normally reference
@@ -109,6 +135,27 @@ compact WebP previews under `report-assets/`. Set
 needed. Machine-readable JSON also contains complete reproduction receipts,
 goal evidence, user constraints, page coverage, time-budget status, review mode,
 observations, tool-call counts, step counts, and screenshot metadata.
+
+Since 0.10.0, persistence mismatches may include `suggested_verify` for
+a fresh-load recheck without repeating writes. Do not use replay for an
+unrecorded refresh. Supplement an existing finding with
+`record_bug(title, severity, verify=..., finding_id=...)`, omitting evidence and
+keeping title/severity unchanged. At most two rechecks are allowed; stop on a
+confirmed receipt. Inconclusive is not proof. Compact/delta coverage may share
+bundles via goal `evidence_ref` into the same `coverage.evidence` map; resolve
+those references before judging coverage. See the protocol for exact semantics.
+Successful compact/delta envelopes may omit empty recovery and zero/false
+progress metadata; use their documented defaults. Verdicts remain explicit.
+
+Since 0.10.0, a new `in_progress` goal group freezes the previous group's
+evidence window without changing its status. Batch only genuinely shared
+journeys. Reopening a goal starts a new window; re-finalizing extends an open
+window until another goal starts or is finalized. For a deferred bug, provide
+`evidence.goal` or `evidence.goals` from the declared goals and `expected`/`actual`.
+Fresh-load verification supplies the default finding URL and captures that page
+before returning to the caller. Explicit URLs and screenshot opt-outs are kept;
+missing/mismatched screenshots produce warnings, not guessed evidence.
+`evidence_calls` are caller-claimed references, not machine-verified call IDs.
 
 ## When `record_bug` is appropriate
 
@@ -154,13 +201,14 @@ Don't record speculation, polish nits, or static a11y / SEO that
 - `argus-mcp --version` — what version your MCP host actually loaded.
 - `argus-mcp --doctor` — macOS permission probes for screen mode.
 - `argus-mcp --list-tools` — selected tool profile and exported names.
-- `argus-mcp --tool-profile core|screen|full` — control discovery size.
+- `argus-mcp --tool-profile web|advanced|screen|full` — control discovery size.
 - `argus-mcp --unsafe` — turn on `eval_js` (off by default).
 - `argus-mcp --monitor-port 8765` — enable the read-only loopback dashboard,
   health/readiness endpoints, SSE events and metrics; use `0` for a free port.
 - `argus-cleanup --keep-runs 20` — dry-run report retention; add `--apply`
   to remove complete old run artifacts without touching journals or capsules.
-- `python -m argus.bench --target all` — reproduce the 34 / 34 matrix.
+- `python -m argus_lab.bench --target all` — from a source checkout, reproduce
+  the 34 / 34 matrix.
 - `python -m argus.screen.validate <app names...>` — read-only AX walk
   over running apps, JSON output.
 

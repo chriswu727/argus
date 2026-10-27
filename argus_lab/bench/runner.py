@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Awaitable, Callable, List, Optional, Tuple
 
 import argus.mcp_server as mcp_module
-from argus.models import Bug
+from argus.domain.models import Bug
 from argus.settings import Settings
 
 # eval_js needs --unsafe — bench enables it.

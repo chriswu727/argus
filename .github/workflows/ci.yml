@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.12"]
+        python-version: ["3.11", "3.12"]
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -30,17 +30,29 @@ jobs:
       - name: Install package
         run: python -m pip install --upgrade pip 'setuptools>=83.0.0' && python -m pip install -e '.[dev]'
       - name: Smoke-test package import
-        run: python -c "from argus.mcp_server import mcp; assert mcp is not None"
+        run: |
+          python -m pip check
+          python -c "from argus.mcp_server import mcp; assert mcp is not None"
+          python -m argus.install_check
       - name: Audit installed dependencies
         run: python -m pip_audit --vulnerability-service osv --progress-spinner off --skip-editable
       - name: Static checks
         run: |
-          ruff check argus tests
-          ruff format --check argus tests
+          ruff check argus argus_lab tests scripts plugins/tests
+          ruff format --check argus argus_lab tests scripts plugins/tests
           mypy
+      - name: Check Claude plugin bundle
+        run: |
+          python -m pip install uv==0.11.6
+          python -m pytest plugins/tests
       - name: Install Chromium
         run: python -m playwright install --with-deps chromium
       - name: Run tests
         env:
           ARGUS_REQUIRE_BROWSER: "1"
         run: python -m pytest
+      - name: Check public distribution contents
+        run: |
+          python -m pip install build
+          python -m build
+          python scripts/check_distributions.py dist/*
