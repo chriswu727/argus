@@ -56,3 +56,23 @@ jobs:
           python -m pip install build
           python -m build
           python scripts/check_distributions.py dist/*
+
+  mcp-2-preview:
+    name: mcp 2.x preview (non-blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Install Argus with mcp 2.x overriding the 1.x pin
+        run: |
+          python -m pip install uv==0.11.6
+          echo 'mcp>=2,<3' > /tmp/mcp-2.txt
+          uv pip install --system --override /tmp/mcp-2.txt -e '.[dev]'
+          python -c "import importlib.metadata as m; print('mcp', m.version('mcp'))"
+      - name: Check stdio, discovery and structured errors
+        run: python -m argus.install_check
+      - name: Run SDK compatibility tests
+        run: python -m pytest tests/test_mcp_compat.py

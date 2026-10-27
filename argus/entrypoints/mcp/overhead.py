@@ -4,6 +4,8 @@ import json
 
 from mcp.types import CallToolResult, Tool
 
+from .compat import field
+
 
 def json_bytes(value) -> int:
     return len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
@@ -15,8 +17,8 @@ def response_bytes(result: CallToolResult) -> dict[str, int]:
         "text_utf8_bytes": sum(
             len(block.text.encode()) for block in result.content if block.type == "text"
         ),
-        "structured_json_bytes": json_bytes(result.structuredContent)
-        if result.structuredContent is not None
+        "structured_json_bytes": json_bytes(field(result, "structuredContent"))
+        if field(result, "structuredContent") is not None
         else 0,
         "image_base64_bytes": sum(
             len(block.data.encode()) for block in result.content if block.type == "image"
@@ -33,8 +35,8 @@ def discovery_bytes(tools: list[Tool], instructions: str = "") -> dict[str, int]
         ),
         "instructions_utf8_bytes": len(instructions.encode()),
         "description_utf8_bytes": sum(len((tool.description or "").encode()) for tool in tools),
-        "input_schema_json_bytes": sum(json_bytes(tool.inputSchema) for tool in tools),
+        "input_schema_json_bytes": sum(json_bytes(field(tool, "inputSchema")) for tool in tools),
         "output_schema_json_bytes": sum(
-            json_bytes(tool.outputSchema) for tool in tools if tool.outputSchema
+            json_bytes(field(tool, "outputSchema")) for tool in tools if field(tool, "outputSchema")
         ),
     }
