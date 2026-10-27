@@ -1,4 +1,6 @@
-"""Compatibility imports; the report service lives in argus.adapters.reporting."""
+"""Compatibility imports; the report service lives in argus.adapters.reporting. Deprecated; removal is planned for 0.13."""
+
+import warnings
 
 from .adapters.reporting.common import _BUGTYPE_LABELS as _BUGTYPE_LABELS
 from .adapters.reporting.common import _MAX_STEPS as _MAX_STEPS
@@ -14,3 +16,9 @@ from .adapters.reporting.common import _repro_badge as _repro_badge
 from .adapters.reporting.common import _repro_detail as _repro_detail
 from .adapters.reporting.common import _trust_rank as _trust_rank
 from .adapters.reporting.reporter import Reporter as Reporter
+
+warnings.warn(
+    "argus.reporter is deprecated and will be removed in Argus 0.13; import from argus.adapters.reporting.reporter and argus.adapters.reporting.common.",
+    DeprecationWarning,
+    stacklevel=2,
+)

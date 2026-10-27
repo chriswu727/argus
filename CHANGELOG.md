@@ -18,6 +18,10 @@
   `python -m argus.install_check` passes for every profile. A non-blocking CI
   job installs mcp 2.x over the 1.x pin and runs that check plus
   `tests/test_mcp_compat.py`. The release dependency stays `mcp<2`.
+- Importing `argus.models`, `argus.detector` or `argus.reporter` now emits a
+  `DeprecationWarning` naming the replacement in `argus.domain` or
+  `argus.adapters.reporting`. They still re-export the same objects and are
+  scheduled for removal in 0.13. Argus itself no longer imports them.
 - Add a Codex plugin bundle (`plugins/codex`, Agent Plugins 1.0 format) served
   from this repository's marketplace: `codex plugin marketplace add
   chriswu727/argus`, then `codex plugin add argus-testing@argus`. It runs the
