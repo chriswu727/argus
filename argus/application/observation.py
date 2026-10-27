@@ -284,6 +284,39 @@ def _edge_case_hint(s, el) -> str:
     )
 
 
+def _begin_dialogs(s, accept_dialog: bool):
+    """Mark the dialog log and, when asked, accept the next dialog only."""
+    token = s.browser.accept_next_dialog() if accept_dialog else None
+    return s.browser.dialog_cursor(), token
+
+
+def _finish_dialogs(s, mark) -> list:
+    """Dialogs the action raised; drops an accept that no dialog consumed."""
+    cursor, token = mark
+    if token is not None:
+        s.browser.discard_dialog_response(token)
+    return [
+        {
+            "type": item.get("type"),
+            "message": _redact(str(item.get("message") or ""))[:200],
+            "response": item.get("responded_with"),
+        }
+        for item in s.browser.dialogs_since(cursor)
+    ]
+
+
+def _dialog_lines(dialogs: list) -> str:
+    """A confirm() that was dismissed silently looks like a dead button."""
+    lines = []
+    for item in dialogs:
+        response = "accepted" if item["response"] == "accept" else "dismissed"
+        line = f"\nDIALOG: {item['type']} {item['message']!r} was {response}."
+        if item["type"] in ("confirm", "prompt") and response == "dismissed":
+            line += " If the user authorized this action, repeat it with accept_dialog=true."
+        lines.append(line)
+    return "".join(lines)
+
+
 def _new_events_line(s, before_console: int, before_network: int) -> str:
     """One-line surface of console/network errors that fired since the given
     counts — a PEEK, not a drain (get_errors still records them as findings).

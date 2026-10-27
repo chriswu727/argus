@@ -3,8 +3,12 @@ from __future__ import annotations
 from argus.domain.contracts import ErrorCode, Rejection
 
 from .evidence import _record_action, _record_coverage_action
+from .inspection import _visual_inspection_query
 from .observation import (
+    _begin_dialogs,
+    _dialog_lines,
     _edge_case_hint,
+    _finish_dialogs,
     _new_events_line,
     _new_tab_line,
     _resolve_or_error,
@@ -16,7 +20,9 @@ from .payloads import action_result
 from .session import _require_session, _require_web_session
 
 
-async def click_what(description: str) -> str:
+async def click_what(
+    description: str, double_click: bool = False, accept_dialog: bool = False
+) -> str:
     """Click the element best matching the natural-language `description`.
 
     Examples: "Login button", "Add Task", "the email field", "Delete near
@@ -28,8 +34,34 @@ async def click_what(description: str) -> str:
     If the description is ambiguous, this returns the top candidates with
     their distinguishing properties so you can rephrase. It does not
     guess and click — that's how testers misclick.
+
+    double_click=True double-clicks instead, and may target plain visible text
+    (an inline-edit label) by its exact wording. A JS alert/confirm/prompt the
+    click raises is reported; it is dismissed unless accept_dialog=True, which
+    accepts only that dialog. Accept only when the user authorized the action
+    the dialog confirms.
     """
     s = _require_session()
+    if double_click and s.mode == "web" and s.browser is not None:
+        query, _ = _visual_inspection_query(description)
+        mark = _begin_dialogs(s, accept_dialog)
+        done = await s.browser.double_click_text(query)
+        if done is not None:
+            dialogs = _finish_dialogs(s, mark)
+            if not done:
+                return Rejection(
+                    f"click_what({description!r}, double_click=true) — failed to "
+                    f'double-click the text "{query[:60]}".',
+                    ErrorCode.BACKEND,
+                )
+            s.steps.append(f'double-click text "{query[:60]}"')
+            _record_action(s, "double_click", description, f"text:{query}")
+            result = await action_result(
+                s, f'Double-clicked the text "{query[:60]}".{_dialog_lines(dialogs)}', "click"
+            )
+            result.data["dialogs"] = dialogs
+            return result
+        _finish_dialogs(s, mark)
     el, err = _resolve_or_error(s, description)
     if err:
         return err
@@ -42,33 +74,43 @@ async def click_what(description: str) -> str:
     # triggers (see _new_events_line) without draining them from get_errors.
     _bc, _bn = s.browser.error_cursors()
     _bt = _tab_count(s)  # to detect a click that spawns a new tab
+    mark = _begin_dialogs(s, accept_dialog)
     # Route through browser.click so a duplicate-label target hits the RESOLVED
     # element (nth-aware), not the first DOM match.
-    ok = await s.browser.click(s._last_elements.index(el), s._last_elements)
+    index = s._last_elements.index(el)
+    if double_click:
+        ok = await s.browser.double_click(index, s._last_elements)
+    else:
+        ok = await s.browser.click(index, s._last_elements)
+    dialogs = _finish_dialogs(s, mark)
     if not ok:
         return Rejection(
             f'click_what({description!r}) — failed to click "{label[:60]}".\n'
             "The element may be obscured, stale, or removed. Try observe() again.",
             ErrorCode.BACKEND,
         )
-    _record_action(s, "click_what", description)
+    _record_action(s, "double_click" if double_click else "click_what", description)
 
     new_state = await s.browser.get_state()
     s._last_elements = new_state.elements
     if new_state.url not in s.pages_visited:
         s.pages_visited.append(new_state.url)
-    return await action_result(
+    result = await action_result(
         s,
-        f'Clicked "{label[:60]}" (via description {description!r}).\n'
+        f'{"Double-clicked" if double_click else "Clicked"} "{label[:60]}" '
+        f"(via description {description!r}).\n"
         f"Now on: {new_state.url} — {len(new_state.elements)} interactive elements visible."
         f"{_toast_line(new_state.toast_messages)}"
         f"{_verify_nudge(label, bool(new_state.toast_messages))}"
         f"{_new_tab_line(s, _bt)}"
-        f"{_new_events_line(s, _bc, _bn)}\n"
+        f"{_new_events_line(s, _bc, _bn)}"
+        f"{_dialog_lines(dialogs)}\n"
         f"Call observe() for a fresh view if needed.",
         "click",
         new_state,
     )
+    result.data["dialogs"] = dialogs
+    return result
 
 
 async def type_into(description: str, text: str) -> str:
@@ -186,8 +228,12 @@ async def hover_what(description: str) -> str:
     ok = await s.browser.hover(idx, s._last_elements)
     if not ok:
         return f"hover_what({description!r}) — failed (element may be off-screen or detached)."
-    _record_coverage_action(s, "hover_what", description)
-    return f'Hovered "{label[:60]}". observe() to see what just appeared.'
+    _record_action(s, "hover_what", description)
+    # The observation is taken while the pointer stays put, so controls the
+    # hover revealed (a row's delete button) are listed and targetable next.
+    return await action_result(
+        s, f'Hovered "{label[:60]}". Targets revealed by the hover are listed below.', "hover"
+    )
 
 
 async def right_click(description: str) -> str:

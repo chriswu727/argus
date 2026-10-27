@@ -16,12 +16,18 @@ from argus.resolver import (
 from .capture import _capture_browser_events, _file_event_bugs
 from .evidence import _auto_screenshot, _record_action, _record_coverage_action
 from .expectations import _evaluate_expectation, _reconcile_action
-from .observation import _resolve_or_error
+from .observation import _begin_dialogs, _dialog_lines, _finish_dialogs, _resolve_or_error
 from .payloads import observation_data
 from .session import _require_session
 
 
-async def test_action(target: str, expectation: str = "", expect: Optional[dict] = None) -> str:
+async def test_action(
+    target: str,
+    expectation: str = "",
+    expect: Optional[dict] = None,
+    double_click: bool = False,
+    accept_dialog: bool = False,
+) -> str:
     """Click an element and observe the diff in one round-trip — optionally
     predicting the outcome so Argus can catch the SURPRISE for you.
 
@@ -46,6 +52,10 @@ async def test_action(target: str, expectation: str = "", expect: Optional[dict]
             {"toast": "Saved"}                          a new toast appeared
             {"url_changed": true}
           Multiple keys may be combined; all must hold.
+        double_click: Double-click instead of click (inline editors).
+        accept_dialog: Accept a JS confirm/prompt this click raises; dialogs
+            are otherwise dismissed and reported. Only when the user authorized
+            the action the dialog confirms.
     """
     s = _require_session()
 
@@ -67,8 +77,16 @@ async def test_action(target: str, expectation: str = "", expect: Optional[dict]
         # Route through _locator so a duplicate-label target hits the resolved
         # element, not the first DOM match (same fix as click_what).
         idx = s._last_elements.index(el)
-        await s.browser.click_resolved(idx, s._last_elements)
-        await s.browser.settle()
+        mark = _begin_dialogs(s, accept_dialog)
+        try:
+            if double_click:
+                if not await s.browser.double_click(idx, s._last_elements):
+                    raise RuntimeError("double-click failed")
+            else:
+                await s.browser.click_resolved(idx, s._last_elements)
+            await s.browser.settle()
+        finally:
+            dialogs = _finish_dialogs(s, mark)
     except Exception as exc:
         ss = await _auto_screenshot(s, "action_failed", step)
         return Rejection(
@@ -83,7 +101,7 @@ async def test_action(target: str, expectation: str = "", expect: Optional[dict]
     s._last_elements = after.elements
     if after.url not in s.pages_visited:
         s.pages_visited.append(after.url)
-    _record_action(s, "click_what", target)
+    _record_action(s, "double_click" if double_click else "click_what", target)
 
     console_errs, network_errs = s.browser.drain_errors()
     new_bugs = await _capture_browser_events(s, after, console_errs, network_errs)
@@ -95,7 +113,8 @@ async def test_action(target: str, expectation: str = "", expect: Optional[dict]
     filed_bugs = _file_event_bugs(s, new_bugs)
 
     lines = [
-        f'ACTION: Clicked "{label[:60]}" via target {target!r}',
+        f'ACTION: {"Double-clicked" if double_click else "Clicked"} "{label[:60]}" '
+        f"via target {target!r}{_dialog_lines(dialogs)}",
     ]
     if expectation:
         lines.append(f"  Expected: {expectation}")
@@ -176,6 +195,7 @@ async def test_action(target: str, expectation: str = "", expect: Optional[dict]
                 for label, matches, detail in checks
             ],
             "screenshot": ss_path,
+            "dialogs": dialogs,
             "auto_captured_findings": len(filed_bugs),
             "finding_confirmed": False,
         },
