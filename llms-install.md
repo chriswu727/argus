@@ -18,7 +18,8 @@ uvx --from playwright playwright install chromium
 After an upgrade, a missing browser executable can mean the installed Chromium
 does not match Argus's resolved Playwright version. Install the matching browser
 with `uvx --from argus-testing python -m playwright install chromium`, then restart
-the MCP host.
+the MCP host. `uvx --from argus-testing argus-mcp --doctor` verifies the browser
+and report directory and prints the exact fix for anything missing.
 
 ## MCP configuration
 

@@ -209,7 +209,7 @@ argus-cleanup --output ./argus-reports --keep-runs 20 --apply
 ```bash
 pip install 'argus-testing[mac]'
 brew install cliclick
-argus-mcp --doctor
+argus-mcp --doctor          # 检查 Chromium、报告目录；macOS 上还检查屏幕权限
 argus-mcp --tool-profile screen
 ```
 

@@ -98,7 +98,7 @@ def main() -> None:
     )
     args = parser.parse_args()
     if args.doctor:
-        from argus.screen.permissions import main as doctor
+        from argus.doctor import main as doctor
 
         sys.exit(doctor())
     if args.list_tools:

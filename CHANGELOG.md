@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- `argus-mcp --doctor` now checks web testing on every platform: whether the
+  Chromium build for the installed Playwright exists, a real headless launch,
+  and whether the report directory is writable (probed with a temporary file,
+  since `os.access` always succeeds for root). Each failure prints the exact fix
+  for the interpreter running Argus; screen-mode probes run only on macOS and no
+  longer report `n/a` as passing elsewhere. Browser launch failures in
+  `start_session` name the same install command, distinguish missing system
+  libraries, and point to `--doctor`.
 - Add a project-maintained Claude plugin bundle with an exact 0.11.0 package
   pin, a locked dependency environment, the existing brand icon, the default
   web tool profile, local-execution and privacy disclosures,

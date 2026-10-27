@@ -5,6 +5,7 @@ from typing import List, Optional
 from urllib.parse import urlparse
 
 from argus.application.context import current_runtime
+from argus.doctor import launch_failure_hint
 from argus.domain.contracts import ErrorCode, OperationError, Rejection, SessionState, ToolText
 
 from .coverage import _contract_items, _session_protocol, _update_coverage_from_state
@@ -90,8 +91,7 @@ async def start_session(
         raise OperationError(
             ErrorCode.BACKEND,
             f"failed to launch the browser — "
-            f"{type(exc).__name__}: {str(exc)[:160]}\n"
-            f"Run `playwright install chromium` and try again.",
+            f"{type(exc).__name__}: {str(exc)[:160]}\n{launch_failure_hint(exc)}",
         )
     try:
         await current_runtime().progress(Stage.NAVIGATING)
