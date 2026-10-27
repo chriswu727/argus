@@ -48,6 +48,16 @@ Ask the agent to test an application you are authorized to exercise, for example
 "Test http://localhost:3000. Check saving, state after refresh, invalid input, and
 cross-page consistency. Report reproducible issues with evidence."
 
+Other example tasks, after starting your own application:
+
+- "Test the form at http://localhost:3000 with blank and invalid input. Check
+  that errors are useful and do not erase valid fields. Do not create real
+  accounts or send messages."
+- "Recheck the known findings for http://localhost:3000 using the existing
+  local regression journal. Do not repeat write actions without approval.
+  Distinguish still present, no longer reproduced, and inconclusive. An empty
+  journal is not evidence that the app is correct."
+
 The server supplies its testing protocol through `start_session`. It does not
 start a test merely because the plugin is installed. The agent must respect the
 user's scope and obtain authorization before consequential actions. A completed
