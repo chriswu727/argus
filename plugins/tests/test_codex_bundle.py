@@ -105,6 +105,21 @@ def test_codex_skill_declares_itself_and_pins_the_locked_browser():
     ) in skill
 
 
+def test_both_skills_give_valid_test_action_expectations():
+    from argus.application.expectations import _validated_expectation
+
+    for skill in (
+        BUNDLE / "skills" / "argus-test" / "SKILL.md",
+        CLAUDE / "skills" / "test" / "SKILL.md",
+    ):
+        text = skill.read_text()
+        assert "`test_action` with an `expect` prediction" in text
+        examples = [json.loads(m) for m in re.findall(r"`(\{.*?\})`", text)]
+        assert examples
+        for example in examples:
+            assert _validated_expectation(example)[1] == [], (skill, example)
+
+
 @pytest.mark.asyncio
 async def test_codex_launch_command_handshake_from_plugin_root():
     manifest = load(BUNDLE / "plugin.json")
