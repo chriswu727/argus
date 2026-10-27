@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Remove the standalone `argus <url>` CLI mode, its LiteLLM planner and the
+  LiteLLM-driven bench runner. Argus is a tool for the host agent and never
+  calls a model itself. `argus-regression` and `argus-cleanup` are unchanged.
+- Drop LiteLLM, PyYAML, Jinja2, aiohttp, multidict and urllib3 from runtime
+  dependencies; a fresh install resolves 41 packages instead of 82.
 - Re-finalizing a goal now extends its evidence window while no other goal has
   started or been finalized, so updated evidence text no longer points at an
   earlier window. Windows closed by other work stay closed.

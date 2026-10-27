@@ -4,7 +4,7 @@
 
 <img src="https://raw.githubusercontent.com/chriswu727/argus/main/assets/argus-icon.png" alt="Argus Testing logo — an eye with a verified check" width="112">
 
-# Argus
+# Argus Testing
 
 **A testing-engineer toolkit for AI agents—explore user journeys, check outcomes, and reproduce bug symptoms with evidence, through MCP.**
 
@@ -255,19 +255,6 @@ claude mcp add argus -- argus-mcp
 </details>
 
 <details>
-<summary><b>CLI mode (no MCP host — bring your own LLM)</b></summary>
-
-```bash
-# Uses a LiteLLM-backed planner. Set a provider key (OPENAI_API_KEY, DEEPSEEK_API_KEY, …).
-uvx --from argus-testing argus http://localhost:3000 --model deepseek/deepseek-chat
-
-# Higher recall: union N independent passes (deduped, proven instance kept)
-uvx --from argus-testing argus http://localhost:3000 --passes 3
-```
-
-</details>
-
-<details>
 <summary><b>Screen mode (macOS) — test any native app, not just the web</b></summary>
 
 ```bash
@@ -430,9 +417,7 @@ findings and coverage before the scorer computes paired metrics.
 Read the [published 0.8 results and limitations](docs/evaluation-0.8.md), including
 the residual defect in the nominally fixed form fixture and all invalid preflights.
 
-The older `argus.bench.agent_runner` uses heuristic keyword matching. It is a
-legacy exploratory diagnostic, not independent precision/recall evidence and
-not the basis for current product claims. See [methodology](docs/evaluation.md).
+See [methodology](docs/evaluation.md).
 
 </details>
 
@@ -628,8 +613,7 @@ human-eye-fixture/    # DarkShop    (12 human-eye bugs)
 
 Start with [Architecture](docs/architecture.md), [design decisions](docs/decisions.md)
 and [Contributing](CONTRIBUTING.md) for implementation boundaries, tests and
-extension points. The autonomous LiteLLM exploration loop remains a separate
-workflow; shared regression does not import or mutate the MCP server.
+extension points. Shared regression does not import or mutate the MCP server.
 
 ---
 

@@ -211,8 +211,7 @@ argus-mcp --tool-profile screen
 原生模式需要 Screen Recording 和 Accessibility 授权。默认有单次超时、30 分钟会话上限，
 以及 `~/.argus/abort` 紧急停止文件。Linux CI 不验证真实 macOS 权限与应用交互。
 
-MCP 模式使用宿主已有的模型，不需要 Argus 专用 provider key。
-独立 `argus URL --model ...` CLI 是另一条 LiteLLM 工作流，需要自行配置模型提供商和密钥。
+Argus 使用宿主已有的模型，不需要 Argus 专用 provider key。
 
 ## 安全与隐私
 

@@ -76,7 +76,7 @@ CLI and MCP regression share `check_entries` and the same registry. Automatic
 regression refuses replay and custom strategies because their side effects are
 unknown. Invalid/corrupt journals are operational failures, not empty clean
 runs. Exit 3 means inconclusive; exit 0 can also mean there were no findings to
-check. The older autonomous LiteLLM explorer is a separate workflow.
+check.
 
 ## Finding and coverage evidence
 

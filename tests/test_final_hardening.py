@@ -112,22 +112,6 @@ def test_report_steps_trim_and_collapse():
     assert "omitted" not in _format_steps(["click A", "verify B"])  # short lists untouched
 
 
-def test_bench_score_verified_offcatalog_is_not_fp():
-    from argus.bench.agent_runner import score
-
-    v = _bug(receipt={"attempted": True, "reproduced": True})
-    v.title, v.description = "totally offbeat glitch", "weird thing"
-    u = _bug(receipt=None)
-    u.title, u.description = "another offbeat noise", "meh"
-    # an auto-captured off-catalog console error is a real observed event, NOT an FP
-    a = _bug(receipt={"attempted": False, "auto_captured": True})
-    a.title, a.description = "captured glitch zzz", "some observed noise"
-    s = score([v, u, a])
-    assert s["unmatched"] == 3  # all three off the fuzzy catalog
-    assert s["fp_candidates"] == 1  # only `u` (unverified, not auto-captured) is an FP candidate
-    assert s["verified"] == 1  # the verified off-catalog find is a real bug, not an FP
-
-
 def test_network_detector_handles_failed_request_no_status():
     from argus.detector import Detector
 
@@ -602,57 +586,6 @@ def test_regression_output_dir_respects_env(monkeypatch):
     assert _resolve_output_dir("/explicit") == "/explicit"  # explicit --output still wins
     monkeypatch.delenv("ARGUS_OUTPUT_DIR")
     assert _resolve_output_dir(None) == "./argus-reports"  # fallback when neither set
-
-
-def test_multipass_union_dedups_and_prefers_verified():
-    # Multi-pass recall: union findings across passes, dedup by structural
-    # fingerprint (not title), and when the same bug recurs keep the PROVEN one.
-    from argus.cli import _merge_results
-
-    def bug(title, url, expect, target, reproduced=None):
-        rec = (
-            {"at_url": url, "expect": expect, "target_text": target, "reproduced": reproduced}
-            if expect
-            else None
-        )
-        return Bug(
-            type=BugType.MISLEADING_SUCCESS,
-            severity=Severity.HIGH,
-            title=title,
-            description="",
-            url=url,
-            steps_to_reproduce=[],
-            reproduction_receipt=rec,
-        )
-
-    p1 = ExplorationResult(
-        url="http://x",
-        bugs=[bug("A v1", "/a", "present", "gone", None), bug("B", "/b", "absent", "x", True)],
-        pages_visited=["/a", "/b"],
-        actions_taken=10,
-        duration_seconds=5.0,
-        focus_areas=[],
-        screenshots=[],
-    )
-    p2 = ExplorationResult(
-        url="http://x",
-        bugs=[
-            bug("A v2 verified", "/a", "present", "gone", True),
-            bug("C", "/c", "present", "y", None),
-        ],
-        pages_visited=["/a", "/c"],
-        actions_taken=8,
-        duration_seconds=4.0,
-        focus_areas=[],
-        screenshots=[],
-    )
-    m = _merge_results([p1, p2])
-    assert len(m.bugs) == 3  # A deduped; B + C distinct
-    a = [b for b in m.bugs if b.url == "/a"][0]
-    assert (a.reproduction_receipt or {}).get("reproduced") is True  # kept the proven instance
-    assert m.pages_visited == ["/a", "/b", "/c"]
-    assert m.actions_taken == 18
-    assert _merge_results([p1]) is p1  # single pass is a no-cost passthrough
 
 
 def test_regression_artifact_json_and_junit():

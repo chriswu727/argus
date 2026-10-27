@@ -17,23 +17,17 @@ classifiers = [
 keywords = ["testing", "qa", "software-testing", "browser-testing", "autonomous-testing", "qa-engineer", "bug-finding", "ai-agent", "playwright", "exploratory-testing", "mcp", "claude-code", "codex"]
 dependencies = [
     "playwright>=1.40.0",
-    "litellm>=1.96.2",
     "mcp[cli]>=1.30.0,<2.0.0",
     "click>=8.0.0",
     "pydantic>=2.0.0",
-    "pyyaml>=6.0",
     "rich>=13.0.0",
-    "jinja2>=3.0.0",
     "Pillow>=13.0.0",
     "filelock>=4.2.4,<5",
     "starlette>=0.27,<2",
     "uvicorn>=0.31,<1",
     "typing-extensions>=4.9",
-    "aiohttp>=3.14.5",
     "PyJWT>=2.15.1",
     "cryptography>=50.0.2",
-    "multidict>=6.9.1",
-    "urllib3>=2.8.0",
     "certifi>=2026.10.23",
 ]
 
@@ -54,7 +48,6 @@ mac = [
 ]
 
 [project.scripts]
-argus = "argus.cli:main"
 argus-mcp = "argus.mcp_server:main"
 argus-testing = "argus.mcp_server:main"
 argus-regression = "argus.cli:regression"
