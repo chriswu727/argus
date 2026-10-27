@@ -26,8 +26,10 @@ uvx --python 3.12 --from argus-testing==0.11.0 --with playwright==1.64.1 python 
 
 The first plugin start otherwise downloads Python 3.12 and the locked
 dependencies (a few hundred megabytes unpacked) before the MCP handshake, which
-can outlast the client's startup wait on a slow connection. With a warm cache,
-the first start only links cached packages. If the first connection still times
+can outlast the client's startup wait on a slow connection. The warm-up pins
+Argus and Playwright; uv resolves the other dependencies afresh rather than from
+the plugin's `uv.lock`, so they usually, but not always, match it. A warm cache
+therefore usually removes most of the first-start download. If the first connection still times
 out, start Claude with a longer startup timeout in milliseconds, for example
 `MCP_TIMEOUT=120000 claude`. Linux may also need Playwright's system
 dependencies; see the [installation guide](https://github.com/chriswu727/argus#quick-start).
