@@ -11,19 +11,24 @@ package does not mean it has been accepted into Anthropic's directory.
 ## Requirements and setup
 
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and make
-`uvx` available to the application that starts Claude. The launcher selects Python
-3.12 and the exact published `argus-testing==0.11.0` release. uv may download that
-interpreter and the Python dependencies when they are not already cached.
+`uv` available to the application that starts Claude. The launcher selects Python
+3.12 and runs the exact published `argus-testing==0.11.0` release from the bundled
+`uv.lock`, which pins dependency versions, sources, and hashes. It refuses to run
+if the project and lockfile disagree. uv may download that interpreter and the
+locked Python dependencies when they are not already cached, and creates a local
+virtual environment under the plugin directory.
 
 Before the first browser session, install the matching Chromium browser:
 
 ```bash
-uvx --python 3.12 --from argus-testing==0.11.0 python -m playwright install chromium
+uv run --project ./plugins/claude --locked --python 3.12 python -m playwright install chromium
 ```
 
 Linux may also need Playwright's system dependencies; see the
 [installation guide](https://github.com/chriswu727/argus#quick-start).
-Browser installation is a separate, explicit setup step, not a hidden startup
+Run that command from the repository checkout. For an installed plugin, replace
+`./plugins/claude` with its installation directory. Browser installation is a
+separate, explicit setup step, not a hidden startup
 hook. Do not install a second Argus MCP connection alongside this plugin: use
 either the plugin or a manual `claude mcp add` configuration.
 
