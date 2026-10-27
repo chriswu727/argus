@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Add a project-maintained Claude plugin bundle with an exact 0.11.0 package
+  pin, a locked dependency environment, the existing brand icon, the default
+  web tool profile, local-execution and privacy disclosures,
+  and a no-browser/no-model stdio launch check. Directory approval is separate
+  from publishing the bundle. The Python distribution is unchanged.
+
 ## 0.11.0 - 2026-10-26
 
 Compatibility: `--tool-profile agent` and `--tool-profile core` (and the same

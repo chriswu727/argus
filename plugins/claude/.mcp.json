@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "argus": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--project", "${CLAUDE_PLUGIN_ROOT}",
+        "--locked",
+        "--python", "3.12",
+        "argus-mcp",
+        "--tool-profile", "web"
+      ]
+    }
+  }
+}
