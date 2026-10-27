@@ -1199,6 +1199,25 @@ async def test_record_bug_tolerates_string_evidence():
         await _end()
 
 
+async def test_record_bug_keeps_a_finding_with_an_unknown_bug_type():
+    # Models guess categories ("inconsistency"); rejecting the whole finding
+    # made them resubmit it. Record it under the default type with a warning.
+    await _session_on_page(_PAGE)
+    try:
+        out = await _record(
+            title="unknownType",
+            severity="medium",
+            evidence={"bug_type": "Inconsistency", "screenshot": "skip"},
+        )
+        assert "Recorded bug" in out
+        bug = m.runtime.session.bugs[-1]
+        assert bug.type.value == "ux_issue"
+        assert any("inconsistency" in w and "ux_issue" in w for w in bug.evidence_warnings)
+        assert "inconsistency" in out
+    finally:
+        await _end()
+
+
 async def test_verify_can_be_carried_in_evidence():
     # Lower-barrier path: the agent puts the checkable target in `evidence`
     # (no separate verify dict) and the moat still engages.

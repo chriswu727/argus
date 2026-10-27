@@ -147,12 +147,16 @@ async def record_bug(
     else:
         url = ""
 
-    type_key = (ev.get("bug_type") or "ux_issue").strip().lower()
+    type_key = str(ev.get("bug_type") or "ux_issue").strip().lower()
+    # The category is metadata; a guessed one ("inconsistency") must not cost
+    # the finding itself. Keep it under the default type and say so.
+    type_warning = ""
     if type_key not in _BUG_TYPE_BY_NAME:
-        return Rejection(
-            f"record_bug: invalid bug_type {type_key!r}. "
-            f"Use one of: {', '.join(_BUG_TYPE_BY_NAME)}."
+        type_warning = (
+            f"bug_type {type_key[:40]!r} is not recognized; recorded as ux_issue. "
+            f"Known types: {', '.join(_BUG_TYPE_BY_NAME)}."
         )
+        type_key = "ux_issue"
     bug_type = _BUG_TYPE_BY_NAME[type_key]
 
     # Keep the report tight — a repeat of an already-recorded finding (agents
@@ -208,7 +212,7 @@ async def record_bug(
     screenshot_directive = ev.get("screenshot", "auto")
     screenshot_path: Optional[str] = None
     screenshot_label = None
-    warnings = []
+    warnings = [type_warning] if type_warning else []
     if screenshot_directive != "skip":
         if screenshot_directive and (
             "/" in screenshot_directive or screenshot_directive.endswith(".png")
