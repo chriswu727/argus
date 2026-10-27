@@ -38,7 +38,8 @@ separate macOS manual check; Linux CI does not claim to test that integration.
 - New report format: a pure renderer under `adapters/reporting/`, injected via
   `Reporter(exporters=...)` in `adapters/reporting/reporter.py`. HTML remains
   the primary report. `argus.models`, `argus.detector` and `argus.reporter` are
-  compatibility re-exports only; import from `domain/` and `adapters/` instead.
+  deprecated re-exports that warn on import and are removed in 0.13; import from
+  `domain/` and `adapters/` instead.
 - A different journal: implement `JournalPort` and wire it in `bootstrap.py`.
   The repository owns merge atomicity; callers should not read-then-write.
 - Browser actions: add a public adapter method. Application services must not
