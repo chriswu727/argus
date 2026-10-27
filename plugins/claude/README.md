@@ -14,29 +14,44 @@ Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and make
 `uv` available to the application that starts Claude. The launcher selects Python
 3.12 and runs the exact published `argus-testing==0.11.0` release from the bundled
 `uv.lock`, which pins dependency versions, sources, and hashes. It refuses to run
-if the project and lockfile disagree. uv may download that interpreter and the
-locked Python dependencies when they are not already cached, and creates a local
-virtual environment under the plugin directory.
+if the project and lockfile disagree, and creates a local virtual environment
+under the plugin directory.
 
-Before the first browser session, install the matching Chromium browser:
-
-```bash
-uv run --project ./plugins/claude --locked --python 3.12 python -m playwright install chromium
-```
-
-Linux may also need Playwright's system dependencies; see the
-[installation guide](https://github.com/chriswu727/argus#quick-start).
-Run that command from the repository checkout. For an installed plugin, replace
-`./plugins/claude` with its installation directory. Browser installation is a
-separate, explicit setup step, not a hidden startup
-hook. Do not install a second Argus MCP connection alongside this plugin: use
-either the plugin or a manual `claude mcp add` configuration.
-
-From a checkout, load the plugin for one Claude Code session:
+Before starting Claude with the plugin for the first time, warm uv's cache and
+install the matching Chromium browser. This works from any directory:
 
 ```bash
-claude --plugin-dir ./plugins/claude
+uvx --python 3.12 --from argus-testing==0.11.0 --with playwright==1.64.1 python -m playwright install chromium
 ```
+
+The first plugin start otherwise downloads Python 3.12 and the locked
+dependencies (a few hundred megabytes unpacked) before the MCP handshake, which
+can outlast the client's startup wait on a slow connection. The warm-up pins
+Argus and Playwright; uv resolves the other dependencies afresh rather than from
+the plugin's `uv.lock`, so they usually, but not always, match it. A warm cache
+therefore usually removes most of the first-start download. If the first connection still times
+out, start Claude with a longer startup timeout in milliseconds, for example
+`MCP_TIMEOUT=120000 claude`. Linux may also need Playwright's system
+dependencies; see the [installation guide](https://github.com/chriswu727/argus#quick-start).
+Browser installation is a separate, explicit setup step, not a hidden startup hook.
+
+Install the plugin from this repository's marketplace (Claude Code 2.1.275 or
+later):
+
+```
+/plugin install argus-testing --marketplace chriswu727/argus
+```
+
+On earlier versions, add the marketplace first:
+
+```
+/plugin marketplace add chriswu727/argus
+/plugin install argus-testing@argus
+```
+
+To try a checkout for one session instead, run `claude --plugin-dir ./plugins/claude`.
+Do not install a second Argus MCP connection alongside this plugin: use either
+the plugin or a manual `claude mcp add` configuration.
 
 Local MCP servers work in Claude Code and in Cowork sessions running on the
 user's computer. They do not execute in claude.ai web chat. This package does not

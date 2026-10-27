@@ -1,0 +1,15 @@
+{
+  "name": "argus",
+  "owner": {
+    "name": "Yichen Wu",
+    "url": "https://yichenwu.dev"
+  },
+  "description": "Argus — testing for coding agents, maintained by the Argus project.",
+  "plugins": [
+    {
+      "name": "argus-testing",
+      "source": "./plugins/claude",
+      "description": "Testing for coding agents: exercise real user journeys, find bugs, and verify them with evidence."
+    }
+  ]
+}

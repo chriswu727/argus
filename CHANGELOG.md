@@ -7,6 +7,15 @@
   web tool profile, local-execution and privacy disclosures,
   and a no-browser/no-model stdio launch check. Directory approval is separate
   from publishing the bundle. The Python distribution is unchanged.
+- Serve the bundle from this repository's marketplace, so it installs with
+  `/plugin install argus-testing --marketplace chriswu727/argus`. Document a
+  path-independent warm-up that pins Argus and the locked Playwright version and
+  installs the matching Chromium; with a cold cache the first start otherwise
+  downloads Python and every locked dependency before the MCP handshake. Other
+  dependencies are resolved afresh, so the warm-up usually removes most of that
+  download rather than guaranteeing an exact lock match. A test keeps the
+  warm-up pins in step with the manifest and lock, and the launch check keeps
+  proxy and certificate settings when it spawns uv.
 
 ## 0.11.0 - 2026-10-26
 
