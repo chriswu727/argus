@@ -263,6 +263,24 @@ def test_nearest_labels_suggests_by_token_overlap():
     assert m._nearest_labels("zzzzz nonexistent", els) == []  # no overlap -> no noise
 
 
+def test_nearest_labels_suggests_unlabeled_controls_by_their_row():
+    from tests.conftest import make_element
+
+    els = []
+    for title in ("Buy groceries", "Fix login page CSS"):
+        checkbox = make_element(tag="input", type="checkbox", value="on")
+        delete = make_element(tag="button", text="Delete")
+        for el in (checkbox, delete):
+            el.parent_context = f"{title} high Edit Delete"
+        els += [checkbox, delete]
+    els.append(make_element(tag="a", text="Home"))
+    near = m._nearest_labels("tick the Buy groceries box", els)
+    assert near and near[0].startswith("checkbox") and "Buy groceries" in near[0]
+    assert all("Fix login" not in d for d in near[:2])
+    # A shared kind word alone is not a suggestion.
+    assert m._nearest_labels("checkbox zzzz", els) == []
+
+
 def test_journal_only_persists_reproduced(tmp_path, monkeypatch):
     monkeypatch.setenv("ARGUS_OUTPUT_DIR", str(tmp_path))
     m.runtime.settings = replace(m.runtime.settings, output_dir=Path(str(tmp_path)))

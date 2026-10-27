@@ -6,6 +6,10 @@
   recorded as `ux_issue` with an evidence warning that lists the known types,
   instead of rejecting the whole finding and forcing a resubmission. A small
   model running the test skill lost a call this way with `"inconsistency"`.
+- When a description matches nothing, the "Closest on the page" shortlist now
+  includes unlabeled controls such as row checkboxes, ranked by the row they sit
+  in. Before, they never appeared there because only an element's own label was
+  compared.
 - Fix `click_what` (and the other description-based tools) rejecting the target
   descriptions `observe` itself returns. State markers such as `[unchecked]`,
   `(near: …)` and `->` were scored as words, so a row checkbox or a row's Delete

@@ -14,6 +14,7 @@ from argus.resolver import (
     describe as describe_element,
 )
 from argus.resolver import (
+    kind_of,
     resolve_element,
 )
 from argus.security import _redact
@@ -345,15 +346,27 @@ def _nearest_labels(description: str, elements, k: int = 4) -> List[str]:
     Turns a bare 'no element matches' into a 'did you mean' shortlist so the
     agent self-corrects (or realizes the element isn't here) without spending a
     whole observe round-trip — a common way real agents stall."""
-    desc_toks = set(re.findall(r"[a-z0-9]+", description.lower()))
+
+    def tokens(text: str) -> set:
+        return set(re.findall(r"[a-z0-9]+", text.lower()))
+
+    desc_toks = tokens(description)
     if not desc_toks:
         return []
     scored = []
     for el in elements:
-        label = el.text or el.aria_label or el.placeholder or el.value or el.name or ""
-        overlap = len(desc_toks & set(re.findall(r"[a-z0-9]+", label.lower())))
-        if overlap:
-            scored.append((overlap, describe_element(el)))
+        # A checkbox's value ("on") is not a label; describe() hides it too.
+        value = None if (el.type or "").lower() in ("checkbox", "radio") else el.value
+        label = el.text or el.aria_label or el.placeholder or value or el.name or ""
+        own = len(desc_toks & tokens(label))
+        # An unlabeled control (a row checkbox) is only nameable by its row, so
+        # its row counts in full; for a labeled control the row is a weak hint.
+        row = len(desc_toks & (tokens(el.parent_context or "") - tokens(label)))
+        if not own and not row:
+            continue
+        score = 2 * own + (row if not label or own else row / 2)
+        score += 0.5 if kind_of(el) in desc_toks else 0
+        scored.append((score, describe_element(el)))
     scored.sort(key=lambda x: -x[0])
     return [d for _, d in scored[:k]]
 
