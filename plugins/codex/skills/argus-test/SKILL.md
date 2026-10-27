@@ -30,9 +30,13 @@ it prints the fix for each failed check. Then call `start_session` again.
 ## 3. Test
 
 Follow the protocol that `start_session` returns. In short: mark the goals you
-are about to walk `in_progress` with `coverage_update`, walk each journey with
-real state, check persistence after writes with `verify_persistence`, and record
-only reproducible, user-affecting bugs with `record_bug`. Use `verify` (or the
+are about to walk `in_progress` with `coverage_update` and walk each journey with
+real state. For a click that should change something (add, complete, delete,
+save), use `test_action` with an `expect` prediction, such as
+`{"removes": "Buy groceries"}` or `{"count": {"label": "tasks", "delta": 1}}`.
+A SURPRISE is a lead to verify, not yet a bug. Check persistence after writes
+with `verify_persistence`, and record only reproducible, user-affecting bugs
+with `record_bug`. Use `verify` (or the
 `suggested_verify` from a persistence mismatch) so Argus rechecks the symptom on
 a fresh load. Use `record_observation` for visual or usability judgments.
 Never repeat a write or use `replay` only to obtain a receipt.

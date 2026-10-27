@@ -10,6 +10,10 @@
   includes unlabeled controls such as row checkboxes, ranked by the row they sit
   in. Before, they never appeared there because only an element's own label was
   compared.
+- Both test skills now ask the agent to use `test_action` with an `expect`
+  prediction for clicks that should change state, so Argus reports MATCH or
+  SURPRISE instead of leaving the comparison to the agent. In two Haiku runs of
+  the skill, every state-changing click went through `click_what`.
 - Fix `click_what` (and the other description-based tools) rejecting the target
   descriptions `observe` itself returns. State markers such as `[unchecked]`,
   `(near: …)` and `->` were scored as words, so a row checkbox or a row's Delete
