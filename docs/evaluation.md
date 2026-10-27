@@ -5,7 +5,7 @@ Available in 0.8.0 and newer.
 ## Response overhead
 
 Version 0.9 introduced an offline, deterministic encoding benchmark; the figures
-below are reproduced with 0.10.0:
+below are reproduced with 0.11.0:
 
 ```bash
 python -m argus_lab.evaluation.overhead
@@ -27,10 +27,21 @@ versions and byte-category definitions.
 | Small repeated page | 4,395 | 3,392 | 22.82% |
 | Total | 97,182 | 50,295 | 48.25% |
 
-The checked-in result includes current discovery sizes for each profile.
-Discovery includes the typed finding evidence introduced in 0.10.0; it is not
-directly interchangeable with earlier source snapshots. Counts exclude server
-instructions; delta mode adds decoding instructions at initialization.
+Encoding sizes are unchanged from 0.10.0. The checked-in result includes
+current discovery sizes for each profile; counts exclude server instructions,
+and delta mode adds decoding instructions at initialization. 0.11.0 replaced the
+`agent` and `core` profiles with `web`. Full discovery payloads (tool JSON plus
+the 223-byte server instructions) compare as follows:
+
+| Profile | Tools | Discovery bytes |
+|---|---:|---:|
+| 0.10 `agent` | 19 | 24,386 |
+| 0.10 `core` (former default) | 30 | 50,564 |
+| 0.11 `web` (default) | 28 | 34,379 |
+| 0.11 `advanced` | 61 | 79,085 |
+
+`web` is 41.0% larger than 0.10 `agent` and 32.0% smaller than 0.10 `core`. These
+are bytes for discovery only, not model tokens or whole-session context.
 
 These are **encoding results, not a new agent evaluation**. They do not show
 token savings, coverage gains, fewer false positives, lower billed costs or faster

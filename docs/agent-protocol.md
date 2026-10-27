@@ -1,6 +1,6 @@
 # Agent result and progress protocol
 
-Available in 0.8.0 and newer; updated for 0.10.0. The result envelope remains version 1.
+Available in 0.8.0 and newer; updated for 0.11.0. The result envelope remains version 1.
 
 Existing tool names and scalar arguments remain compatible; `coverage_update.goal`
 also accepts a list of related goals. MCP responses retain text and

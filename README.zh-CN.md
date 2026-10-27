@@ -4,7 +4,7 @@
 
 [English — 主文档](README.md) · 简体中文 · [产品主页](https://yichenwu.dev/projects/argus) · [更新日志](CHANGELOG.md)
 
-本文对应 **0.10.0**。英文 README 是项目的权威说明；代码、协议文档和发布说明以英文维护。
+本文对应 **0.11.0**。英文 README 是项目的权威说明；代码、协议文档和发布说明以英文维护。
 
 [![PyPI](https://img.shields.io/pypi/v/argus-testing)](https://pypi.org/project/argus-testing/)
 [![Python](https://img.shields.io/pypi/pyversions/argus-testing)](https://pypi.org/project/argus-testing/)
@@ -27,22 +27,19 @@ Argus 是本地运行的 MCP server，自带浏览器操作，无需再拼装另
 它不会保证发现所有 bug，也不会因为工具执行成功就认定应用通过测试。
 浏览器模式跨平台可用；原生 macOS 模式使用独立工具配置。
 
-## 0.10.0 更新
+## 0.11.0 更新
 
-- **避免重复写入：**持久化检查发现状态丢失时，可以建议只读的 fresh-load 复查条件，
-  无须再次执行 Save/Delete。已有 finding 最多显式复查两次，并保留历史 receipt。
-- **修正证据归属：**在核验页面采集截图，再返回 agent 原来的页面。
-  延后记录 bug 不再自动附上无关页面的截图；截图缺失或 URL 不匹配会明确给出 warning。
-- **完整保存预期与实际：**`evidence.expected`、`evidence.actual` 会保留在 JSON 字段及各报告格式中。
-  调用方提供的调用编号标记为 `claimed_evidence_calls`，不是独立核验过的 trace ID。
-- **聚焦覆盖范围：**切换目标组会冻结上一组的证据窗口，但不会自动完成目标。
-  回访页面和显式关联目标的延后 finding 会保留到对应流程中。
-- **减少收尾调用：**可以用 `end_session(coverage_updates=[...])` 一次完成最终覆盖登记与报告导出；
-  整批参数验证失败时会话保持打开。compact/delta 输出可共享重复证据并省略空的可选元数据。
-- **更清楚的变化摘要：**识别页面文字与字段值变化，但不在差异摘要中导出输入值。
+- **一个完整的默认测试闭环：**28 个工具的 `web` 配置覆盖探索、操作、核验、记录、报告和
+  `regression_check`。`advanced` 再加入网络、会话状态、多标签、坐标和爬取等能力。
+- **更轻的安装：**移除旧的 LLM 规划 CLI 和 LiteLLM，全新安装的运行时依赖从 82 个包降到 41 个。
+  基准测试和评测代码移到仓库内的 `argus_lab`，不再进入安装包。
+- **更准确的证据：**错误页上看到目标文字也算确定的结果；`expect_status` 用于声明预期的 404；
+  再次提交已完成目标时证据窗口保持最新；复查回执会注明第几次复查。
 
-这不是一次新的模型效果或 token 成本评测。默认工具配置仍为 `core`，默认响应模式仍为
-`compatible`，结果 envelope 版本仍为 `1`。详见 [协议](docs/agent-protocol.md)。
+**从 0.10 升级：**`agent` 和 `core` 仍可启动，但都会加载 `web`，工具集因此变化：
+原 `agent` 用户从 19 个变为 28 个工具（discovery 体积 34,379 字节，原为 24,386），
+原 `core` 用户从 30 个变为 28 个（原为 50,564 字节），`check_links` 与 `check_performance`
+移到 `advanced`。`argus <url>` 命令已移除。详见 [更新日志](CHANGELOG.md)。
 
 ## 快速开始
 
@@ -83,7 +80,7 @@ Cursor 或其他支持标准 `mcpServers` 配置的客户端可以使用：
 ```
 
 如果默认 Python 版本较旧，在启动参数中使用 `uvx --python 3.12 --from argus-testing argus-mcp`。
-需要固定版本时，将包名替换为 `argus-testing==0.10.0`。也可以使用 pip：
+需要固定版本时，将包名替换为 `argus-testing==0.11.0`。也可以使用 pip：
 
 ```bash
 pip install argus-testing
@@ -109,7 +106,7 @@ uvx --from argus-testing python -m argus.install_check
 | `screen` | 14 | 原生 macOS Accessibility 与截图测试，需单独启用。 |
 | `full` | 77 | 全部 web 与 screen 工具，包括屏幕坐标操作。 |
 
-旧配置名仍可使用：`agent` 和 `core` 会启动 `web` 配置。
+旧配置名仍可启动：`agent` 和 `core` 会加载 `web` 配置，因此工具集会变化（19 → 28、30 → 28 个工具）。
 
 推荐支持 MCP `structuredContent` 的宿主使用：
 

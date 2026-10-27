@@ -63,26 +63,23 @@ Does installing Argus improve an agent? Measure it with the
 initial state and budget, with both arms and failures retained. The local scripted smoke
 suite validates the harness; it is **not evidence of agent performance gains**.
 
-### What's new in 0.10.0
+### What's new in 0.11.0
 
-- **Verify without repeating writes:** persistence mismatches can suggest a
-  fresh-load symptom check; existing findings allow at most two explicit
-  rechecks with receipt history, instead of duplicating the finding or journey.
-- **Keep evidence on the right page:** fresh-load findings capture the checked
-  page before restoring the caller. Expected/actual outcomes survive every
-  report format; missing or mismatched screenshots produce explicit warnings.
-- **Keep coverage focused:** switching goal groups closes the previous evidence
-  window without completing it. Revisited pages and explicitly goal-linked
-  deferred findings remain attributable to the right journey.
-- **Finish with fewer bookkeeping calls:** `end_session(coverage_updates=[...])`
-  validates final goals atomically before closing. Compact/delta output shares
-  identical coverage evidence and omits empty optional metadata; text/value-aware
-  diffs make post-action changes easier to interpret without exporting inputs.
+- **One complete default loop:** the 28-tool `web` profile covers exploring,
+  acting, verifying, recording, reporting and `regression_check`. `advanced`
+  adds network, state, tab, coordinate and crawl controls.
+- **Lighter install:** the legacy LLM-planner CLI and LiteLLM are gone; a fresh
+  runtime install resolves 41 packages instead of 82. Benchmarks and evaluations
+  live in the repository-only `argus_lab` package.
+- **Sharper evidence:** presence is conclusive even on error pages, `expect_status`
+  covers intended 404s, re-finalized goals keep their evidence window current,
+  and rechecks record which attempt produced a verdict.
 
-See the [0.10 protocol](docs/agent-protocol.md#bounded-verification-recovery)
-and [changelog](CHANGELOG.md). The default profile, response mode and version-1
-result envelope remain unchanged. These changes do not establish a new model
-quality or token-cost benchmark.
+**Upgrading from 0.10:** `agent` and `core` still start the server but now load
+`web`. Former `agent` users get 28 tools instead of 19 (discovery payload 34,379
+bytes versus 24,386); former `core` users get 28 instead of 30 (versus 50,564
+bytes) and find `check_links` and `check_performance` in `advanced`. The `argus
+<url>` command is removed. See the [changelog](CHANGELOG.md) for details.
 
 The [0.8 Codex evaluation](docs/evaluation-0.8.md) includes ten matched pairs:
 Argus found 6/6 defect opportunities versus 5/6 for the browser baseline, including
@@ -94,7 +91,7 @@ synthetic sample does not establish general superiority.
 The no-model [response encoding benchmark](docs/evaluation.md#response-overhead)
 compares identical synthetic evidence, including navigation invalidation. Delta
 mode reduces aggregate result JSON by 48.25% versus compact mode across those
-24 responses in 0.10.0; this measures bytes, **not agent token usage or testing quality**.
+24 responses, reproduced with 0.11.0; this measures bytes, **not agent token usage or testing quality**.
 
 <details>
 <summary><b>Live monitoring from a real local fixture run</b></summary>
@@ -462,7 +459,7 @@ uvx --from argus-testing argus-mcp --tool-profile screen --list-tools
 | `screen` | 14 | Native macOS testing through Accessibility and screenshots; enabled separately. |
 | `full` | 77 | Every web and screen tool, including screen coordinate input. |
 
-Earlier profile names keep working: `agent` and `core` start the `web` profile.
+Earlier profile names still start the server: `agent` and `core` load the `web` profile, so their tool sets change (19 → 28 and 30 → 28 tools).
 
 <details>
 <summary><b>Web profile — 28 tools</b></summary>

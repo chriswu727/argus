@@ -170,6 +170,8 @@ a root cause or a semantic defect.
 
 ## ADR 12 — One complete default testing profile
 
+Status: shipped in 0.11.0.
+
 Context: the recommended 19-tool `agent` profile omitted `regression_check` and
 `get_errors`, so following the recommendation broke the test, fix and re-check
 loop, while the 30-tool `core` default carried long descriptions and two probes
@@ -183,6 +185,8 @@ tabs, dialogs, waits, coordinate input, crawling and link/performance probes.
 follows the workflow; capabilities move between profiles rather than being
 deleted. Earlier names map to `web` so existing configurations keep starting.
 
-Trade-off: `agent` users see nine more tools and `core` users lose
-`check_links` and `check_performance` from the default; both stay available in
-`advanced`.
+Trade-off: earlier names guarantee that the server starts, not that the tool
+set is unchanged. `agent` users see nine more tools and a larger discovery
+payload (34,379 versus 24,386 bytes); `core` users lose `check_links` and
+`check_performance` from the default (now in `advanced`) and receive a smaller
+payload (versus 50,564 bytes).

@@ -1,28 +1,27 @@
 # Changelog
 
-## Unreleased
+## 0.11.0 - 2026-10-27
+
+Compatibility: `--tool-profile agent` and `--tool-profile core` (and the same
+`ARGUS_TOOL_PROFILE` values) still start the server, but they now load the new
+`web` profile, so their tool sets change: `agent` grows from 19 to 28 tools and
+`core` drops from 30 to 28 (`check_links` and `check_performance` move to
+`advanced`). The full discovery payload (tool JSON plus server instructions) is
+34,379 bytes for `web`, versus 24,386 for 0.10 `agent` (+41.0%) and 50,564 for
+0.10 `core` (-32.0%). These are bytes, not model tokens. The `argus <url>` CLI
+command and the `argus.bench` / `argus.evaluation` modules are removed from the
+installed package.
 
 - Lead with testing: "Argus — Testing for Coding Agents" helps coding agents
   test the apps they build, find bugs and verify them with evidence. Package
   name, commands, links and registry identity are unchanged. Describe Playwright
   MCP accurately, including its opt-in test assertions.
-- Fold the 0.7 implementation ledger's lasting validation rules and non-goals
-  into the architecture guide; the ledger remains in git history. Mark the 0.8
-  evaluation as a historical result under its stated conditions.
-- Move the report service to `argus.adapters.reporting.reporter` and migrate
-  every internal and test import to `argus.domain` and `argus.adapters`.
-  `argus.models`, `argus.detector` and `argus.reporter` remain as
-  compatibility re-exports, guarded by a test against new internal use.
-- Move benchmarks and evaluations from `argus.bench` and `argus.evaluation` to
-  the repository-only `argus_lab` package. They ship in the source archive but
-  not the wheel; run them as `python -m argus_lab.bench` and
-  `python -m argus_lab.evaluation` from a checkout.
 - Replace the `agent` and `core` profiles with one 28-tool `web` default that
   covers the whole testing loop, including `regression_check` and `get_errors`,
   with concise descriptions. Add `advanced` (61 tools) for network mocks,
   cookies and storage, tabs, dialogs, waits, coordinate input, crawling and
   link/performance probes. `screen` is unchanged and `full` still exposes all
-  77 tools. `agent` and `core` remain accepted names for `web`.
+  77 tools. Monitoring is unchanged and remains opt-in.
 - Remove the standalone `argus <url>` CLI mode, its LiteLLM planner and the
   LiteLLM-driven bench runner. Argus is a tool for the host agent and never
   calls a model itself. `argus-regression` and `argus-cleanup` are unchanged.
@@ -31,12 +30,16 @@
   installed at runtime any more. PyJWT, cryptography and certifi floors stay
   because MCP still installs them. A fresh runtime install resolves 41
   packages instead of 82, and pip-audit (OSV) reports no known vulnerabilities.
-- Re-finalizing a goal now extends its evidence window while no other goal has
+- Move benchmarks and evaluations to the repository-only `argus_lab` package.
+  They ship in the source archive but not the wheel; run them as
+  `python -m argus_lab.bench` and `python -m argus_lab.evaluation` from a checkout.
+- `verify_persistence` treats observed presence as conclusive and only absence
+  on an HTTP error or login page as inconclusive (0.10 treated every such page
+  as inconclusive). A new `expect_status` makes an intended status, such as 404
+  after a delete, conclusive. Checks record the HTTP `status`.
+- Re-finalizing a goal extends its evidence window while no other goal has
   started or been finalized, so updated evidence text no longer points at an
   earlier window. Windows closed by other work stay closed.
-- `verify_persistence` treats observed presence as conclusive and only absence
-  on an HTTP error or login page as inconclusive. A new `expect_status` makes an
-  intended status (such as 404 after a delete) conclusive. Checks record `status`.
 - Fresh-load finding screenshots start from the page top after an unsuccessful
   scroll scan. Redirected checks keep the checked URL and warn which page the
   screenshot shows.
@@ -45,8 +48,17 @@
   inconclusive entry instead of an empty one.
 - Action diffs no longer report field-value changes when rows shift position,
   and report generic page-text changes only when nothing more specific changed.
+- Move the report service to `argus.adapters.reporting.reporter` and migrate
+  internal and test imports to `argus.domain` and `argus.adapters`.
+  `argus.models`, `argus.detector` and `argus.reporter` remain as
+  compatibility re-exports, guarded by a test against new internal use.
 - Advertised input schemas degrade to the SDK default if FastMCP's internal tool
   manager changes; a test covers every profile.
+- Fold the 0.7 implementation ledger's lasting validation rules and non-goals
+  into the architecture guide; the ledger remains in git history. Mark the 0.8
+  evaluation as a historical result under its stated conditions. Regenerate the
+  deterministic encoding result for 0.11.0; encoding sizes are unchanged and
+  only discovery changed with the new profiles.
 
 ## 0.10.0 - 2026-10-26
 
