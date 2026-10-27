@@ -16,13 +16,15 @@ from argus.domain.contracts import ImageArtifact
 from argus.measurement import measurement_scope
 
 from .catalog import (
-    _AGENT_TOOL_DESCRIPTIONS,
     _CLOSED_WORLD_TOOL_NAMES,
-    _CORE_TOOL_NAMES,
+    _CONCISE_TOOL_DESCRIPTIONS,
     _DESTRUCTIVE_TOOL_NAMES,
     _READ_ONLY_TOOL_NAMES,
     _SCREEN_TOOL_NAMES,
     _TOOL_TITLES,
+    _WEB_TOOL_NAMES,
+    PROFILE_ALIASES,
+    PROFILES,
 )
 from .overhead import response_bytes
 from .results import AgentResult, _omit_schema_titles, to_mcp_result
@@ -52,16 +54,26 @@ def bind_operation(runtime: SessionManager, operation, *, raise_errors=False):
     return call
 
 
+def resolve_profile(profile: str) -> str:
+    resolved = PROFILE_ALIASES.get(profile, profile)
+    if resolved not in PROFILES:
+        raise ValueError("tool profile must be web, advanced, screen or full")
+    return resolved
+
+
 def tool_names(profile: str) -> set[str]:
-    if profile == "agent":
-        return set(_AGENT_TOOL_DESCRIPTIONS)
-    if profile == "core":
-        return set(_CORE_TOOL_NAMES)
+    profile = resolve_profile(profile)
+    if profile == "web":
+        return set(_WEB_TOOL_NAMES)
+    if profile == "advanced":
+        return {
+            name
+            for name in OPERATIONS
+            if not name.startswith("screen_") and name != "start_screen_session"
+        }
     if profile == "screen":
         return set(_SCREEN_TOOL_NAMES)
-    if profile == "full":
-        return set(OPERATIONS)
-    raise ValueError("tool profile must be agent, core, screen, or full")
+    return set(OPERATIONS)
 
 
 def bind_tool(runtime: SessionManager, operation, snapshots: ObservationSnapshots | None = None):
@@ -103,7 +115,7 @@ def bind_tool(runtime: SessionManager, operation, snapshots: ObservationSnapshot
     return call
 
 
-def create_server(runtime: SessionManager, profile: str = "core") -> FastMCP:
+def create_server(runtime: SessionManager, profile: str = "web") -> FastMCP:
     server = FastMCP("argus", instructions=INSTRUCTIONS)
     # FastMCP 1.x does not expose the low-level server's product version argument.
     server._mcp_server.version = __version__
@@ -116,12 +128,14 @@ def create_server(runtime: SessionManager, profile: str = "core") -> FastMCP:
             "Other fields are current-call-only. On a missing base call observe for full state. "
             "Never infer unchanged from an unavailable base."
         )
+    # Web profiles use concise descriptions; screen and full keep full docstrings.
+    concise = resolve_profile(profile) in {"web", "advanced"}
     for name in sorted(tool_names(profile)):
         read_only = name in _READ_ONLY_TOOL_NAMES
         server.add_tool(
             bind_tool(runtime, OPERATIONS[name], snapshots),
             name=name,
-            description=_AGENT_TOOL_DESCRIPTIONS[name] if profile == "agent" else None,
+            description=_CONCISE_TOOL_DESCRIPTIONS.get(name) if concise else None,
             title=_TOOL_TITLES[name],
             annotations=ToolAnnotations(
                 readOnlyHint=read_only,

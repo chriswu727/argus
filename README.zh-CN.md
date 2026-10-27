@@ -103,15 +103,17 @@ uvx --from argus-testing python -m argus.install_check
 
 | 配置 | 工具数 | 用途 |
 |---|---:|---|
-| `core` | 30 | 默认浏览器 QA 工作流。 |
-| `agent` | 19 | 聚焦常用流程，使用简洁描述，适合支持结构化结果的 agent。 |
-| `screen` | 14 | 原生 macOS Accessibility 与截图测试。 |
-| `full` | 77 | 加入网络、存储、多标签、坐标和爬取等高级能力。 |
+| `web` | 28 | 默认配置：完整的浏览器测试闭环，使用简洁的工具描述。 |
+| `advanced` | 61 | 在 web 基础上加入网络 mock、cookie/存储、多标签、弹窗、等待、坐标操作、爬取和链接/性能探测。 |
+| `screen` | 14 | 原生 macOS Accessibility 与截图测试，需单独启用。 |
+| `full` | 77 | 全部 web 与 screen 工具，包括屏幕坐标操作。 |
+
+旧配置名仍可使用：`agent` 和 `core` 会启动 `web` 配置。
 
 推荐支持 MCP `structuredContent` 的宿主使用：
 
 ```bash
-uvx --from argus-testing argus-mcp --tool-profile agent --response-mode compact --monitor-port 8765
+uvx --from argus-testing argus-mcp --response-mode compact --monitor-port 8765
 ```
 
 `compact` 减少迁移工具的重复文字，但保留结构化证据和图片。

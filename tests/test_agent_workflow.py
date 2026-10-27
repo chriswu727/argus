@@ -136,19 +136,17 @@ def test_monitor_distinguishes_unchecked_and_inconclusive_findings(isolated_runt
     }
 
 
-async def test_agent_profile_keeps_workflow_with_bounded_discovery(isolated_runtime):
-    from argus.entrypoints.mcp.server import create_server
+async def test_web_profile_carries_the_full_loop_with_bounded_discovery(isolated_runtime):
+    from argus.entrypoints.mcp.server import create_server, tool_names
 
-    agent = await create_server(isolated_runtime, "agent").list_tools()
-    core = await create_server(isolated_runtime, "core").list_tools()
-    assert len(agent) == 19
-    assert {tool.name for tool in agent} <= {tool.name for tool in core}
-    assert all(tool.outputSchema for tool in agent)
-
-    def size(tools):
-        return sum(len(tool.model_dump_json()) for tool in tools)
-
-    assert size(agent) < size(core) * 0.65
+    web = await create_server(isolated_runtime, "web").list_tools()
+    names = {tool.name for tool in web}
+    assert len(web) == 28 and all(tool.outputSchema for tool in web)
+    assert {"verify_persistence", "record_bug", "get_errors", "regression_check"} <= names
+    assert names < tool_names("advanced") <= tool_names("full")
+    assert not any(name.startswith("screen_") for name in tool_names("advanced"))
+    assert tool_names("agent") == tool_names("core") == names
+    assert sum(len(tool.model_dump_json()) for tool in web) < 37_000
 
 
 async def test_batched_coverage_is_atomic_and_preserves_shared_evidence(isolated_runtime):

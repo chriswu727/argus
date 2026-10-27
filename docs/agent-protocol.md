@@ -174,9 +174,11 @@ Argus does not infer semantic goal associations or completeness.
 
 ## Guidance and compact output
 
-The optional `agent` profile exposes 19 common browser-testing tools with concise
-descriptions. Existing `core` (default), `screen` and `full` profiles are unchanged.
-Use `--tool-profile agent --response-mode compact` for structured-result-aware
+The default `web` profile exposes 28 browser-testing tools with concise
+descriptions, covering exploration, verification, findings, reports and
+regression rechecks. `advanced` adds network, state, tab, coordinate and crawl
+controls; `screen` and `full` keep full descriptions. Earlier `agent` and `core`
+names select `web`. Use `--response-mode compact` for structured-result-aware
 hosts. Action and verification results already carry page evidence: inspect it
 before spending another call on `observe`.
 

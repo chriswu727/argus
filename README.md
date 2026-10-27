@@ -47,9 +47,10 @@ the phase summary in the final result. See the [agent protocol](docs/agent-proto
   return the current page evidence, reducing the need for a separate observation.
 - **Conservative checks:** missing or malformed evidence stays unknown, not a
   guessed pass or a fabricated bug. Findings link to stable session references.
-- **Focused agent mode:** `argus-mcp --tool-profile agent --response-mode compact`
-  exposes 19 common testing tools with concise discovery descriptions, preserves structured evidence,
-  and avoids repeating migrated payloads as prose. Compatible mode remains the default.
+- **Complete default loop:** the `web` profile exposes 28 testing tools with concise
+  discovery descriptions, from first observation to regression rechecks. Add
+  `--response-mode compact` to preserve structured evidence without repeating it
+  as prose. Compatible mode remains the default.
 - **Visible progress:** real phases, goal counts and check counts over MCP;
   `--monitor-port 8765` adds the local live dashboard without exposing goal text.
 - **Measured response overhead (0.9):** smaller output schemas, numeric payload
@@ -201,12 +202,12 @@ The button adds Argus to Cursor; run the Chromium installation command above onc
 }
 ```
 
-The default `core` profile exposes the primary web-testing workflow without flooding the host with every specialist tool. Use `uvx --from argus-testing argus-mcp --list-tools` to inspect the selected profile, `--tool-profile screen` for native macOS testing, or `--tool-profile full` for the entire advanced surface. `ARGUS_TOOL_PROFILE` provides the same setting through the environment.
+The default `web` profile exposes the complete web-testing loop without flooding the host with every specialist tool. Use `uvx --from argus-testing argus-mcp --list-tools` to inspect the selected profile, `--tool-profile advanced` for network, state, tab, coordinate and crawl controls, or `--tool-profile screen` for native macOS testing. `ARGUS_TOOL_PROFILE` provides the same setting through the environment.
 
-For agents that read structured MCP results, use the focused configuration:
+For agents that read structured MCP results, add compact responses (the monitor is optional):
 
 ```bash
-uvx --from argus-testing argus-mcp --tool-profile agent --response-mode compact --monitor-port 8765
+uvx --from argus-testing argus-mcp --response-mode compact --monitor-port 8765
 ```
 
 Read returned observations before issuing another `observe`. Batch related goals
@@ -440,23 +441,25 @@ python -m argus.bench --target all
 
 ## Tool surface
 
-`argus-mcp` starts with the focused `core` web profile. Every public tool is documented below. The counts are also available directly from the installed server:
+`argus-mcp` starts with the `web` profile: one complete testing loop of exploring, acting, verifying, recording, reporting and re-checking earlier findings. Every public tool is documented below. The counts are also available directly from the installed server:
 
 ```bash
 uvx --from argus-testing argus-mcp --list-tools
+uvx --from argus-testing argus-mcp --tool-profile advanced --list-tools
 uvx --from argus-testing argus-mcp --tool-profile screen --list-tools
-uvx --from argus-testing argus-mcp --tool-profile full --list-tools
 ```
 
 | Profile | Public tools | Intended use |
 |---------|-------------:|--------------|
-| `core` | 30 | Primary browser QA workflow; the default. |
-| `agent` | 19 | Focused browser journeys, concise descriptions and batch coverage; pair with compact responses when the host supports structured results. |
-| `screen` | 14 | Focused native macOS testing through Accessibility and screenshots. |
-| `full` | 77 | Everything in core and screen, plus specialist browser, state, network, coordinate, and crawl controls. |
+| `web` | 28 | The complete browser testing loop with concise tool descriptions; the default. |
+| `advanced` | 61 | Everything in web, plus network mocks, cookies and storage, tabs, dialogs, waits, coordinate input, crawling, and link and performance probes. |
+| `screen` | 14 | Native macOS testing through Accessibility and screenshots; enabled separately. |
+| `full` | 77 | Every web and screen tool, including screen coordinate input. |
+
+Earlier profile names keep working: `agent` and `core` start the `web` profile.
 
 <details>
-<summary><b>Core profile — 30 tools</b></summary>
+<summary><b>Web profile — 28 tools</b></summary>
 
 | Tools | Purpose |
 |-------|---------|
@@ -475,7 +478,6 @@ uvx --from argus-testing argus-mcp --tool-profile full --list-tools
 | `capsule_save` · `capsule_restore` | Save and restore a named authenticated or seeded browser state, with an optional liveness check. |
 | `verify_persistence` | Force a fresh load and return target presence plus the page observation. This checks persistence, not semantic correctness. |
 | `test_action` · `test_form` | Perform a description-keyed action or form submission and return the resulting state diff in one round trip. |
-| `check_links` · `check_performance` | Probe current-page internal links and expose raw browser performance metrics without auto-certifying generic audit findings. |
 | `regression_check` | Re-test journaled findings for the current origin without requiring another discovery pass. |
 | `record_bug` · `record_observation` | Record a finding with evidence and its recheck outcome, or keep a qualitative review note separate. Inspect the receipt rather than treating recording as confirmation. |
 | `end_session` | Atomically apply optional final `coverage_updates`, close the active session, and emit HTML, JSON, JUnit, and SARIF reports. Invalid updates keep the session open. |
@@ -497,15 +499,16 @@ Reports keep original screenshots as evidence and, by default, write compact Web
 | `screen_screenshot_region` | Capture a precise rectangular screen region for fine visual evidence. |
 | `screen_session_status` | Report elapsed time, remaining session budget, action counts, and the abort-file path. |
 | `record_bug` · `record_observation` · `end_session` | Use the shared evidence, reporting, and teardown tools in screen mode. |
+| `screen_click_at` · `screen_hover_at` · `screen_drag` · `screen_keys` · `screen_type_at` | Only in `full`: absolute screen coordinates and multi-key sequences when a native app exposes no useful AX element. |
 
 **Safety:** per-call timeout, a 30-minute session cap, a `~/.argus/abort` panic file that halts every subsequent action, and an automatic before/after screenshot trail on every action.
 
 </details>
 
 <details>
-<summary><b>Full profile — 77 tools</b></summary>
+<summary><b>Advanced profile — 61 tools</b></summary>
 
-The full profile includes every core and screen tool above plus these 36 specialist tools. Use it when the workflow genuinely needs low-level state, fault injection, multi-tab control, coordinates, or crawling.
+The advanced profile includes every web tool above plus these 33 tools. Use it when a test genuinely needs low-level state, fault injection, multi-tab control, coordinates, or crawling.
 
 | Additional tools | Purpose |
 |------------------|---------|
@@ -523,12 +526,12 @@ The full profile includes every core and screen tool above plus these 36 special
 | `wait_for_text` · `wait_for_request` | Wait for specific visible text or matching outgoing traffic with a bounded timeout. |
 | `get_downloads` | Inspect files downloaded during the session, including their paths and sizes. |
 | `crawl_site` | Crawl bounded internal pages and collect browser events, link results, and performance evidence. |
-| `screen_click_at` · `screen_hover_at` · `screen_drag` · `screen_keys` · `screen_type_at` | Use absolute screen coordinates and multi-key sequences when a native app exposes no useful AX element. |
+| `check_links` · `check_performance` | Probe current-page internal links and expose raw browser performance metrics without auto-certifying generic audit findings. |
 
 To expose `eval_js` as an operational tool rather than a disabled safety stub:
 
 ```bash
-uvx --from argus-testing argus-mcp --tool-profile full --unsafe
+uvx --from argus-testing argus-mcp --tool-profile advanced --unsafe
 ```
 
 </details>

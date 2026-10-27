@@ -107,7 +107,7 @@ occupied version label for a different build.
 After publication, verify the PyPI wheel and source archive, official MCP
 Registry package version, and directory release associations. Run
 `python -m argus.install_check` against the published package outside the checkout.
-MCPRush's default listing should expose the 30-tool core profile, not the
+MCPRush's default listing should expose the 28-tool web profile, not the
 `evaluation` baseline tools; preserve manually declared schemas when refreshing
 its source. Directory scans and version badges are not substitutes for these
 installation and handshake checks.

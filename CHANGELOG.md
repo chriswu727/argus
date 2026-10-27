@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Replace the `agent` and `core` profiles with one 28-tool `web` default that
+  covers the whole testing loop, including `regression_check` and `get_errors`,
+  with concise descriptions. Add `advanced` (61 tools) for network mocks,
+  cookies and storage, tabs, dialogs, waits, coordinate input, crawling and
+  link/performance probes. `screen` is unchanged and `full` still exposes all
+  77 tools. `agent` and `core` remain accepted names for `web`.
 - Remove the standalone `argus <url>` CLI mode, its LiteLLM planner and the
   LiteLLM-driven bench runner. Argus is a tool for the host agent and never
   calls a model itself. `argus-regression` and `argus-cleanup` are unchanged.

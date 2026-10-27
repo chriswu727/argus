@@ -44,7 +44,7 @@ async def serve(arm: str, origin: str, output: Path, limit: int = 60):
             access=AccessPolicy(allowed_origins=(origin,)),
         )
     )
-    inner = create_server(runtime, "agent") if arm == "argus" else baseline.server()
+    inner = create_server(runtime, "web") if arm == "argus" else baseline.server()
     outer = Server("testing", instructions=inner.instructions)
     budget = CallBudget(limit)
     lock = asyncio.Lock()

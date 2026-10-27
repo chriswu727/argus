@@ -39,7 +39,7 @@ def fixture(case: str, step: int) -> dict:
 async def benchmark() -> dict:
     runtime = create_runtime()
     discovery = {}
-    for profile in ("agent", "core", "screen", "full"):
+    for profile in ("web", "advanced", "screen", "full"):
         server = create_server(runtime, profile)
         discovery[profile] = discovery_bytes(await server.list_tools(), server.instructions)
     cases = []

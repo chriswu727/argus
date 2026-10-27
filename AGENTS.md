@@ -25,8 +25,9 @@ argus-mcp --list-tools    # show the selected profile and public tools
 argus-mcp --doctor        # macOS Screen Recording + Accessibility check
 ```
 
-The default profile is `core`. For structured-result-aware hosts, use
-`--tool-profile agent --response-mode compact` for 19 focused tools.
+The default `web` profile has 28 tools covering the complete testing loop,
+including `regression_check`. For structured-result-aware hosts, add
+`--response-mode compact`. Earlier `agent` and `core` names select `web`.
 
 `--response-mode delta` is opt-in for snapshot-aware clients. Only observation
 fields listed in the protocol may be inherited from an exact `base_id`; action
@@ -37,8 +38,9 @@ a browser or model, and `python -m argus.evaluation.overhead` for deterministic
 byte measurements. Bytes are not model tokens. Monitoring retains numeric
 overhead only; do not add page content or arguments to metrics.
 Use `--tool-profile screen` for native
-macOS review and `--tool-profile full` only when the broader network,
-storage, tabs, crawl, and coordinate surface is needed. The
+macOS review and `--tool-profile advanced` only when network mocks,
+cookies/storage, tabs, coordinates, crawling or link/performance probes are
+needed. `full` adds every screen tool as well. The
 `ARGUS_TOOL_PROFILE` environment variable provides the same setting.
 
 After `pip install -U argus-testing`, restart your MCP host so it picks
@@ -199,7 +201,7 @@ Don't record speculation, polish nits, or static a11y / SEO that
 - `argus-mcp --version` — what version your MCP host actually loaded.
 - `argus-mcp --doctor` — macOS permission probes for screen mode.
 - `argus-mcp --list-tools` — selected tool profile and exported names.
-- `argus-mcp --tool-profile agent|core|screen|full` — control discovery size.
+- `argus-mcp --tool-profile web|advanced|screen|full` — control discovery size.
 - `argus-mcp --unsafe` — turn on `eval_js` (off by default).
 - `argus-mcp --monitor-port 8765` — enable the read-only loopback dashboard,
   health/readiness endpoints, SSE events and metrics; use `0` for a free port.
