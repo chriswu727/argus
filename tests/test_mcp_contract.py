@@ -109,6 +109,31 @@ def test_coverage_action_references_omit_input_values():
     assert "secret-value" not in serialized
 
 
+async def test_observation_with_unknown_category_is_kept(tmp_path, monkeypatch):
+    # A guessed category ("security") used to reject the observation outright.
+    page = tmp_path / "review.html"
+    page.write_text("<html><body><h1>Review</h1></body></html>")
+    output_dir = tmp_path / "reports"
+    monkeypatch.setenv("ARGUS_OUTPUT_DIR", str(output_dir))
+    m.runtime.settings = replace(m.runtime.settings, output_dir=Path(str(output_dir)))
+    start = getattr(m.start_session, "fn", m.start_session)
+    record = getattr(m.record_observation, "fn", m.record_observation)
+    end = getattr(m.end_session, "fn", m.end_session)
+    await start(page.as_uri())
+    try:
+        recorded = await record(
+            "Card number shown in full on review page",
+            "The review page prints the whole card number.",
+            category="Security",
+            screenshot="skip",
+        )
+        assert "Recorded usability observation" in recorded
+        assert "'security' is not recognized" in recorded
+        assert m.runtime.session.observations[-1].category == "usability"
+    finally:
+        await end()
+
+
 async def test_observations_and_tool_calls_are_reported(tmp_path, monkeypatch):
     page = tmp_path / "review.html"
     page.write_text("<html><body><h1>Review</h1></body></html>")

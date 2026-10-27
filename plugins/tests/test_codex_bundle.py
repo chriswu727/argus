@@ -120,6 +120,17 @@ def test_both_skills_give_valid_test_action_expectations():
             assert _validated_expectation(example)[1] == [], (skill, example)
 
 
+def test_both_skills_ask_for_a_visual_review_kept_as_observations():
+    for skill in (
+        BUNDLE / "skills" / "argus-test" / "SKILL.md",
+        CLAUDE / "skills" / "test" / "SKILL.md",
+    ):
+        text = skill.read_text()
+        for tool in ("`screenshot`", "`check_layout`", "`record_observation`"):
+            assert tool in text, (skill, tool)
+        assert "use `record_bug` with `verify`\nonly when a text check" in text
+
+
 @pytest.mark.asyncio
 async def test_codex_launch_command_handshake_from_plugin_root():
     manifest = load(BUNDLE / "plugin.json")

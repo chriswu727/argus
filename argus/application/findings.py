@@ -579,10 +579,15 @@ async def record_observation(
 
     if not title or not evidence:
         return Rejection("record_observation: title and evidence are required.")
+    # Like record_bug's bug_type, the category is metadata: a guessed one must
+    # not cost the observation. Keep it under a general category and say so.
+    warnings = []
     if category not in allowed_categories:
-        return Rejection(
-            "record_observation: category must be one of: " + ", ".join(sorted(allowed_categories))
+        warnings.append(
+            f"category {category[:40]!r} is not recognized; recorded as usability. "
+            f"Known categories: {', '.join(sorted(allowed_categories))}."
         )
+        category = "usability"
     normalized = " ".join(title.lower().split())
     if any(" ".join(item.title.lower().split()) == normalized for item in s.observations):
         return ToolText(
@@ -632,12 +637,14 @@ async def record_observation(
     return ToolText(
         f"Recorded {category} observation: {title}\n"
         f"  screenshot: {screenshot_path or 'none'}\n"
-        f"  total observations in session: {len(s.observations)}",
+        f"  total observations in session: {len(s.observations)}"
+        + "".join(f"\n  warning: {warning}" for warning in warnings),
         {
             "recorded": True,
             "category": category,
             "title": title,
             "screenshot": screenshot_path,
             "finding_confirmed": False,
+            "warnings": warnings,
         },
     )
