@@ -188,6 +188,11 @@ Codex CLI, the Codex IDE extension, and the ChatGPT desktop app share the same l
 codex mcp add argus -- uvx --from argus-testing argus-mcp
 ```
 
+Alternatively, install the [Codex plugin bundle](https://github.com/chriswu727/argus/tree/main/plugins/codex),
+which pins the published runtime and the `web` profile, with
+`codex plugin marketplace add chriswu727/argus` and `codex plugin add argus-testing@argus`
+(Codex CLI and ChatGPT desktop app). Use it instead of, not alongside, the manual entry.
+
 ### Cursor
 
 [![Add Argus to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/install-mcp?name=argus&config=eyJjb21tYW5kIjoidXZ4IiwiYXJncyI6WyItLWZyb20iLCJhcmd1cy10ZXN0aW5nIiwiYXJndXMtbWNwIl19)

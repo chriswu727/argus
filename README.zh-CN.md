@@ -66,6 +66,10 @@ claude mcp add argus -- uvx --from argus-testing argus-mcp
 codex mcp add argus -- uvx --from argus-testing argus-mcp
 ```
 
+Codex 也可以安装仓库提供的 [Codex 插件包](https://github.com/chriswu727/argus/tree/main/plugins/codex)：
+`codex plugin marketplace add chriswu727/argus`，再 `codex plugin add argus-testing@argus`。
+插件与手动 `codex mcp add` 配置二选一。
+
 也可使用仓库提供的 [Claude 插件包](https://github.com/chriswu727/argus/tree/main/plugins/claude)，它固定已发布版本和
 `web` 配置。先运行插件说明中的一次性预热命令，再用
 `/plugin install argus-testing --marketplace chriswu727/argus` 安装。插件与手动 MCP 配置二选一，避免重复连接。

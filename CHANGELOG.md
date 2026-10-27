@@ -2,11 +2,18 @@
 
 ## Unreleased
 
+- Add a Codex plugin bundle (`plugins/codex`, Agent Plugins 1.0 format) served
+  from this repository's marketplace: `codex plugin marketplace add
+  chriswu727/argus`, then `codex plugin add argus-testing@argus`. It runs the
+  same locked 0.11.0 runtime as the Claude bundle from the installed plugin
+  root; tests keep both bundles' project and lock files byte-identical. The
+  shared runtime project is renamed `argus-testing-plugin-runtime`, which only
+  changes the lock's root entry.
 - `argus-mcp --doctor` now checks web testing on every platform: a real
   headless Chromium launch decides readiness (so `--only-shell` installs pass,
   with headed Chromium reported as optional), a missing browser is reported
-  for the installed Playwright version, and the report directory is writable (probed with a temporary file,
-  since `os.access` always succeeds for root). Each failure prints the exact fix
+  for the installed Playwright version, and the report directory is writable
+  (probed with a temporary file, since `os.access` always succeeds for root). Each failure prints the exact fix
   for the interpreter running Argus; screen-mode probes run only on macOS and no
   longer report `n/a` as passing elsewhere. Browser launch failures in
   `start_session` name the same install command, distinguish missing system
