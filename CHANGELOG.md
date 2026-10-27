@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Move the report service to `argus.adapters.reporting.reporter` and migrate
+  every internal and test import to `argus.domain` and `argus.adapters`.
+  `argus.models`, `argus.detector` and `argus.reporter` remain as
+  compatibility re-exports, guarded by a test against new internal use.
 - Move benchmarks and evaluations from `argus.bench` and `argus.evaluation` to
   the repository-only `argus_lab` package. They ship in the source archive but
   not the wheel; run them as `python -m argus_lab.bench` and

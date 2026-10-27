@@ -44,7 +44,7 @@ def __getattr__(name):
     if hasattr(_compat, name):
         return getattr(_compat, name)
     if name == "Reporter":
-        from argus.reporter import Reporter
+        from argus.adapters.reporting.reporter import Reporter
 
         return Reporter
     raise AttributeError(name)

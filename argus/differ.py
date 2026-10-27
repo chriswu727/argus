@@ -6,7 +6,7 @@ import re
 from collections import Counter
 from typing import List
 
-from .models import PageState
+from .domain.models import PageState
 
 
 def compute_changes(

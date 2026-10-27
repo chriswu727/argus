@@ -8,7 +8,8 @@ from dataclasses import replace
 from pathlib import Path
 
 import argus.mcp_server as m
-from argus.models import (
+from argus.adapters.reporting.reporter import Reporter
+from argus.domain.models import (
     Bug,
     BugType,
     ExplorationResult,
@@ -16,7 +17,6 @@ from argus.models import (
     Screenshot,
     Severity,
 )
-from argus.reporter import Reporter
 from tests.conftest import make_page_state
 
 
@@ -78,7 +78,8 @@ def test_report_auto_captured_hides_misleading_journey_steps():
 
 
 def test_report_leads_with_verified_and_keeps_per_bug_severity():
-    from argus.reporter import Reporter, _trust_rank
+    from argus.adapters.reporting.common import _trust_rank
+    from argus.adapters.reporting.reporter import Reporter
 
     v = _bug(receipt={"attempted": True, "reproduced": True})
     v.severity, v.title = Severity.LOW, "PROVEN-FINDING"
@@ -102,7 +103,7 @@ def test_report_leads_with_verified_and_keeps_per_bug_severity():
 
 
 def test_report_steps_trim_and_collapse():
-    from argus.reporter import _format_steps
+    from argus.adapters.reporting.common import _format_steps
 
     html = _format_steps(
         [f"setup step {i}" for i in range(20)] + ["click Load More", "click Load More"]
@@ -113,7 +114,7 @@ def test_report_steps_trim_and_collapse():
 
 
 def test_network_detector_handles_failed_request_no_status():
-    from argus.detector import Detector
+    from argus.domain.detector import Detector
 
     d = Detector()
     # a resource that failed with net::ERR_* has no HTTP status — must not crash
@@ -204,7 +205,7 @@ def test_count_delta_note_same_url_only():
 
 
 def test_repro_detail_surfaces_what_was_checked():
-    from argus.reporter import _repro_detail
+    from argus.adapters.reporting.common import _repro_detail
 
     ok = _repro_detail(
         {
@@ -281,7 +282,7 @@ def test_journal_only_persists_reproduced(tmp_path, monkeypatch):
 
 
 def test_dedup_description_drops_title_repeat():
-    from argus.reporter import _dedup_description
+    from argus.adapters.reporting.common import _dedup_description
 
     # LLMs constantly repeat the title verbatim as the description -> drop it
     assert _dedup_description("Login fails silently", "Login fails silently") == ""
@@ -316,7 +317,7 @@ def test_report_renders_string_steps_and_dedup_desc():
 
 
 def test_report_steps_no_double_numbering_and_repro_wording():
-    from argus.reporter import _format_steps, _repro_detail
+    from argus.adapters.reporting.common import _format_steps, _repro_detail
 
     # a leading "N." the model left is stripped so the <ol> numbers once
     h = _format_steps(["1. Navigate to /new", "2. Click Save"])

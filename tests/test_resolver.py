@@ -319,7 +319,7 @@ def test_single_char_discriminator_rows():
 
 
 def test_aria_widget_kind_and_targeting():
-    from argus.models import InteractiveElement as E
+    from argus.domain.models import InteractiveElement as E
 
     sw = E(index=0, tag="div", role="switch", aria_label="Dark mode")
     sl = E(index=1, tag="div", role="slider", aria_label="Volume")
@@ -334,7 +334,7 @@ def test_aria_widget_kind_and_targeting():
 
 
 def test_describe_prefers_aria_for_icon_buttons():
-    from argus.models import InteractiveElement as E
+    from argus.domain.models import InteractiveElement as E
 
     # a glyph-text icon button shows its descriptive aria-label, not the symbol
     assert describe(E(index=0, tag="a", text="+", aria_label="Zoom in")).startswith(
@@ -348,7 +348,7 @@ def test_describe_prefers_aria_for_icon_buttons():
 
 
 def test_column_is_a_stopword():
-    from argus.models import InteractiveElement as E
+    from argus.domain.models import InteractiveElement as E
 
     els = [
         E(index=0, tag="button", aria_label="Salary: Activate to sort"),
@@ -360,7 +360,7 @@ def test_column_is_a_stopword():
 
 
 def test_kind_word_label_resolves_verbatim_not_wrong_kind():
-    from argus.models import InteractiveElement as E
+    from argus.domain.models import InteractiveElement as E
 
     page = [
         E(index=0, tag="button", aria_label="Menu"),

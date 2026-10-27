@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from argus.adapters.reporting.reporter import Reporter
 from argus.application.context import current_runtime
 from argus.application.evidence import _record_action
 from argus.application.lifecycle import start_session
@@ -15,7 +16,6 @@ from argus.bootstrap import create_runtime
 from argus.domain.contracts import ErrorCode, SessionState
 from argus.domain.models import Bug, BugType, ExplorationResult, Severity
 from argus.domain.replay import InputVault
-from argus.reporter import Reporter
 from argus.settings import Settings
 
 
@@ -306,3 +306,26 @@ def test_application_does_not_access_private_backend_state():
     for path in (root / "application").glob("*.py"):
         assert "mcp.server" not in path.read_text()
     assert "mcp_server" not in (root / "cli.py").read_text()
+
+
+def test_repository_code_does_not_use_compatibility_modules():
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    shims = {"models", "detector", "reporter"}
+    pattern = re.compile(r"(?:from|import)\s+argus\.(\w+)|from\s+\.(\w+)\s+import")
+    offenders = []
+    for path in [
+        *root.glob("argus/**/*.py"),
+        *root.glob("argus_lab/**/*.py"),
+        *root.glob("tests/*.py"),
+    ]:
+        if path.parent == root / "argus" and path.stem in shims:
+            continue
+        for match in pattern.finditer(path.read_text()):
+            module = match.group(1) or match.group(2)
+            top_level = match.group(1) or path.parent == root / "argus"
+            if module in shims and top_level:
+                offenders.append(f"{path.relative_to(root)}: {match.group(0)}")
+    assert not offenders, offenders

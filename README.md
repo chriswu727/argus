@@ -601,17 +601,17 @@ argus/
 ├── entrypoints/mcp/   # public tool catalog, profiles and MCP adaptation
 ├── application/       # session manager and focused QA use cases
 ├── domain/            # models, errors, states, replay and verification contracts
-├── adapters/          # monitoring, logs, file journal, report exporters, JS assets
+├── adapters/          # monitoring, logs, file journal, report service and exporters, JS assets
 ├── bootstrap.py       # composition root: injected backend/repository factories
 ├── ports.py           # narrow lifecycle, observation, verification and storage protocols
 ├── settings.py        # validated, per-runtime configuration
 ├── browser.py         # Playwright adapter (public operations; private page ownership)
 ├── screen/            # macOS AX adapter, permissions, safety
-├── reporter.py        # atomic report orchestration and exporter registry
 ├── resolver.py        # description → element (web + screen)
-├── cli.py             # autonomous exploration and shared regression entry point
+└── cli.py             # argus-regression and argus-cleanup commands
+argus_lab/            # repository-only: not in the installed wheel
 ├── evaluation/        # paired schemas, isolated fixtures, opt-in host runner, adjudication
-└── bench/             # deterministic capability + legacy heuristic harness
+└── bench/             # deterministic capability benchmark
 test-site/            # BuggyTasks  (22 mechanical bugs)
 human-eye-fixture/    # DarkShop    (12 human-eye bugs)
 ```

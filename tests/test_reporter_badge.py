@@ -10,8 +10,8 @@ the precision moat exists to avoid (F9, F24, F25).
 from __future__ import annotations
 
 import argus.mcp_server as m
-from argus.models import Bug, BugType, Severity
-from argus.reporter import _repro_badge
+from argus.adapters.reporting.common import _repro_badge
+from argus.domain.models import Bug, BugType, Severity
 
 
 def test_observation_based_has_no_badge():

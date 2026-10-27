@@ -16,7 +16,7 @@ import re
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
-from .models import InteractiveElement
+from .domain.models import InteractiveElement
 
 
 @dataclass
