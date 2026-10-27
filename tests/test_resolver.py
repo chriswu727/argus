@@ -671,3 +671,77 @@ def test_describe_screen_includes_role_and_coords():
     assert "Save" in out
     assert "120" in out and "80" in out
     assert "Settings" in out or "General" in out
+
+
+def _task_rows():
+    """A task list like the BuggyTasks fixture: each row has an unlabeled
+    checkbox plus Edit/Delete buttons, and its row text spans indented lines."""
+    els = []
+    titles = ["Buy groceries", "Fix login page CSS", "Update dependencies"]
+    for row, title in enumerate(titles):
+        ctx = f"{title}\n              high\n              1.0\n              Edit Delete"
+        checkbox = make_element(row * 3, tag="input", type="checkbox", value="on")
+        checkbox.checked = row == 2
+        edit = make_element(row * 3 + 1, tag="button", text="Edit")
+        delete = make_element(row * 3 + 2, tag="button", text="Delete")
+        for el in (checkbox, edit, delete):
+            el.parent_context = ctx
+        els += [checkbox, edit, delete]
+    link = make_element(9, tag="a", text="Tasks")
+    link.href = "http://127.0.0.1:5555/tasks"
+    disabled = make_element(10, tag="button", text="Archive")
+    disabled.disabled = True
+    return els + [link, disabled]
+
+
+def test_every_observed_target_description_resolves_back_to_its_element():
+    # observe() hands agents describe() strings as target descriptions; agents
+    # pass them straight back to click_what. Each must find its own element.
+    els = _task_rows()
+    for el in els:
+        r = resolve_element(describe(el), els)
+        assert r.found is el, (describe(el), r.reason)
+
+
+def test_observed_description_survives_unescaped_newlines():
+    # The near-context is shown with repr() escapes; agents often send it back
+    # with real newlines (or the escapes) and different indentation.
+    els = _task_rows()
+    checkbox = els[0]
+    sent = describe(checkbox).replace("\\n", "\n   ")
+    assert resolve_element(sent, els).found is checkbox
+
+
+def test_shortened_observed_descriptions_still_resolve():
+    els = _task_rows()
+    assert resolve_element("checkbox [unchecked] (near: 'Buy groceries')", els).found is els[0]
+    assert resolve_element("button \"Delete\" (near: 'Fix login page CSS')", els).found is els[5]
+    assert resolve_element("checkbox for Update dependencies", els).found is els[6]
+    assert resolve_element("checkbox [unchecked] for Fix", els).found is els[3]
+
+
+def test_describe_collapses_row_context_whitespace():
+    assert "\\n" not in describe(_task_rows()[0])
+    assert "(near: 'Buy groceries high 1.0 Edit Delete')" in describe(_task_rows()[0])
+
+
+def test_aria_state_markers_are_scaffolding_but_bracketed_labels_are_not():
+    toggle = make_element(0, tag="button", text="Filters")
+    toggle.aria_state = "expanded selected"
+    draft = make_element(1, tag="button", text="[Draft] Notes")
+    els = [toggle, draft, make_element(2, tag="button", text="Notes")]
+    assert resolve_element('button "Filters" [expanded selected]', els).found is toggle
+    assert resolve_element("[Draft] Notes button", els).found is draft
+
+
+def test_state_words_inside_a_real_label_are_kept():
+    current = make_element(0, tag="button", text="[Current] Plan")
+    plan = make_element(1, tag="button", text="Plan")
+    assert resolve_element("[Current] Plan button", [current, plan]).found is current
+
+
+def test_faceless_row_exemption_requires_the_requested_kind():
+    icon = make_element(0, tag="button")
+    icon.parent_context = "Buy groceries high Edit Delete"
+    r = resolve_element("checkbox for Buy groceries", [icon])
+    assert r.found is None
