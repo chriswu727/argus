@@ -93,6 +93,18 @@ def test_codex_marketplace_lists_this_bundle_and_docs_show_install():
         assert "codex plugin marketplace add chriswu727/argus" in text and install in text
 
 
+def test_codex_skill_declares_itself_and_pins_the_locked_browser():
+    skill = (BUNDLE / "skills" / "argus-test" / "SKILL.md").read_text()
+    assert skill.startswith("---\nname: argus-test\ndescription: ")
+    manifest = load(BUNDLE / "plugin.json")
+    lock = tomllib.loads((BUNDLE / "uv.lock").read_text())
+    playwright = next(package for package in lock["package"] if package["name"] == "playwright")
+    assert (
+        f"uvx --python 3.12 --from argus-testing=={manifest['version']} "
+        f"--with playwright=={playwright['version']} python -m playwright install chromium"
+    ) in skill
+
+
 @pytest.mark.asyncio
 async def test_codex_launch_command_handshake_from_plugin_root():
     manifest = load(BUNDLE / "plugin.json")

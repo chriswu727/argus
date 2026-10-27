@@ -46,6 +46,7 @@ def test_plugin_pins_the_published_runtime_and_safe_profile():
                     "--tool-profile",
                     "web",
                 ],
+                "env": {"UV_PROJECT_ENVIRONMENT": "${CLAUDE_PLUGIN_DATA}/venv"},
             }
         }
     }
@@ -60,6 +61,7 @@ def test_plugin_pins_the_published_runtime_and_safe_profile():
         ".mcp.json",
         "README.md",
         "pyproject.toml",
+        "skills",
         "uv.lock",
     ]
 
@@ -84,6 +86,21 @@ def test_warm_up_command_matches_the_lock():
         f"--with playwright=={playwright['version']} python -m playwright install chromium"
     )
     assert command in (BUNDLE / "README.md").read_text()
+
+
+def test_skill_installs_the_browser_into_the_servers_locked_environment():
+    skill = (BUNDLE / "skills" / "test" / "SKILL.md").read_text()
+    server = json.loads((BUNDLE / ".mcp.json").read_text())["mcpServers"]["argus"]
+    assert skill.startswith("---\ndescription: ")
+    environment = server["env"]["UV_PROJECT_ENVIRONMENT"]
+    launcher = " ".join(server["args"][: server["args"].index("argus-mcp")])
+    command = (
+        f'UV_PROJECT_ENVIRONMENT="{environment}" uv '
+        + launcher.replace("${CLAUDE_PLUGIN_ROOT}", '"${CLAUDE_PLUGIN_ROOT}"')
+        + " python -m playwright install chromium"
+    )
+    assert command in skill
+    assert "/argus-testing:test" in (BUNDLE / "README.md").read_text()
 
 
 def test_plugin_documents_local_execution_and_privacy():
