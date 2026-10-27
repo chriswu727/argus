@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `record_bug` keeps a finding whose `bug_type` it does not recognize. It is
+  recorded as `ux_issue` with an evidence warning that lists the known types,
+  instead of rejecting the whole finding and forcing a resubmission. A small
+  model running the test skill lost a call this way with `"inconsistency"`.
 - Fix `click_what` (and the other description-based tools) rejecting the target
   descriptions `observe` itself returns. State markers such as `[unchecked]`,
   `(near: …)` and `->` were scored as words, so a row checkbox or a row's Delete
