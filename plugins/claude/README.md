@@ -14,8 +14,9 @@ Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and make
 `uv` available to the application that starts Claude. The launcher selects Python
 3.12 and runs the exact published `argus-testing==0.11.0` release from the bundled
 `uv.lock`, which pins dependency versions, sources, and hashes. It refuses to run
-if the project and lockfile disagree, and creates a local virtual environment
-under the plugin directory.
+if the project and lockfile disagree. The virtual environment lives in the
+plugin's persistent data directory (`${CLAUDE_PLUGIN_DATA}/venv`), not in the
+installed plugin files, and is kept in step with the lock on each start.
 
 Before starting Claude with the plugin for the first time, warm uv's cache and
 install the matching Chromium browser. This works from any directory:
@@ -34,6 +35,8 @@ out, start Claude with a longer startup timeout in milliseconds, for example
 `MCP_TIMEOUT=120000 claude`. Linux may also need Playwright's system
 dependencies; see the [installation guide](https://github.com/chriswu727/argus#quick-start).
 Browser installation is a separate, explicit setup step, not a hidden startup hook.
+Once the plugin is installed, `/argus-testing:test` offers an exact alternative:
+it installs Chromium from the plugin's own locked environment, after you agree.
 
 Install the plugin from this repository's marketplace (Claude Code 2.1.275 or
 later):
@@ -55,9 +58,19 @@ the plugin or a manual `claude mcp add` configuration.
 
 Local MCP servers work in Claude Code and in Cowork sessions running on the
 user's computer. They do not execute in claude.ai web chat. This package does not
-provide a remote MCP endpoint, a custom slash-command skill, or lifecycle hooks.
+provide a remote MCP endpoint or lifecycle hooks.
 
-## Test an application
+## Test an application with `/argus-testing:test`
+
+Run `/argus-testing:test http://localhost:3000 checkout and saved settings`, or ask
+Claude to test your app. The skill agrees the scope and asks before anything with
+real-world effects, checks the environment (offering the exact browser install if
+a launch fails), runs the session, rechecks symptoms on fresh loads, and reports
+findings grouped as verified, observed, not reproduced, or inconclusive, together
+with coverage and report paths. It does not change your code or repeat writes
+unless you ask.
+
+## Other example requests
 
 Ask the agent to test an application you are authorized to exercise, for example:
 "Test http://localhost:3000. Check saving, state after refresh, invalid input, and

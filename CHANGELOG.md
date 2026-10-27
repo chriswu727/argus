@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Add a `/argus-testing:test` skill to the Claude plugin and an `argus-test`
+  skill to the Codex plugin. Each agrees the scope (asking before real-world
+  effects), checks the environment, runs the session, rechecks symptoms on fresh
+  loads, and reports findings by verdict with coverage and report paths; code
+  changes and repeated writes need the user's request. The Claude skill installs
+  Chromium from the plugin's own locked environment, so its browser matches the
+  lock exactly.
+- The Claude plugin keeps its virtual environment in `${CLAUDE_PLUGIN_DATA}/venv`
+  instead of the installed plugin files, following Claude Code's guidance not to
+  write state under the plugin root; uv keeps it in step with the lock.
 - Add a Codex plugin bundle (`plugins/codex`, Agent Plugins 1.0 format) served
   from this repository's marketplace: `codex plugin marketplace add
   chriswu727/argus`, then `codex plugin add argus-testing@argus`. It runs the

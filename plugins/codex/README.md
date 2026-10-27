@@ -43,7 +43,11 @@ checks the browser and report directory if the first session fails.
 
 ## Test an application
 
-Ask Codex to test an application you are authorized to exercise, for example:
+The bundled `argus-test` skill guides a session: it agrees the scope and asks
+before anything with real-world effects, checks the environment, tests, rechecks
+symptoms on fresh loads, and reports findings grouped as verified, observed, not
+reproduced, or inconclusive. Ask Codex to test an application you are authorized
+to exercise, for example:
 "Test http://localhost:3000. Check saving, state after refresh, invalid input, and
 cross-page consistency. Report reproducible issues with evidence."
 
