@@ -198,7 +198,7 @@ _OBSERVED_SCAFFOLDING = re.compile(
 )
 
 
-def _strip_kind(desc: str) -> Tuple[List[str], Optional[str]]:
+def _strip_kind(desc: str, keep: frozenset = frozenset()) -> Tuple[List[str], Optional[str]]:
     """Lowercase + tokenise, remove the first kind-hint word; keep stopwords.
 
     Shared by split_description (which then drops stopwords) and the
@@ -211,7 +211,7 @@ def _strip_kind(desc: str) -> Tuple[List[str], Optional[str]]:
     # from observe(): state markers ("[unchecked]", "[in iframe]"), "near:",
     # the "->" before an href, and repr() escapes inside the near-context.
     desc = desc.replace("\\n", " ").replace("\\t", " ")
-    desc = re.sub(_OBSERVED_SCAFFOLDING, " ", desc)
+    desc = _OBSERVED_SCAFFOLDING.sub(lambda m: m.group(0) if m.group(0) in keep else " ", desc)
     # Underscores never appear in visible labels; an agent that types a
     # programmatic name it saw ("qty_1 input") should match the element whose
     # name we normalise the same way. (Hyphens are left alone — they occur in
@@ -238,9 +238,9 @@ def _strip_kind(desc: str) -> Tuple[List[str], Optional[str]]:
     return kept, kind
 
 
-def split_description(desc: str) -> Tuple[str, Optional[str]]:
+def split_description(desc: str, keep: frozenset = frozenset()) -> Tuple[str, Optional[str]]:
     """Strip stopwords and a trailing kind-hint, return (core, kind_hint)."""
-    raw, kind = _strip_kind(desc)
+    raw, kind = _strip_kind(desc, keep)
     words = [w for w in raw if w not in _STOPWORDS]
     if not words:
         # Stopword filter ate everything — preserve the raw tokens. A
@@ -369,6 +369,20 @@ def _kind_compatible(el_kind: str, kind_filter: str) -> bool:
     return el_kind == kind_filter
 
 
+def _label_markers(description: str, elements: List[InteractiveElement]) -> frozenset:
+    """Scaffolding-looking text that is really part of a label on this page,
+    such as a button named "[Current] Plan"; it must not be stripped."""
+    found = set(_OBSERVED_SCAFFOLDING.findall(description.lower()))
+    if not found:
+        return frozenset()
+    faces = " ".join(
+        (face or "").lower()
+        for el in elements
+        for face in (el.text, el.aria_label, el.placeholder, el.value)
+    )
+    return frozenset(marker for marker in found if marker in faces)
+
+
 def _normalise_observed(desc: str) -> str:
     return " ".join(desc.replace("\\n", " ").replace("\\t", " ").lower().split())
 
@@ -427,7 +441,8 @@ def resolve_element(
 
     # Kind hint comes from the full description; the ordinal token (if any)
     # carries no kind word, so detect kind before stripping anything.
-    raw_tokens, hinted_kind = _strip_kind(description)
+    keep = _label_markers(description, elements)
+    raw_tokens, hinted_kind = _strip_kind(description, keep)
     effective_kind = kind_filter or hinted_kind
 
     pool = elements
@@ -462,10 +477,10 @@ def resolve_element(
         for el in pool
     ):
         ordinal = None
-        core, _ = split_description(description)
+        core, _ = split_description(description, keep)
     else:
         description, ordinal = extract_ordinal(description)
-        core, _ = split_description(description)
+        core, _ = split_description(description, keep)
 
     # Kind-only call: the description was just a kind word ("dropdown",
     # "button", "the textbox") and after stripping it `core` is empty.
@@ -534,6 +549,7 @@ def resolve_element(
         faces.append(top_element.value)
     faceless_row_target = (
         bool(effective_kind)
+        and _kind_compatible(kind_of(top_element), effective_kind)
         and not any((face or "").strip() for face in faces)
         and _has_token(core, (top_element.parent_context or "").lower())
     )

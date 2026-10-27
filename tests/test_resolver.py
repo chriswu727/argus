@@ -732,3 +732,16 @@ def test_aria_state_markers_are_scaffolding_but_bracketed_labels_are_not():
     els = [toggle, draft, make_element(2, tag="button", text="Notes")]
     assert resolve_element('button "Filters" [expanded selected]', els).found is toggle
     assert resolve_element("[Draft] Notes button", els).found is draft
+
+
+def test_state_words_inside_a_real_label_are_kept():
+    current = make_element(0, tag="button", text="[Current] Plan")
+    plan = make_element(1, tag="button", text="Plan")
+    assert resolve_element("[Current] Plan button", [current, plan]).found is current
+
+
+def test_faceless_row_exemption_requires_the_requested_kind():
+    icon = make_element(0, tag="button")
+    icon.parent_context = "Buy groceries high Edit Delete"
+    r = resolve_element("checkbox for Buy groceries", [icon])
+    assert r.found is None
