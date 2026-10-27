@@ -90,3 +90,24 @@ async def test_confirm_dialogs_are_reported_and_accepted_only_when_asked():
         assert "Hello world" not in state.page_text
     finally:
         await _end()
+
+
+async def test_unlabeled_editor_field_can_be_typed_into_and_submitted():
+    # The edit input has no id/name/placeholder/aria-label; its name comes from
+    # the neighbouring <label>. A selector built from that name matched nothing.
+    await _session_on_page(_TODOS)
+    try:
+        await _fn("test_action")("Walk dog", double_click=True)
+        state = await m.runtime.session.browser.get_state()
+        field = next(el for el in state.elements if el.tag == "input" and el.value == "Walk dog")
+        assert field.css_path
+        from argus.resolver import describe
+
+        typed = await _fn("type_into")(describe(field), "Walk dogs")
+        assert "failed" not in typed
+        pressed = await _fn("press_key")("Enter", describe(field))
+        assert "failed" not in str(pressed)
+        state = await m.runtime.session.browser.get_state()
+        assert any(el.value == "Walk dogs" for el in state.elements)
+    finally:
+        await _end()

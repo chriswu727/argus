@@ -13,6 +13,10 @@
   - A JS alert, confirm or prompt raised by a click is reported in the result
     instead of being dismissed silently; `accept_dialog=true` accepts that one
     dialog when the user authorized the action it confirms.
+  - A form field with no id, name, placeholder or aria-label attribute, named by
+    a nearby `<label>` (TodoMVC's inline editor), was listed but could not be
+    typed into: its selector used the label text as an `aria-label` attribute.
+    Such fields are now located by a structural CSS path.
 - Both test skills now include a visual review step: take a `screenshot` of each
   key page, judge hierarchy, claims, field order and cross-page totals, run
   `check_layout`, and record such judgments with `record_observation` (a text

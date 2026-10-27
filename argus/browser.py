@@ -1402,6 +1402,14 @@ class BrowserDriver:
         except Exception:
             return False
 
+    async def count_exact_text(self, text: str) -> int:
+        if not text.strip():
+            return 0
+        try:
+            return await self._page.get_by_text(text.strip(), exact=True).count()
+        except Exception:
+            return 0
+
     async def double_click_text(self, text: str) -> Optional[bool]:
         """Double-click the one element whose visible text is exactly `text`.
 
@@ -1827,6 +1835,10 @@ class BrowserDriver:
         if el.placeholder:
             ph_escaped = el.placeholder[:60].replace('"', '\\"')
             return f'{el.tag}[placeholder="{ph_escaped}"]'
+        if el.css_path:
+            # A label-derived aria_label is not an attribute; [aria-label=...]
+            # would match nothing.
+            return el.css_path
         if el.aria_label:
             al_escaped = el.aria_label[:60].replace('"', '\\"')
             return f'{el.tag}[aria-label="{al_escaped}"]'

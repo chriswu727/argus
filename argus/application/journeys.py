@@ -16,6 +16,7 @@ from argus.resolver import (
 from .capture import _capture_browser_events, _file_event_bugs
 from .evidence import _auto_screenshot, _record_action, _record_coverage_action
 from .expectations import _evaluate_expectation, _reconcile_action
+from .inspection import _visual_inspection_query
 from .observation import _begin_dialogs, _dialog_lines, _finish_dialogs, _resolve_or_error
 from .payloads import observation_data
 from .session import _require_session
@@ -59,11 +60,21 @@ async def test_action(
     """
     s = _require_session()
 
-    el, err = _resolve_or_error(s, target)
-    if err:
-        return err
-
-    label = el.text or el.aria_label or el.placeholder or el.name or el.tag
+    # A double-click may target exact visible text (an inline-edit label),
+    # the same as click_what; otherwise resolve an interactive element.
+    text_target = None
+    if double_click and s.mode == "web" and s.browser is not None:
+        query, _ = _visual_inspection_query(target)
+        if await s.browser.count_exact_text(query) == 1:
+            text_target = query
+    el = None
+    if text_target is None:
+        el, err = _resolve_or_error(s, target)
+        if err:
+            return err
+        label = el.text or el.aria_label or el.placeholder or el.name or el.tag
+    else:
+        label = text_target
     step = f'test_action({target!r}) -> "{label[:60]}"'
     if expectation:
         step += f" — expected: {expectation}"
@@ -76,14 +87,17 @@ async def test_action(
     try:
         # Route through _locator so a duplicate-label target hits the resolved
         # element, not the first DOM match (same fix as click_what).
-        idx = s._last_elements.index(el)
         mark = _begin_dialogs(s, accept_dialog)
         try:
-            if double_click:
+            if text_target is not None:
+                if not await s.browser.double_click_text(text_target):
+                    raise RuntimeError("double-click failed")
+            elif double_click:
+                idx = s._last_elements.index(el)
                 if not await s.browser.double_click(idx, s._last_elements):
                     raise RuntimeError("double-click failed")
             else:
-                await s.browser.click_resolved(idx, s._last_elements)
+                await s.browser.click_resolved(s._last_elements.index(el), s._last_elements)
             await s.browser.settle()
         finally:
             dialogs = _finish_dialogs(s, mark)
@@ -101,7 +115,10 @@ async def test_action(
     s._last_elements = after.elements
     if after.url not in s.pages_visited:
         s.pages_visited.append(after.url)
-    _record_action(s, "double_click" if double_click else "click_what", target)
+    if text_target is not None:
+        _record_action(s, "double_click", target, f"text:{text_target}")
+    else:
+        _record_action(s, "double_click" if double_click else "click_what", target)
 
     console_errs, network_errs = s.browser.drain_errors()
     new_bugs = await _capture_browser_events(s, after, console_errs, network_errs)
