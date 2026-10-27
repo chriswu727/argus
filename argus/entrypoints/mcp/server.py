@@ -131,7 +131,10 @@ def create_server(runtime: SessionManager, profile: str = "core") -> FastMCP:
             ),
             structured_output=True,
         )
-        registered = server._tool_manager.get_tool(name)
+        # FastMCP has no public hook for advertised input schemas; degrade to the
+        # SDK's schema if this private manager changes (a test pins the result).
+        manager = getattr(server, "_tool_manager", None)
+        registered = manager.get_tool(name) if manager is not None else None
         if registered is not None:
             _omit_schema_titles(registered.parameters)
     return server

@@ -98,11 +98,8 @@ def compute_changes(
             elif not was_present and is_present:
                 changes.append(f"Text '{target}': was absent -> NOW PRESENT")
 
-    if " ".join(before.page_text.split()) != " ".join(after.page_text.split()):
-        changes.append("Visible page text changed; inspect the post-action observation")
-
-    before_values = {(e.tag, e.id, e.name, e.index): e.value for e in before.elements}
-    after_values = {(e.tag, e.id, e.name, e.index): e.value for e in after.elements}
+    before_values = _field_values(before)
+    after_values = _field_values(after)
     changed_values = sum(
         before_values[key] != after_values[key]
         for key in before_values.keys() & after_values.keys()
@@ -110,7 +107,22 @@ def compute_changes(
     if changed_values:
         changes.append(f"Field values changed: {changed_values} (values omitted)")
 
+    # Only worth a line when nothing more specific explains the change.
+    if not changes and " ".join(before.page_text.split()) != " ".join(after.page_text.split()):
+        changes.append("Visible page text changed; inspect the post-action observation")
+
     if not changes:
         changes.append("No visible changes detected")
 
     return changes
+
+
+def _field_values(state: PageState) -> dict:
+    """Values keyed by descriptive identity, not position: inserting a row
+    shifts indices. Ambiguous identities are skipped rather than guessed."""
+    keys = [
+        (e.tag, e.type, e.id, e.name, e.placeholder, e.aria_label, e.parent_context, e.frame)
+        for e in state.elements
+    ]
+    counts = Counter(keys)
+    return {key: e.value for key, e in zip(keys, state.elements) if counts[key] == 1}

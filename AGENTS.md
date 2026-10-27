@@ -147,7 +147,8 @@ progress metadata; use their documented defaults. Verdicts remain explicit.
 
 Since 0.10.0, a new `in_progress` goal group freezes the previous group's
 evidence window without changing its status. Batch only genuinely shared
-journeys. Reopening a goal starts a new window. For a deferred bug, provide
+journeys. Reopening a goal starts a new window; re-finalizing extends an open
+window until another goal starts or is finalized. For a deferred bug, provide
 `evidence.goal` or `evidence.goals` from the declared goals and `expected`/`actual`.
 Fresh-load verification supplies the default finding URL and captures that page
 before returning to the caller. Explicit URLs and screenshot opt-outs are kept;

@@ -30,11 +30,17 @@ def evidence_site():
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
             requests.append(("GET", self.path))
+            if self.path == "/private":
+                self.send_response(302)
+                self.send_header("Location", "/login")
+                self.end_headers()
+                return
             pages = {
                 "/profile": '<h1>Profile</h1><p>Alex</p><form method="post"><label>Display name<input name="name"></label><button>Save</button></form>',
                 "/checkout": "<h1>Checkout</h1><p>Subtotal: $12</p>",
                 "/tasks": "<h1>Tasks</h1><p>No tasks</p>",
                 "/login": "<h1>Please log in</h1>",
+                "/long": '<h1>Archive</h1><div style="height:6000px"></div><p>End</p>',
             }
             self.send_response(200 if self.path in pages else 404)
             self.send_header("Content-Type", "text/html")
@@ -102,9 +108,11 @@ async def test_deferred_findings_capture_verified_pages_without_repeating_writes
         await m.end_session()
 
 
-@pytest.mark.parametrize("path", ["/login", "/missing"])
+@pytest.mark.parametrize(
+    "path,landed", [("/login", "/login"), ("/missing", "/missing"), ("/private", "/login")]
+)
 async def test_inconclusive_evidence_keeps_actual_page_and_restores_caller(
-    isolated_runtime, evidence_site, path
+    isolated_runtime, evidence_site, path, landed
 ):
     origin, _ = evidence_site
     await m.start_session(origin + "/tasks")
@@ -116,8 +124,36 @@ async def test_inconclusive_evidence_keeps_actual_page_and_restores_caller(
         )
         assert result.data["verdict"] == "inconclusive"
         assert result.data["finding"]["url"] == origin + path
-        assert isolated_runtime.session.screenshots[-1].url == origin + path
+        assert isolated_runtime.session.screenshots[-1].url == origin + landed
+        redirected = [w for w in result.data["warnings"] if "ended at" in w]
+        assert bool(redirected) is (path != landed)
         assert isolated_runtime.session.browser.current_url == origin + "/tasks"
+    finally:
+        await m.end_session()
+
+
+async def test_unsuccessful_scan_captures_evidence_from_page_top(
+    isolated_runtime, evidence_site, monkeypatch
+):
+    origin, _ = evidence_site
+    await m.start_session(origin + "/tasks")
+    try:
+        browser = isolated_runtime.session.browser
+        original = browser.screenshot
+        offsets = []
+
+        async def screenshot(path, *args, **kwargs):
+            offsets.append(await browser._page.evaluate("window.scrollY"))
+            return await original(path, *args, **kwargs)
+
+        monkeypatch.setattr(browser, "screenshot", screenshot)
+        result = await record_bug(
+            "Archive lost the saved row",
+            "medium",
+            verify={"at_url": "/long", "expect": "absent", "target_text": "Morgan"},
+        )
+        assert result.data["verdict"] == "verified"
+        assert offsets == [0]
     finally:
         await m.end_session()
 
@@ -219,14 +255,56 @@ def test_focus_windows_exclude_later_evidence_but_include_explicit_late_findings
     assert "SYNTHETIC_SECRET" not in json.dumps(s.coverage_action_trace)
 
 
+def test_refinalizing_extends_window_until_another_goal_takes_over(isolated_runtime):
+    s = coverage_session(isolated_runtime)
+    update(s, "profile")
+    _record_coverage_action(s, "test_form", "Save")
+    update(s, "profile", "exercised", "Saved once")
+    _record_coverage_action(s, "verify_persistence", "Reload")
+    update(s, "profile", "exercised", "Saved, then reloaded")
+    actions = [a["description"] for a in s.coverage_goals[0]["evidence_refs"]["actions"]]
+    assert actions == ["Save", "Reload"]
+
+    update(s, "newsletter")
+    _record_coverage_action(s, "test_form", "Subscribe")
+    update(s, "profile", "exercised", "Saved, then reloaded")
+    actions = [a["description"] for a in s.coverage_goals[0]["evidence_refs"]["actions"]]
+    assert actions == ["Save", "Reload"]
+
+    update(s, "profile")
+    _record_coverage_action(s, "test_form", "Save again")
+    update(s, "profile", "exercised", "Reopened and saved again")
+    actions = [a["description"] for a in s.coverage_goals[0]["evidence_refs"]["actions"]]
+    assert actions == ["Save again"]
+
+
+def test_finalizing_another_goal_closes_a_finalized_window(isolated_runtime):
+    s = coverage_session(isolated_runtime)
+    update(s, "profile", "exercised", "Opened the profile")
+    _record_coverage_action(s, "test_form", "Subscribe")
+    update(s, "newsletter", "exercised", "Subscribed")
+    update(s, "profile", "exercised", "Opened the profile")
+    assert s.coverage_goals[0]["evidence_refs"]["actions"] == []
+    assert [a["description"] for a in s.coverage_goals[1]["evidence_refs"]["actions"]] == [
+        "Subscribe"
+    ]
+
+
 def test_invalid_focus_batch_is_atomic_and_does_not_complete_previous_goals(isolated_runtime):
     s = coverage_session(isolated_runtime)
     update(s, "profile")
-    before = deepcopy((s.coverage_goals, s._coverage_goal_cursors, s._coverage_goal_ends))
+    before = deepcopy(
+        (s.coverage_goals, s._coverage_goal_cursors, s._coverage_goal_ends, s._coverage_goal_frozen)
+    )
     assert _apply_coverage_updates(
         s, [{"goal": ["newsletter", "unknown"], "status": "in_progress"}]
     )
-    assert (s.coverage_goals, s._coverage_goal_cursors, s._coverage_goal_ends) == before
+    assert (
+        s.coverage_goals,
+        s._coverage_goal_cursors,
+        s._coverage_goal_ends,
+        s._coverage_goal_frozen,
+    ) == before
     update(s, ["newsletter", "return"])
     assert s.coverage_goals[0]["status"] == "in_progress"
     _record_coverage_action(s, "test_action", "Shared journey")

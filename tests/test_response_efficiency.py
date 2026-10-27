@@ -262,6 +262,13 @@ def test_sparse_envelope_roundtrips_and_preserves_nondefault_metadata(mode):
         assert "[backend_error]" in failure.content[0].text
 
 
+@pytest.mark.parametrize("profile", ["agent", "core", "screen", "full"])
+async def test_advertised_input_schemas_carry_no_generated_titles(isolated_runtime, profile):
+    server = create_server(isolated_runtime, profile)
+    for tool in await server.list_tools():
+        assert '"title": "' not in json.dumps(tool.inputSchema), tool.name
+
+
 async def test_input_schema_cleanup_retains_constraints_and_literal_title_fields(isolated_runtime):
     from jsonschema import Draft202012Validator
 

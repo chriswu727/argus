@@ -108,9 +108,13 @@ No payload is permission to expand the operator's configured access policy.
 
 ## Bounded verification recovery
 
-`verify_persistence` reports whether the expected state held before reload and
-whether the loaded page is conclusive (not an HTTP error or login wall). For an
-observed match-to-mismatch transition it supplies `suggested_verify`: the inverse
+`verify_persistence` reports whether the expected state held before reload,
+the loaded page's HTTP `status`, and whether the check is conclusive. Observed
+presence is always conclusive. Absence on an HTTP error page or login wall is
+inconclusive (`matches: null`), because the target may be missing for the wrong
+reason. Pass `expect_status` when that status is the intended outcome, such as
+404 for a deleted item's own page; a different status is a conclusive mismatch.
+For an observed match-to-mismatch transition it supplies `suggested_verify`: the inverse
 text predicate at the checked URL, carrying the same storage policy. Review the
 user requirement before passing it to `record_bug`. This is a fresh-load symptom
 check, not an independent replay of the original journey or automatic proof of
@@ -122,7 +126,11 @@ unchanged title/severity, a `verify` clause and no `evidence`. This returns
 `updated: true`, `recorded: false`, the same ID, the new receipt and remaining
 rechecks. It does not add a bug or advance the new-finding action cursor. A
 finding allows at most two recheck attempts; already verified findings are not
-rechecked. Earlier receipts remain in the exported `verification_history`.
+rechecked. Earlier receipts remain in the exported `verification_history`,
+with the clause each recheck used. A recheck receipt carries `recheck` (1 or 2)
+and `previous_verdict`, and reports show both. The attempt is counted before it
+runs: an interrupted recheck, which may already have repeated writes, keeps an
+explicit inconclusive history entry.
 Replay rechecks use the original finding's trace and still repeat its writes;
 they require the same authority as any replay. A limit or inconclusive receipt
 is a reason to preserve uncertainty, not to create a duplicate and force a pass.
@@ -140,10 +148,12 @@ call numbers are retained as `claimed_evidence_calls`, not verified trace IDs.
 These fields never change a finding's trust tier by themselves.
 
 For independent fresh-load text/status checks, the default finding URL is the
-loaded verification page, including redirects. Automatic screenshots are taken
-there before restoring the caller's page, with no additional navigation or
-write replay. The receipt records `evidence_url` and the available screenshot
-path. Explicit finding URLs are preserved; if they differ from the check target,
+checked URL. Automatic screenshots are taken on the loaded page before restoring
+the caller's page, with no additional navigation or write replay; after an
+unsuccessful scroll scan the capture starts from the page top. The receipt
+records `evidence_url` and the available screenshot path. If the load was
+redirected, the finding keeps the checked URL and carries a warning naming the
+page the screenshot shows. Explicit finding URLs are preserved; if they differ from the check target,
 no automatic screenshot is attached. Without a fresh-load check, a URL different
 from the current page likewise cannot borrow that page's screenshot. Explicit
 approved image paths remain caller-provided evidence. `screenshot: "skip"` still
@@ -154,6 +164,8 @@ not used to infer the finding's location.
 A new `in_progress` group closes the previous group's evidence range but leaves
 its status unchanged. Goals batched together share their journey window;
 reopening a goal starts a new window. Final updates retain the closed boundary.
+Re-finalizing a goal whose window is still open extends it to the current point;
+starting or finalizing another goal closes it.
 Action URLs retain revisits even when a page was visited earlier in the session.
 Explicitly goal-linked findings and their screenshots can be attached after a
 window closes, including after its status is finalized. They do not contaminate

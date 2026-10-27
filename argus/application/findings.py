@@ -258,7 +258,12 @@ async def record_bug(
     )
     if receipt and fresh_load:
         if not ev.get("url"):
-            url = receipt.get("evidence_url") or receipt.get("at_url") or url
+            url = receipt.get("at_url") or url
+        landed = receipt.get("evidence_url")
+        if screenshot_label and landed and _resolve_url(s, landed) != _resolve_url(s, url):
+            warnings.append(
+                f"Verification load ended at {_short(landed, 120)}; screenshot shows that page."
+            )
         if screenshot_label:
             screenshot_path = receipt.get("screenshot_path")
             if not screenshot_path:
@@ -456,6 +461,15 @@ async def _guard_capsule(s: Session, description: str, receipt: dict | None) -> 
     return description, receipt
 
 
+def _verdict_code(receipt: dict | None) -> str:
+    if receipt is None:
+        return "observed"
+    verdict = receipt.get("reproduced")
+    return (
+        "verified" if verdict is True else "not_reproduced" if verdict is False else "inconclusive"
+    )
+
+
 async def _recheck_finding(
     s: Session, finding_id: str, title: str, severity, evidence, verify
 ) -> str:
@@ -487,17 +501,31 @@ async def _recheck_finding(
         )
     runtime = current_runtime()
     await runtime.progress(Stage.VERIFYING)
-    history = {"previous_receipt": previous, "receipt": None}
+    # The slot is consumed up front: an interrupted replay may already have
+    # repeated writes, so it must not become an unlimited retry.
+    history = {
+        "previous_receipt": previous,
+        "verify": {key: value for key, value in verify.items() if not key.startswith("_")},
+        "receipt": {
+            "attempted": True,
+            "reproduced": None,
+            "reason": "recheck did not complete; it may have run partially",
+        },
+    }
     bug.verification_history.append(history)
     receipt = await runtime.verifiers.verify(s, verify, list(bug.replay_steps))
     bug.description, receipt = await _guard_capsule(s, bug.description, receipt)
+    if isinstance(receipt, dict):
+        receipt = {
+            **receipt,
+            "recheck": len(bug.verification_history),
+            "previous_verdict": _verdict_code(previous),
+        }
     history["receipt"] = receipt
     bug.reproduction_receipt = receipt
     _refresh_finding_coverage(s, bug.coverage_goals)
     verdict = (receipt or {}).get("reproduced")
-    code = (
-        "verified" if verdict is True else "not_reproduced" if verdict is False else "inconclusive"
-    )
+    code = _verdict_code(receipt)
     await runtime.progress(
         Stage.VERIFIED
         if verdict is True

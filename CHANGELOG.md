@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+- Re-finalizing a goal now extends its evidence window while no other goal has
+  started or been finalized, so updated evidence text no longer points at an
+  earlier window. Windows closed by other work stay closed.
+- `verify_persistence` treats observed presence as conclusive and only absence
+  on an HTTP error or login page as inconclusive. A new `expect_status` makes an
+  intended status (such as 404 after a delete) conclusive. Checks record `status`.
+- Fresh-load finding screenshots start from the page top after an unsuccessful
+  scroll scan. Redirected checks keep the checked URL and warn which page the
+  screenshot shows.
+- Recheck receipts carry `recheck` and `previous_verdict`, shown in reports;
+  history records each clause. Interrupted rechecks keep an explicit
+  inconclusive entry instead of an empty one.
+- Action diffs no longer report field-value changes when rows shift position,
+  and report generic page-text changes only when nothing more specific changed.
+- Advertised input schemas degrade to the SDK default if FastMCP's internal tool
+  manager changes; a test covers every profile.
+
 ## 0.10.0 - 2026-10-26
 
 - Synchronize the English README, protocol, architecture, installation and

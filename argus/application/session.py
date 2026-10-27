@@ -57,6 +57,7 @@ class Session:
         self.exploration = ExplorationProgress()
         self._coverage_goal_cursors: dict[int, dict] = {}
         self._coverage_goal_ends: dict[int, dict] = {}
+        self._coverage_goal_frozen: set[int] = set()
         self._coverage_evidence_cursor: dict = {
             "actions": 0,
             "pages": 0,

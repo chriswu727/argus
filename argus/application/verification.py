@@ -120,6 +120,9 @@ async def _run_reproduction_check(
         evidence["evidence_url"] = s.browser.current_url
         if verify.get("_screenshot_label"):
             try:
+                if expected_status is None and observations and not observations[-1]:
+                    # An unsuccessful scan ends at the page bottom; capture from the top.
+                    await s.browser.scroll_by(-1_000_000)
                 # Capture before restoring the caller's page, without another navigation.
                 path = await _auto_screenshot(
                     s, verify["_screenshot_label"], "fresh-load verification"
