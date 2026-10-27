@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.11.0 - 2026-10-27
+## 0.11.0 - 2026-10-26
 
 Compatibility: `--tool-profile agent` and `--tool-profile core` (and the same
 `ARGUS_TOOL_PROFILE` values) still start the server, but they now load the new
