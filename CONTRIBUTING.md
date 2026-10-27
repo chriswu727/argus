@@ -111,6 +111,16 @@ occupied version label for a different build.
 After publication, verify the PyPI wheel and source archive, official MCP
 Registry package version, and directory release associations. Run
 `python -m argus.install_check` against the published package outside the checkout.
+
+The plugin bundles in `plugins/claude` and `plugins/codex` pin the published
+package, so they move only after PyPI has the new version. Raise the
+`argus-testing==` pin and project version in both `pyproject.toml` files and the
+version in both plugin manifests, run `uv lock` in `plugins/claude` and copy its
+`uv.lock` to `plugins/codex`. Then update the versioned `uvx` commands in both
+plugin READMEs and skills, including the locked Playwright version, and run
+`pytest plugins/tests`. Hosts update installed plugins only when the manifest
+version changes, and the skills' `--doctor` step assumes the web checks added
+in 0.12.
 MCPRush's default listing should expose the 28-tool web profile, not the
 `evaluation` baseline tools; preserve manually declared schemas when refreshing
 its source. Directory scans and version badges are not substitutes for these
