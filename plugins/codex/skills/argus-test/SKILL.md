@@ -34,7 +34,18 @@ are about to walk `in_progress` with `coverage_update` and walk each journey wit
 real state. For a click that should change something (add, complete, delete,
 save), use `test_action` with an `expect` prediction, such as
 `{"removes": "Buy groceries"}` or `{"count": {"label": "tasks", "delta": 1}}`.
-A SURPRISE is a lead to verify, not yet a bug. Check persistence after writes
+A SURPRISE is a lead to verify, not yet a bug.
+
+Text alone hides many problems, so look at each key page as a user would at
+least once per journey: take a `screenshot` and judge it. Watch for the main
+action styled weaker than a secondary one, urgency, stock or discount claims
+that the prices do not support, odd field order, labels that contradict each
+other (a field marked required but labelled optional), and prices or totals
+that disagree between pages. Run `check_layout` for overflow and clipped text.
+Record such judgments with `record_observation`; use `record_bug` with `verify`
+only when a text check on a fresh load can confirm the symptom.
+
+Check persistence after writes
 with `verify_persistence`, and record only reproducible, user-affecting bugs
 with `record_bug`. Use `verify` (or the
 `suggested_verify` from a persistence mismatch) so Argus rechecks the symptom on

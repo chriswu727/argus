@@ -2,10 +2,20 @@
 
 ## Unreleased
 
+- Both test skills now include a visual review step: take a `screenshot` of each
+  key page, judge hierarchy, claims, field order and cross-page totals, run
+  `check_layout`, and record such judgments with `record_observation` (a text
+  check on a fresh load is still required before `record_bug`). On DarkShop a
+  Haiku run with this step found 9 of the 12 seeded problems, up from 3, and
+  kept the visual ones as observations.
 - `observe`'s description, the "no element matches" message and the agent guide
   now say that a target description from `observe` can be passed as-is to
   `click_what`, `type_into`, `select_into` and `test_action`, instead of telling
   the agent to rephrase.
+- `record_observation` keeps an observation whose `category` it does not
+  recognize, recording it as `usability` with a warning that lists the known
+  categories, instead of rejecting it. A Haiku run of the test skill lost an
+  observation this way with `"security"`.
 - `test_form` sets checkbox, radio and switch fields from `true`/`false` (or
   on/off-style text) instead of trying to type into them, which failed with
   "Input of type checkbox cannot be filled" and skipped the field.
