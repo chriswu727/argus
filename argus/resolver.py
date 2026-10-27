@@ -190,6 +190,14 @@ def kind_of(el: InteractiveElement) -> str:
     return el.tag
 
 
+# describe()'s state markers and connectors, matched only as whole markers so a
+# real label that contains brackets ("[Draft] Notes") keeps its words.
+_OBSERVED_SCAFFOLDING = re.compile(
+    r"\[(?:(?:checked|unchecked|disabled|in iframe|expanded|collapsed|pressed"
+    r"|current|selected|invalid)\s*)+\]|\(near:|->"
+)
+
+
 def _strip_kind(desc: str) -> Tuple[List[str], Optional[str]]:
     """Lowercase + tokenise, remove the first kind-hint word; keep stopwords.
 
@@ -199,6 +207,11 @@ def _strip_kind(desc: str) -> Tuple[List[str], Optional[str]]:
     # "next to X" is row-scoping scaffolding, same as "near X" — strip the
     # PHRASE only (a standalone "Next" button must still resolve).
     desc = re.sub(r"\bnext\s+to\b", " ", desc.lower())
+    # Scaffolding that describe() adds around a label, which agents copy back
+    # from observe(): state markers ("[unchecked]", "[in iframe]"), "near:",
+    # the "->" before an href, and repr() escapes inside the near-context.
+    desc = desc.replace("\\n", " ").replace("\\t", " ")
+    desc = re.sub(_OBSERVED_SCAFFOLDING, " ", desc)
     # Underscores never appear in visible labels; an agent that types a
     # programmatic name it saw ("qty_1 input") should match the element whose
     # name we normalise the same way. (Hyphens are left alone — they occur in
@@ -356,6 +369,10 @@ def _kind_compatible(el_kind: str, kind_filter: str) -> bool:
     return el_kind == kind_filter
 
 
+def _normalise_observed(desc: str) -> str:
+    return " ".join(desc.replace("\\n", " ").replace("\\t", " ").lower().split())
+
+
 def resolve_element(
     description: str,
     elements: List[InteractiveElement],
@@ -380,6 +397,18 @@ def resolve_element(
     """
     if not elements:
         return ResolveResult(found=None, candidates=[], reason="no_elements")
+
+    # observe() lists targets by describe(); an agent passing one back verbatim
+    # (modulo escapes and whitespace) means exactly that element.
+    observed = _normalise_observed(description)
+    echoed = [
+        el
+        for el in elements
+        if _normalise_observed(describe(el)) == observed
+        and (kind_filter is None or _kind_compatible(kind_of(el), kind_filter))
+    ]
+    if len(echoed) == 1:
+        return ResolveResult(found=echoed[0], candidates=[(110, echoed[0])], reason="unique")
 
     # BEFORE any kind-stripping: if the description verbatim equals exactly one
     # element's label, that IS the answer. A bare kind-word label ("Menu",
@@ -497,9 +526,21 @@ def resolve_element(
     explicit_attribute_target = bool(effective_kind) and any(
         face == core or _has_token(core, face) for face in attribute_faces
     )
+    # A control with no face of its own (an unlabeled row checkbox) can only be
+    # named by its kind plus its row, as in "checkbox for Buy groceries". A
+    # checkbox's value ("on") is not a face; describe() hides it for that reason.
+    faces = [top_element.text, top_element.aria_label, top_element.placeholder]
+    if (top_element.type or "").lower() not in ("checkbox", "radio"):
+        faces.append(top_element.value)
+    faceless_row_target = (
+        bool(effective_kind)
+        and not any((face or "").strip() for face in faces)
+        and _has_token(core, (top_element.parent_context or "").lower())
+    )
     if top_score < 40 and not (
         (explicit_path_target and top_score >= 24)
         or explicit_attribute_target
+        or faceless_row_target
         or ordinal is not None
     ):
         return ResolveResult(found=None, candidates=scored[:5], reason="no_match")
@@ -577,7 +618,7 @@ def describe(el: InteractiveElement) -> str:
     if el.href:
         parts.append(f"-> {el.href[:60]}")
     if el.parent_context and el.parent_context.strip():
-        ctx = el.parent_context.strip()[:50]
+        ctx = " ".join(el.parent_context.split())[:50]
         if ctx and ctx not in (label or ""):
             parts.append(f"(near: {ctx!r})")
     if getattr(el, "frame", None):

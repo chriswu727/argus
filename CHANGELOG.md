@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Fix `click_what` (and the other description-based tools) rejecting the target
+  descriptions `observe` itself returns. State markers such as `[unchecked]`,
+  `(near: …)` and `->` were scored as words, so a row checkbox or a row's Delete
+  button copied verbatim from `observe` matched nothing. An observed description
+  now resolves to its own element, row context is shown with collapsed
+  whitespace, and an unlabeled control can be named by kind plus row
+  ("checkbox for Buy groceries"). Found by running the `/argus-testing:test`
+  skill with a small model, which could not complete or delete tasks.
 - Add a `/argus-testing:test` skill to the Claude plugin and an `argus-test`
   skill to the Codex plugin. Each agrees the scope (asking before real-world
   effects), checks the environment, runs the session, rechecks symptoms on fresh
