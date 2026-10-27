@@ -199,7 +199,7 @@ async def test_monitor_counts_only_and_discovery_accounting(isolated_runtime):
 
 
 async def test_fixed_encoding_benchmark_preserves_evidence_and_measures_tradeoffs():
-    from argus.evaluation.overhead import benchmark
+    from argus_lab.evaluation.overhead import benchmark
 
     result = await benchmark()
     assert result["aggregate"]["reduction_percent"] > 20

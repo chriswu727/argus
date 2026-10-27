@@ -244,8 +244,8 @@ Argus 没有维护者运营的遥测收集服务，但 MCP 宿主及其模型提
 pip install -e '.[dev]'
 playwright install chromium
 ARGUS_REQUIRE_BROWSER=1 pytest -q
-python -m argus.evaluation --smoke
-python -m argus.evaluation.overhead
+python -m argus_lab.evaluation --smoke
+python -m argus_lab.evaluation.overhead
 ```
 
 以上测试和 smoke 不调用模型。单独的模型评测需要明确授权，原始 traces 应保持私有。

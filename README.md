@@ -396,8 +396,10 @@ ranking of third-party products.
 
 ## Benchmarks
 
+Benchmarks and evaluations run from a source checkout (`argus_lab/`); they are not part of the installed package.
+
 ```
-$ python -m argus.bench --target all
+$ python -m argus_lab.bench --target all
 
   buggytasks    22 / 22  = 100 %   ·  mechanical bugs (console errors, fake delete, auth bypass…)
   darkshop      12 / 12  = 100 %   ·  human-eye bugs (fake scarcity, lying toasts, stale state…)
@@ -432,7 +434,7 @@ See [methodology](docs/evaluation.md).
 ```bash
 python test-site/app.py           # BuggyTasks  :5555
 python human-eye-fixture/app.py   # DarkShop    :5556
-python -m argus.bench --target all
+python -m argus_lab.bench --target all
 ```
 
 </details>

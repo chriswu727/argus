@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Move benchmarks and evaluations from `argus.bench` and `argus.evaluation` to
+  the repository-only `argus_lab` package. They ship in the source archive but
+  not the wheel; run them as `python -m argus_lab.bench` and
+  `python -m argus_lab.evaluation` from a checkout.
 - Replace the `agent` and `core` profiles with one 28-tool `web` default that
   covers the whole testing loop, including `regression_check` and `get_errors`,
   with concise descriptions. Add `advanced` (61 tools) for network mocks,

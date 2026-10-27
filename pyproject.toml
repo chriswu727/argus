@@ -58,7 +58,7 @@ packages = ["argus"]
 
 [tool.hatch.build.targets.sdist]
 only-include = [
-    "argus", "tests", "examples", "scripts/check_distributions.py",
+    "argus", "argus_lab", "tests", "examples", "scripts/check_distributions.py",
     "test-site/app.py", "human-eye-fixture/app.py",
     "docs/architecture.md", "docs/decisions.md", "docs/implementation-0.7.md",
     "docs/agent-protocol.md", "docs/evaluation.md", "docs/evaluation-0.8.md",
@@ -68,6 +68,8 @@ only-include = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Benchmarks and evaluations live in argus_lab, outside the installed package.
+pythonpath = ["."]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]

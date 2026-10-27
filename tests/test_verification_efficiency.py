@@ -15,7 +15,7 @@ from argus.application.progress import progress_scope
 from argus.differ import compute_changes
 from argus.domain.contracts import OperationResult, Rejection, ToolText
 from argus.entrypoints.mcp.results import to_mcp_result
-from argus.evaluation.agent_fixture import agent_fixture
+from argus_lab.evaluation.agent_fixture import agent_fixture
 
 
 @pytest.mark.parametrize("variant", ["buggy", "fixed"])

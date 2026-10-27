@@ -102,8 +102,8 @@ the tested agent workflow. No additional model runs were used to select results.
 ## Recheck the published data
 
 ```bash
-python -m argus.evaluation --compare examples/agent-evaluation-pilot.json
-python -m argus.evaluation --compare examples/agent-evaluation-optimized.json
+python -m argus_lab.evaluation --compare examples/agent-evaluation-pilot.json
+python -m argus_lab.evaluation --compare examples/agent-evaluation-optimized.json
 ```
 
 The companion `*-evidence.json` files contain original model reports, review

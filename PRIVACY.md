@@ -51,7 +51,7 @@ inputs require approved directories in `ARGUS_FILE_ROOTS`; see [Security](SECURI
   an Argus-operated model service.
 - Installing or upgrading through PyPI, `pip`, or `uvx` contacts those package
   distribution services under their own policies.
-- The optional `argus.evaluation.codex_runner` sends synthetic testing prompts
+- The optional `argus_lab.evaluation.codex_runner` sends synthetic testing prompts
   and tool evidence to the operator's ChatGPT-backed Codex session only after
   explicit subscription-usage opt-in. It stores local answers, usage, tool traces
   and fixture oracle logs, not model reasoning. Raw traces can contain local

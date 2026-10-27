@@ -34,8 +34,8 @@ fields listed in the protocol may be inherited from an exact `base_id`; action
 and verification results are current-call-only. If context or a base is missing,
 call `observe` for full state. Never infer a passing check from unchanged fields.
 Use `python -m argus.install_check` to verify installed versions and stdio without
-a browser or model, and `python -m argus.evaluation.overhead` for deterministic
-byte measurements. Bytes are not model tokens. Monitoring retains numeric
+a browser or model. From a source checkout, `python -m argus_lab.evaluation.overhead`
+gives deterministic byte measurements. Bytes are not model tokens. Monitoring retains numeric
 overhead only; do not add page content or arguments to metrics.
 Use `--tool-profile screen` for native
 macOS review and `--tool-profile advanced` only when network mocks,
@@ -207,7 +207,8 @@ Don't record speculation, polish nits, or static a11y / SEO that
   health/readiness endpoints, SSE events and metrics; use `0` for a free port.
 - `argus-cleanup --keep-runs 20` — dry-run report retention; add `--apply`
   to remove complete old run artifacts without touching journals or capsules.
-- `python -m argus.bench --target all` — reproduce the 34 / 34 matrix.
+- `python -m argus_lab.bench --target all` — from a source checkout, reproduce
+  the 34 / 34 matrix.
 - `python -m argus.screen.validate <app names...>` — read-only AX walk
   over running apps, JSON output.
 

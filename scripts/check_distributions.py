@@ -44,6 +44,8 @@ def allowed(path: str, *, wheel: bool) -> bool:
         return True
     if wheel:
         return False
+    if name.parts[0] == "argus_lab" and name.suffix == ".py":
+        return True
     return (
         path in PUBLIC_FILES
         or (name.parts[0] == "tests" and name.suffix == ".py")

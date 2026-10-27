@@ -8,10 +8,10 @@ import pytest
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-from argus.evaluation.agent_fixture import agent_fixture
-from argus.evaluation.browser_baseline import BrowserBaseline
-from argus.evaluation.codex_runner import clean_environment, command
-from argus.evaluation.gateway import CallBudget
+from argus_lab.evaluation.agent_fixture import agent_fixture
+from argus_lab.evaluation.browser_baseline import BrowserBaseline
+from argus_lab.evaluation.codex_runner import clean_environment, command
+from argus_lab.evaluation.gateway import CallBudget
 
 
 def test_codex_command_disallows_keys_shell_web_plugins_and_uses_subscription(
@@ -91,7 +91,7 @@ async def test_evaluation_gateway_real_stdio_without_model(tmp_path, arm):
             command=sys.executable,
             args=[
                 "-m",
-                "argus.evaluation.gateway",
+                "argus_lab.evaluation.gateway",
                 "--arm",
                 arm,
                 "--origin",

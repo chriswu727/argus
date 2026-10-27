@@ -8,7 +8,7 @@ Version 0.9 introduced an offline, deterministic encoding benchmark; the figures
 below are reproduced with 0.10.0:
 
 ```bash
-python -m argus.evaluation.overhead
+python -m argus_lab.evaluation.overhead
 ```
 
 It encodes the same 24 synthetic observations in compatible, compact and delta
@@ -65,7 +65,7 @@ titles, evidence, actual progress stages and verdicts are retained.
 | Argus scripted save/reload calls per control | 7 | 5 |
 
 These discovery figures describe the finalization snapshot, before typed finding
-evidence was added. Run `python -m argus.evaluation.overhead` for current discovery
+evidence was added. Run `python -m argus_lab.evaluation.overhead` for current discovery
 counts and the scripted smoke check for the five-call workflow. It starts, declares the
 goal in progress, clicks Save and reads its returned observation, checks a
 fresh load, then ends with explicit final coverage. It runs buggy, client-storage
@@ -137,8 +137,8 @@ are published. No further model attempts were used to improve these results.
 ## Local smoke check
 
 ```bash
-python -m argus.evaluation --smoke --output /tmp/argus-evaluation.json
-python -m argus.evaluation --compare /tmp/argus-evaluation.json
+python -m argus_lab.evaluation --smoke --output /tmp/argus-evaluation.json
+python -m argus_lab.evaluation --compare /tmp/argus-evaluation.json
 ```
 
 Install Chromium first. The smoke runner starts an ephemeral loopback fixture
@@ -159,7 +159,7 @@ from external agent runs are reported, not automatically declared acceptable.
 
 ## Collecting agent trials
 
-Use `Dataset.model_json_schema()` from `argus.evaluation.models` for the exact
+Use `Dataset.model_json_schema()` from `argus_lab.evaluation.models` for the exact
 schema; `--output` from a smoke run provides a complete example. For real runs,
 set `mode` to `agent`, use versioned model/host identities, and collect both arms:
 
@@ -222,7 +222,7 @@ and [MCP tool policies](https://learn.chatgpt.com/docs/extend/mcp).
 
 ```bash
 # Only after explicit authorization; MODEL must be an available, fixed model.
-python -m argus.evaluation.codex_runner \
+python -m argus_lab.evaluation.codex_runner \
   --allow-subscription-usage --model MODEL --effort high \
   --output /private/path/collection --runs 8 --max-runs 32
 ```
@@ -268,17 +268,17 @@ Coverage needs successful tool references showing the actual journey, not merely
 the model's assertion that it was covered.
 
 Create a review keyed by run directory, using `Review.model_json_schema()` from
-`argus.evaluation.adjudication`. Each finding decision includes its zero-based
+`argus_lab.evaluation.adjudication`. Each finding decision includes its zero-based
 claim index, matched bug ID or null, reviewer-checked evidence call numbers, and
 rationale. Keep the original answer unchanged; explicitly explain any correction
 to model-generated call numbering. Each goal decision includes
 the goal ID, evidence call numbers and rationale. Then validate and score:
 
 ```bash
-python -m argus.evaluation.adjudication \
+python -m argus_lab.evaluation.adjudication \
   --collection /private/path/collection --reviews /private/path/reviews.json \
   --output /private/path/paired.json
-python -m argus.evaluation --compare /private/path/paired.json
+python -m argus_lab.evaluation --compare /private/path/paired.json
 ```
 
 The assembler requires a review for every finalized attempt, every finding,

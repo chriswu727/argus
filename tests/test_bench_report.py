@@ -8,8 +8,8 @@ differentiation pitch is built on (F10).
 
 from __future__ import annotations
 
-from argus.bench.runner import BenchReport, ScenarioResult, receipt_rejected
 from argus.models import Bug, BugType, Severity
+from argus_lab.bench.runner import BenchReport, ScenarioResult, receipt_rejected
 
 
 def _report(results):

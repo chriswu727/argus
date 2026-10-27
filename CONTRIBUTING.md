@@ -69,12 +69,13 @@ cancellation. Browser tests use temporary local fixtures. `test_stdio_protocol.p
 launches the real entry point and performs initialize/list/call/image/end over
 MCP stdio. Monitoring tests use a real loopback socket and SSE disconnects.
 
-For the scripted benchmark, start `test-site/app.py` and
-`human-eye-fixture/app.py`, then run `python -m argus.bench --target all`. This is
+Benchmarks and evaluations live in `argus_lab/`, which ships in the source
+archive but not the installed wheel. For the scripted benchmark, start `test-site/app.py` and
+`human-eye-fixture/app.py`, then run `python -m argus_lab.bench --target all`. This is
 a capability ceiling, not a real-agent success rate. Model-provider benchmarks
 consume subscription/API usage and must be explicitly authorized.
 
-Run `python -m argus.evaluation --smoke` for the isolated, no-model paired
+Run `python -m argus_lab.evaluation --smoke` for the isolated, no-model paired
 protocol check. See [evaluation methodology](docs/evaluation.md) before reporting
 agent effectiveness. Protocol details are in [agent protocol](docs/agent-protocol.md).
 
