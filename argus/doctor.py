@@ -59,28 +59,37 @@ async def _chromium_checks(timeout: float) -> list[Check]:
     except PackageNotFoundError:
         playwright_version = "unknown"
     async with async_playwright() as playwright:
+        # executable_path is the full browser; headless sessions may use the
+        # separate headless shell (`--only-shell`), so the launch decides.
         executable = Path(playwright.chromium.executable_path)
-        if not executable.exists():
-            return [
-                Check(
-                    "Chromium browser",
-                    False,
-                    f"not installed for Playwright {playwright_version} (expected {executable})",
-                    install_command(),
-                )
-            ]
-        installed = Check(
-            "Chromium browser", True, f"Playwright {playwright_version}: {executable}"
-        )
         try:
             browser = await asyncio.wait_for(playwright.chromium.launch(headless=True), timeout)
             await browser.close()
         except Exception as exc:
-            return [
-                installed,
-                Check("Chromium launch", False, _first_line(exc), launch_failure_hint(exc)),
-            ]
-        return [installed, Check("Chromium launch", True, "headless launch succeeded")]
+            if not executable.exists():
+                return [
+                    Check(
+                        "Chromium browser",
+                        False,
+                        f"not installed for Playwright {playwright_version} (expected {executable})",
+                        install_command(),
+                    )
+                ]
+            return [Check("Chromium launch", False, _first_line(exc), launch_failure_hint(exc))]
+        launched = Check(
+            "Chromium launch", True, f"headless launch succeeded (Playwright {playwright_version})"
+        )
+        if executable.exists():
+            return [launched]
+        return [
+            launched,
+            Check(
+                "Headed Chromium",
+                True,
+                "not installed; needed only for start_session(headless=False) "
+                f"(`{install_command()}`)",
+            ),
+        ]
 
 
 def check_browser(timeout: float = 60.0) -> list[Check]:

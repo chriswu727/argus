@@ -2,9 +2,10 @@
 
 ## Unreleased
 
-- `argus-mcp --doctor` now checks web testing on every platform: whether the
-  Chromium build for the installed Playwright exists, a real headless launch,
-  and whether the report directory is writable (probed with a temporary file,
+- `argus-mcp --doctor` now checks web testing on every platform: a real
+  headless Chromium launch decides readiness (so `--only-shell` installs pass,
+  with headed Chromium reported as optional), a missing browser is reported
+  for the installed Playwright version, and the report directory is writable (probed with a temporary file,
   since `os.access` always succeeds for root). Each failure prints the exact fix
   for the interpreter running Argus; screen-mode probes run only on macOS and no
   longer report `n/a` as passing elsewhere. Browser launch failures in

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -34,6 +35,23 @@ def test_missing_browser_reports_install_command(monkeypatch, tmp_path):
     (check,) = doctor.check_browser()
     assert not check.ok and "not installed for Playwright" in check.detail
     assert check.fix == f"{sys.executable} -m playwright install chromium"
+
+
+def test_headless_shell_only_installs_pass(monkeypatch, tmp_path):
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as playwright:
+        browsers = Path(playwright.chromium.executable_path).parents[2]
+    shells = sorted(browsers.glob("chromium_headless_shell-*"))
+    if not shells:
+        pytest.skip("no headless shell installed")
+    for source in [shells[-1], *browsers.glob("ffmpeg-*")]:
+        (tmp_path / source.name).symlink_to(source)
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path))
+    checks = doctor.check_browser()
+    assert all(check.ok for check in checks)
+    assert [check.name for check in checks] == ["Chromium launch", "Headed Chromium"]
+    assert "headless=False" in checks[1].detail
 
 
 def test_doctor_fails_on_missing_web_prerequisites_without_screen_noise(monkeypatch, capsys):
