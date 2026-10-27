@@ -128,7 +128,7 @@ async def test_browser_dashboard_tracks_real_testing_flow(monitor):
     from playwright.async_api import async_playwright, expect
 
     from argus.entrypoints.mcp.server import create_server
-    from argus.evaluation.agent_fixture import agent_fixture
+    from argus_lab.evaluation.agent_fixture import agent_fixture
 
     server = create_server(monitor.runtime, "agent")
     errors = []

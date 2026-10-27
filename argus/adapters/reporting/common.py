@@ -104,6 +104,8 @@ def _repro_badge(receipt: Optional[dict]) -> str:
             color, label = "#6e7781", "REPRO CHECK ERRORED"
         else:
             color, label = "#6e7781", "INCONCLUSIVE · no verdict"
+    if receipt.get("recheck"):
+        label += f" · recheck {receipt['recheck']}, earlier {receipt.get('previous_verdict', 'observed')}"
     return f'<span class="rp" style="background:{color}">{_esc(label)}</span>'
 
 

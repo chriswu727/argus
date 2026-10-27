@@ -36,7 +36,9 @@ separate macOS manual check; Linux CI does not claim to test that integration.
   an explicit receipt with `attempted` and a three-state `reproduced` result.
   Automatic regression deliberately permits only read-only built-in checks.
 - New report format: a pure renderer under `adapters/reporting/`, injected via
-  `Reporter(exporters=...)`. HTML remains the primary report.
+  `Reporter(exporters=...)` in `adapters/reporting/reporter.py`. HTML remains
+  the primary report. `argus.models`, `argus.detector` and `argus.reporter` are
+  compatibility re-exports only; import from `domain/` and `adapters/` instead.
 - A different journal: implement `JournalPort` and wire it in `bootstrap.py`.
   The repository owns merge atomicity; callers should not read-then-write.
 - Browser actions: add a public adapter method. Application services must not
@@ -69,12 +71,13 @@ cancellation. Browser tests use temporary local fixtures. `test_stdio_protocol.p
 launches the real entry point and performs initialize/list/call/image/end over
 MCP stdio. Monitoring tests use a real loopback socket and SSE disconnects.
 
-For the scripted benchmark, start `test-site/app.py` and
-`human-eye-fixture/app.py`, then run `python -m argus.bench --target all`. This is
+Benchmarks and evaluations live in `argus_lab/`, which ships in the source
+archive but not the installed wheel. For the scripted benchmark, start `test-site/app.py` and
+`human-eye-fixture/app.py`, then run `python -m argus_lab.bench --target all`. This is
 a capability ceiling, not a real-agent success rate. Model-provider benchmarks
 consume subscription/API usage and must be explicitly authorized.
 
-Run `python -m argus.evaluation --smoke` for the isolated, no-model paired
+Run `python -m argus_lab.evaluation --smoke` for the isolated, no-model paired
 protocol check. See [evaluation methodology](docs/evaluation.md) before reporting
 agent effectiveness. Protocol details are in [agent protocol](docs/agent-protocol.md).
 
@@ -107,7 +110,7 @@ occupied version label for a different build.
 After publication, verify the PyPI wheel and source archive, official MCP
 Registry package version, and directory release associations. Run
 `python -m argus.install_check` against the published package outside the checkout.
-MCPRush's default listing should expose the 30-tool core profile, not the
+MCPRush's default listing should expose the 28-tool web profile, not the
 `evaluation` baseline tools; preserve manually declared schemas when refreshing
 its source. Directory scans and version badges are not substitutes for these
 installation and handshake checks.

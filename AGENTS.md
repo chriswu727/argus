@@ -25,20 +25,22 @@ argus-mcp --list-tools    # show the selected profile and public tools
 argus-mcp --doctor        # macOS Screen Recording + Accessibility check
 ```
 
-The default profile is `core`. For structured-result-aware hosts, use
-`--tool-profile agent --response-mode compact` for 19 focused tools.
+The default `web` profile has 28 tools covering the complete testing loop,
+including `regression_check`. For structured-result-aware hosts, add
+`--response-mode compact`. Earlier `agent` and `core` names select `web`.
 
 `--response-mode delta` is opt-in for snapshot-aware clients. Only observation
 fields listed in the protocol may be inherited from an exact `base_id`; action
 and verification results are current-call-only. If context or a base is missing,
 call `observe` for full state. Never infer a passing check from unchanged fields.
 Use `python -m argus.install_check` to verify installed versions and stdio without
-a browser or model, and `python -m argus.evaluation.overhead` for deterministic
-byte measurements. Bytes are not model tokens. Monitoring retains numeric
+a browser or model. From a source checkout, `python -m argus_lab.evaluation.overhead`
+gives deterministic byte measurements. Bytes are not model tokens. Monitoring retains numeric
 overhead only; do not add page content or arguments to metrics.
 Use `--tool-profile screen` for native
-macOS review and `--tool-profile full` only when the broader network,
-storage, tabs, crawl, and coordinate surface is needed. The
+macOS review and `--tool-profile advanced` only when network mocks,
+cookies/storage, tabs, coordinates, crawling or link/performance probes are
+needed. `full` adds every screen tool as well. The
 `ARGUS_TOOL_PROFILE` environment variable provides the same setting.
 
 After `pip install -U argus-testing`, restart your MCP host so it picks
@@ -147,7 +149,8 @@ progress metadata; use their documented defaults. Verdicts remain explicit.
 
 Since 0.10.0, a new `in_progress` goal group freezes the previous group's
 evidence window without changing its status. Batch only genuinely shared
-journeys. Reopening a goal starts a new window. For a deferred bug, provide
+journeys. Reopening a goal starts a new window; re-finalizing extends an open
+window until another goal starts or is finalized. For a deferred bug, provide
 `evidence.goal` or `evidence.goals` from the declared goals and `expected`/`actual`.
 Fresh-load verification supplies the default finding URL and captures that page
 before returning to the caller. Explicit URLs and screenshot opt-outs are kept;
@@ -198,13 +201,14 @@ Don't record speculation, polish nits, or static a11y / SEO that
 - `argus-mcp --version` — what version your MCP host actually loaded.
 - `argus-mcp --doctor` — macOS permission probes for screen mode.
 - `argus-mcp --list-tools` — selected tool profile and exported names.
-- `argus-mcp --tool-profile agent|core|screen|full` — control discovery size.
+- `argus-mcp --tool-profile web|advanced|screen|full` — control discovery size.
 - `argus-mcp --unsafe` — turn on `eval_js` (off by default).
 - `argus-mcp --monitor-port 8765` — enable the read-only loopback dashboard,
   health/readiness endpoints, SSE events and metrics; use `0` for a free port.
 - `argus-cleanup --keep-runs 20` — dry-run report retention; add `--apply`
   to remove complete old run artifacts without touching journals or capsules.
-- `python -m argus.bench --target all` — reproduce the 34 / 34 matrix.
+- `python -m argus_lab.bench --target all` — from a source checkout, reproduce
+  the 34 / 34 matrix.
 - `python -m argus.screen.validate <app names...>` — read-only AX walk
   over running apps, JSON output.
 

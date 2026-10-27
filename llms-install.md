@@ -1,8 +1,8 @@
 # Install Argus Testing MCP
 
-Argus is a local stdio MCP server for exploratory QA. Install the published
-`argus-testing` package; do not clone the repository or start the LiteLLM-backed
-`argus` CLI when the goal is MCP setup.
+Argus helps coding agents test the apps they build: a local stdio MCP server
+that exercises real user journeys, finds bugs and verifies them with evidence. Install the published
+`argus-testing` package; do not clone the repository when the goal is MCP setup.
 
 ## Requirements
 
@@ -48,8 +48,8 @@ README.
 
 ## Verify the installation
 
-The current release is 0.10.0. For reproducible setup, replace `argus-testing`
-with `argus-testing==0.10.0` in the launch arguments. Restart the MCP host after
+The current release is 0.11.0. For reproducible setup, replace `argus-testing`
+with `argus-testing==0.11.0` in the launch arguments. Restart the MCP host after
 upgrading; a running server retains its loaded version and tool schema.
 
 Run:
@@ -60,8 +60,9 @@ uvx --from argus-testing argus-mcp --list-tools
 ```
 
 The first command should report the current `argus-testing` version. The second
-should report the default `core` profile with 30 tools, including
-`start_session`, `observe`, `coverage_update`, `record_bug`, and `end_session`.
+should report the default `web` profile with 28 tools, including
+`start_session`, `observe`, `coverage_update`, `record_bug`, `regression_check`,
+and `end_session`.
 
 Then restart or refresh the MCP client and ask:
 
@@ -69,12 +70,15 @@ Then restart or refresh the MCP client and ask:
 
 ## Optional profiles
 
-- `--tool-profile agent` exposes 19 common browser-testing tools with concise
-  descriptions. Pair with `--response-mode compact` for structured-result-aware hosts.
-- `--tool-profile core` is the 30-tool default for browser QA.
+- `--tool-profile web` is the 28-tool default: the complete browser testing loop.
+  Add `--response-mode compact` for structured-result-aware hosts.
+- `--tool-profile advanced` adds network mocks, cookies and storage, tabs,
+  dialogs, waits, coordinate input, crawling, and link/performance probes (61 tools).
 - `--tool-profile screen` exposes 14 native macOS testing tools and requires
   Screen Recording and Accessibility permissions.
-- `--tool-profile full` exposes all 77 specialist browser and screen tools.
+- `--tool-profile full` exposes all 77 browser and screen tools.
+- Earlier `agent` and `core` names still start the server but load `web`, so
+  their tool sets change (19 → 28 and 30 → 28 tools).
 
 Do not add `--unsafe` unless arbitrary page-context JavaScript execution is
 explicitly required and the target is trusted.

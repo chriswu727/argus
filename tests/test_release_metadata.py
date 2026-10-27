@@ -26,12 +26,12 @@ def test_release_metadata_stays_in_sync():
     assert project["project"]["urls"]["Homepage"] == server["websiteUrl"]
     assert all(
         term in project["project"]["description"].lower()
-        for term in ("agent-first", "testing mcp", "evidence", "persistence")
+        for term in ("testing mcp", "coding agents", "evidence", "persistence")
     )
     assert len(server["description"]) <= 100
     assert all(
         term in server["description"].lower()
-        for term in ("mcp", "web", "macos", "coverage", "persistence", "progress")
+        for term in ("testing mcp", "coding agents", "bugs", "evidence")
     )
     assert f"mcp-name: {server['name']}" in (ROOT / "README.md").read_text()
     assert "chriswu727" in glama["maintainers"]
@@ -48,17 +48,15 @@ def test_release_metadata_stays_in_sync():
 
 def test_readme_covers_every_public_tool_profile():
     from argus.entrypoints.mcp.server import tool_names
-    from argus.mcp_server import _CORE_TOOL_NAMES, _SCREEN_TOOL_NAMES, mcp
+    from argus.mcp_server import mcp
 
     readme = (ROOT / "README.md").read_text()
     documented_tools = set(re.findall(r"`([a-z][a-z0-9_]*)`", readme))
     full_tools = set(mcp._tool_manager._tools)
 
     assert full_tools <= documented_tools
-    assert re.search(rf"\| `core` \| {len(_CORE_TOOL_NAMES)} \|", readme)
-    assert re.search(rf"\| `agent` \| {len(tool_names('agent'))} \|", readme)
-    assert re.search(rf"\| `screen` \| {len(_SCREEN_TOOL_NAMES)} \|", readme)
-    assert re.search(rf"\| `full` \| {len(full_tools)} \|", readme)
+    for profile in ("web", "advanced", "screen", "full"):
+        assert re.search(rf"\| `{profile}` \| {len(tool_names(profile))} \|", readme), profile
     assert "uvx --from argus-testing argus-mcp" in readme
 
 
@@ -111,7 +109,7 @@ def test_client_install_examples_start_the_published_stdio_server():
     assert "codex mcp add argus -- uvx --from argus-testing argus-mcp" in readme
     assert "claude mcp add argus -- uvx --from argus-testing argus-mcp" in agent_install
     assert "codex mcp add argus -- uvx --from argus-testing argus-mcp" in agent_install
-    assert "core` profile with 30 tools" in agent_install
+    assert "web` profile with 28 tools" in agent_install
 
     cursor_url = re.search(r"https://cursor\.com/install-mcp\?name=argus&config=[^)]+", readme)
     assert cursor_url is not None

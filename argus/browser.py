@@ -13,7 +13,7 @@ from argus.security import _redact as _redact
 from argus.security import _redact_headers as _redact_headers
 from argus.security import redact_body
 
-from .models import InteractiveElement, PageState
+from .domain.models import InteractiveElement, PageState
 from .runtime import BoundedEventLog
 from .settings import CaptureSettings
 

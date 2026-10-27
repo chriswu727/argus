@@ -10,10 +10,10 @@ import pytest
 from click.testing import CliRunner
 
 import argus.mcp_server as m
+from argus.adapters.reporting.reporter import Reporter
 from argus.cleanup import execute_cleanup, plan_cleanup
 from argus.cli import cleanup
-from argus.models import ExplorationResult
-from argus.reporter import Reporter
+from argus.domain.models import ExplorationResult
 from argus.storage import (
     StorageError,
     atomic_write_text,
@@ -106,7 +106,7 @@ def test_report_rejects_unsafe_run_id(tmp_path):
 
 
 def test_secondary_report_failure_is_visible_and_does_not_block_siblings(monkeypatch, tmp_path):
-    import argus.reporter as reporter_module
+    import argus.adapters.reporting.reporter as reporter_module
 
     real_write = reporter_module.atomic_write_text
 

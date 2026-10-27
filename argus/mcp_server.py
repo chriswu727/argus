@@ -14,9 +14,6 @@ from argus.entrypoints.mcp.catalog import (
     _CLOSED_WORLD_TOOL_NAMES as _CLOSED_WORLD_TOOL_NAMES,
 )
 from argus.entrypoints.mcp.catalog import (
-    _CORE_TOOL_NAMES as _CORE_TOOL_NAMES,
-)
-from argus.entrypoints.mcp.catalog import (
     _DESTRUCTIVE_TOOL_NAMES as _DESTRUCTIVE_TOOL_NAMES,
 )
 from argus.entrypoints.mcp.catalog import (
@@ -28,7 +25,11 @@ from argus.entrypoints.mcp.catalog import (
 from argus.entrypoints.mcp.catalog import (
     _TOOL_TITLES as _TOOL_TITLES,
 )
-from argus.entrypoints.mcp.server import bind_operation, create_server, tool_names
+from argus.entrypoints.mcp.catalog import (
+    _WEB_TOOL_NAMES as _WEB_TOOL_NAMES,
+)
+from argus.entrypoints.mcp.catalog import PROFILE_ALIASES, PROFILES
+from argus.entrypoints.mcp.server import bind_operation, create_server, resolve_profile, tool_names
 from argus.settings import Settings
 
 runtime = create_runtime(Settings())
@@ -43,7 +44,7 @@ def __getattr__(name):
     if hasattr(_compat, name):
         return getattr(_compat, name)
     if name == "Reporter":
-        from argus.reporter import Reporter
+        from argus.adapters.reporting.reporter import Reporter
 
         return Reporter
     raise AttributeError(name)
@@ -87,8 +88,8 @@ def main() -> None:
     parser.add_argument("--unsafe", action="store_true", default=None)
     parser.add_argument(
         "--tool-profile",
-        choices=("agent", "core", "screen", "full"),
-        default=os.environ.get("ARGUS_TOOL_PROFILE", "core"),
+        choices=(*PROFILES, *PROFILE_ALIASES),
+        default=os.environ.get("ARGUS_TOOL_PROFILE", "web"),
     )
     parser.add_argument("--list-tools", action="store_true")
     parser.add_argument("--response-mode", choices=("compatible", "compact", "delta"))
@@ -102,7 +103,9 @@ def main() -> None:
         sys.exit(doctor())
     if args.list_tools:
         names = sorted(tool_names(args.tool_profile))
-        print(f"Argus tool profile: {args.tool_profile} ({len(names)} tools)")
+        resolved = resolve_profile(args.tool_profile)
+        alias = f"; legacy name {args.tool_profile!r}" if resolved != args.tool_profile else ""
+        print(f"Argus tool profile: {resolved} ({len(names)} tools{alias})")
         print("\n".join(names))
         return
     try:

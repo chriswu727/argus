@@ -24,6 +24,11 @@ def test_source_archive_accepts_product_files(tmp_path):
     CHECK["check"](path)
 
 
+def test_lab_code_is_allowed_only_in_source_distribution():
+    assert CHECK["allowed"]("argus_lab/bench/runner.py", wheel=False)
+    assert not CHECK["allowed"]("argus_lab/bench/runner.py", wheel=True)
+
+
 def test_translation_is_allowed_only_in_source_distribution():
     assert CHECK["allowed"]("README.zh-CN.md", wheel=False)
     assert not CHECK["allowed"]("README.zh-CN.md", wheel=True)

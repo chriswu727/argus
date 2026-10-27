@@ -3,7 +3,7 @@ the seeded bugs in test-site/app.py.
 
 Each scenario is a small async function that resets the fixture (when
 needed), drives Argus's MCP tools, optionally calls record_bug, and
-returns (caught: bool, method: str). The runner in argus.bench.runner
+returns (caught: bool, method: str). The runner in argus_lab.bench.runner
 wraps these in timing + reporting.
 """
 

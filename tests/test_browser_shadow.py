@@ -14,7 +14,7 @@ import pytest
 from playwright.async_api import async_playwright
 
 from argus.browser import _EXTRACT_ELEMENTS_JS, BrowserDriver
-from argus.models import InteractiveElement
+from argus.domain.models import InteractiveElement
 
 _PAGE = """
 <button id="light-btn">Light Button</button>

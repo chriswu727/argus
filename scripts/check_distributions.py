@@ -21,7 +21,6 @@ PUBLIC_FILES = {
     "glama.json",
     "docs/architecture.md",
     "docs/decisions.md",
-    "docs/implementation-0.7.md",
     "docs/agent-protocol.md",
     "docs/evaluation.md",
     "docs/evaluation-0.8.md",
@@ -44,6 +43,8 @@ def allowed(path: str, *, wheel: bool) -> bool:
         return True
     if wheel:
         return False
+    if name.parts[0] == "argus_lab" and name.suffix == ".py":
+        return True
     return (
         path in PUBLIC_FILES
         or (name.parts[0] == "tests" and name.suffix == ".py")

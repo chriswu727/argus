@@ -22,7 +22,8 @@ async def check() -> dict:
             f"Installed metadata {installed} differs from source {__version__}; reinstall the package."
         )
     profiles = {}
-    for profile, expected_count in (("core", 30), ("agent", 19)):
+    # "core" proves a legacy profile name still starts the web profile.
+    for profile, expected_count in (("web", 28), ("advanced", 61), ("core", 28)):
         parameters = StdioServerParameters(
             command=sys.executable, args=["-m", "argus.mcp_server", "--tool-profile", profile]
         )

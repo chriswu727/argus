@@ -61,7 +61,7 @@ async def test_core_tool_profile_is_small_and_keeps_the_primary_workflow():
 
 
 def test_core_mcp_context_has_a_regression_budget():
-    tools = [m.mcp._tool_manager._tools[name] for name in m._CORE_TOOL_NAMES]
+    tools = [m.mcp._tool_manager._tools[name] for name in m._WEB_TOOL_NAMES]
     footprint = sum(
         len(m.mcp.instructions)
         + len(tool.description or "")

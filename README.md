@@ -2,13 +2,13 @@
 
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/chriswu727/argus/main/assets/argus-icon.png" alt="Argus Testing logo — an eye with a verified check" width="112">
+<img src="https://raw.githubusercontent.com/chriswu727/argus/main/assets/argus-icon.png" alt="Argus logo — an eye with a verified check" width="112">
 
-# Argus
+# Argus — Testing for Coding Agents
 
-**A testing-engineer toolkit for AI agents—explore user journeys, check outcomes, and reproduce bug symptoms with evidence, through MCP.**
+**Argus helps coding agents test the apps they build—exercise real user journeys, find bugs, and verify them with evidence.**
 
-Argus is an [MCP](https://modelcontextprotocol.io/) server that gives your coding agent a testing workflow: evidence-backed coverage, action-and-observation tools, persistence checks, independent reproduction receipts, and live progress. The host agent decides what to investigate; Argus helps it check what actually happened. Browser QA works across platforms, with a separate native macOS tool profile.
+Argus is an [MCP](https://modelcontextprotocol.io/) server that drives the browser itself, so your agent gets a complete testing experience without assembling another browser server. Goal coverage, persistence checks, independent rechecks, reports and regression rechecks support that testing; they do not replace it. Every finding states how it is supported: reproduced by an independent check, observed by the agent (for example, a visual judgment), not reproduced, or inconclusive. The host agent decides what to investigate and whether behavior is wrong. Browser testing works across platforms, with a separate native macOS profile.
 
 [![PyPI](https://img.shields.io/pypi/v/argus-testing?color=1a7f37)](https://pypi.org/project/argus-testing/)
 [![Python](https://img.shields.io/pypi/pyversions/argus-testing)](https://pypi.org/project/argus-testing/)
@@ -47,9 +47,10 @@ the phase summary in the final result. See the [agent protocol](docs/agent-proto
   return the current page evidence, reducing the need for a separate observation.
 - **Conservative checks:** missing or malformed evidence stays unknown, not a
   guessed pass or a fabricated bug. Findings link to stable session references.
-- **Focused agent mode:** `argus-mcp --tool-profile agent --response-mode compact`
-  exposes 19 common testing tools with concise discovery descriptions, preserves structured evidence,
-  and avoids repeating migrated payloads as prose. Compatible mode remains the default.
+- **Complete default loop:** the `web` profile exposes 28 testing tools with concise
+  discovery descriptions, from first observation to regression rechecks. Add
+  `--response-mode compact` to preserve structured evidence without repeating it
+  as prose. Compatible mode remains the default.
 - **Visible progress:** real phases, goal counts and check counts over MCP;
   `--monitor-port 8765` adds the local live dashboard without exposing goal text.
 - **Measured response overhead (0.9):** smaller output schemas, numeric payload
@@ -62,26 +63,23 @@ Does installing Argus improve an agent? Measure it with the
 initial state and budget, with both arms and failures retained. The local scripted smoke
 suite validates the harness; it is **not evidence of agent performance gains**.
 
-### What's new in 0.10.0
+### What's new in 0.11.0
 
-- **Verify without repeating writes:** persistence mismatches can suggest a
-  fresh-load symptom check; existing findings allow at most two explicit
-  rechecks with receipt history, instead of duplicating the finding or journey.
-- **Keep evidence on the right page:** fresh-load findings capture the checked
-  page before restoring the caller. Expected/actual outcomes survive every
-  report format; missing or mismatched screenshots produce explicit warnings.
-- **Keep coverage focused:** switching goal groups closes the previous evidence
-  window without completing it. Revisited pages and explicitly goal-linked
-  deferred findings remain attributable to the right journey.
-- **Finish with fewer bookkeeping calls:** `end_session(coverage_updates=[...])`
-  validates final goals atomically before closing. Compact/delta output shares
-  identical coverage evidence and omits empty optional metadata; text/value-aware
-  diffs make post-action changes easier to interpret without exporting inputs.
+- **One complete default loop:** the 28-tool `web` profile covers exploring,
+  acting, verifying, recording, reporting and `regression_check`. `advanced`
+  adds network, state, tab, coordinate and crawl controls.
+- **Lighter install:** the legacy LLM-planner CLI and LiteLLM are gone; a fresh
+  runtime install resolves 41 packages instead of 82. Benchmarks and evaluations
+  live in the repository-only `argus_lab` package.
+- **Sharper evidence:** presence is conclusive even on error pages, `expect_status`
+  covers intended 404s, re-finalized goals keep their evidence window current,
+  and rechecks record which attempt produced a verdict.
 
-See the [0.10 protocol](docs/agent-protocol.md#bounded-verification-recovery)
-and [changelog](CHANGELOG.md). The default profile, response mode and version-1
-result envelope remain unchanged. These changes do not establish a new model
-quality or token-cost benchmark.
+**Upgrading from 0.10:** `agent` and `core` still start the server but now load
+`web`. Former `agent` users get 28 tools instead of 19 (discovery payload 34,379
+bytes versus 24,386); former `core` users get 28 instead of 30 (versus 51,732
+bytes on Python 3.11/3.12, 50,564 on 3.13) and find `check_links` and
+`check_performance` in `advanced`. The `argus <url>` command is removed. See the [changelog](CHANGELOG.md) for details.
 
 The [0.8 Codex evaluation](docs/evaluation-0.8.md) includes ten matched pairs:
 Argus found 6/6 defect opportunities versus 5/6 for the browser baseline, including
@@ -93,7 +91,7 @@ synthetic sample does not establish general superiority.
 The no-model [response encoding benchmark](docs/evaluation.md#response-overhead)
 compares identical synthetic evidence, including navigation invalidation. Delta
 mode reduces aggregate result JSON by 48.25% versus compact mode across those
-24 responses in 0.10.0; this measures bytes, **not agent token usage or testing quality**.
+24 responses, reproduced with 0.11.0; this measures bytes, **not agent token usage or testing quality**.
 
 <details>
 <summary><b>Live monitoring from a real local fixture run</b></summary>
@@ -201,12 +199,12 @@ The button adds Argus to Cursor; run the Chromium installation command above onc
 }
 ```
 
-The default `core` profile exposes the primary web-testing workflow without flooding the host with every specialist tool. Use `uvx --from argus-testing argus-mcp --list-tools` to inspect the selected profile, `--tool-profile screen` for native macOS testing, or `--tool-profile full` for the entire advanced surface. `ARGUS_TOOL_PROFILE` provides the same setting through the environment.
+The default `web` profile exposes the complete web-testing loop without flooding the host with every specialist tool. Use `uvx --from argus-testing argus-mcp --list-tools` to inspect the selected profile, `--tool-profile advanced` for network, state, tab, coordinate and crawl controls, or `--tool-profile screen` for native macOS testing. `ARGUS_TOOL_PROFILE` provides the same setting through the environment.
 
-For agents that read structured MCP results, use the focused configuration:
+For agents that read structured MCP results, add compact responses (the monitor is optional):
 
 ```bash
-uvx --from argus-testing argus-mcp --tool-profile agent --response-mode compact --monitor-port 8765
+uvx --from argus-testing argus-mcp --response-mode compact --monitor-port 8765
 ```
 
 Read returned observations before issuing another `observe`. Batch related goals
@@ -250,19 +248,6 @@ screenshot. See the [evidence contract](docs/agent-protocol.md#finding-evidence-
 pip install argus-testing
 playwright install chromium
 claude mcp add argus -- argus-mcp
-```
-
-</details>
-
-<details>
-<summary><b>CLI mode (no MCP host — bring your own LLM)</b></summary>
-
-```bash
-# Uses a LiteLLM-backed planner. Set a provider key (OPENAI_API_KEY, DEEPSEEK_API_KEY, …).
-uvx --from argus-testing argus http://localhost:3000 --model deepseek/deepseek-chat
-
-# Higher recall: union N independent passes (deduped, proven instance kept)
-uvx --from argus-testing argus http://localhost:3000 --passes 3
 ```
 
 </details>
@@ -393,11 +378,15 @@ receipt is supporting evidence, not a guarantee of correctness or zero false pos
 
 ## How it compares
 
-Use Argus when your agent can operate a browser but needs a repeatable QA
-workflow: track unfinished journeys, check saved/deleted state after reload,
-reproduce a reported symptom, and preserve evidence for a regression check.
-It complements general browser automation and debugging tools; it does not
-replace the host model's judgment or guarantee discovery of every defect.
+[Microsoft's Playwright MCP](https://github.com/microsoft/playwright-mcp#readme)
+provides browser automation, with opt-in test assertions (`--caps=testing`) such
+as verifying visible text or element values. Argus is organized around the whole
+testing process instead: goals declared up front and tracked to evidence,
+persistence checks after writes, findings linked to the actions, checks and
+screenshots behind them, independent rechecks, and regression rechecks of earlier
+findings against later builds. Argus includes its own browser control and can
+also run alongside other tools. It does not replace the host model's judgment or
+guarantee discovery of every defect.
 
 The [paired evaluation](docs/evaluation.md) compares a conventional Playwright
 MCP adapter with Argus using the same host and tasks. That adapter is not the
@@ -408,8 +397,10 @@ ranking of third-party products.
 
 ## Benchmarks
 
+Benchmarks and evaluations run from a source checkout (`argus_lab/`); they are not part of the installed package.
+
 ```
-$ python -m argus.bench --target all
+$ python -m argus_lab.bench --target all
 
   buggytasks    22 / 22  = 100 %   ·  mechanical bugs (console errors, fake delete, auth bypass…)
   darkshop      12 / 12  = 100 %   ·  human-eye bugs (fake scarcity, lying toasts, stale state…)
@@ -430,9 +421,7 @@ findings and coverage before the scorer computes paired metrics.
 Read the [published 0.8 results and limitations](docs/evaluation-0.8.md), including
 the residual defect in the nominally fixed form fixture and all invalid preflights.
 
-The older `argus.bench.agent_runner` uses heuristic keyword matching. It is a
-legacy exploratory diagnostic, not independent precision/recall evidence and
-not the basis for current product claims. See [methodology](docs/evaluation.md).
+See [methodology](docs/evaluation.md).
 
 </details>
 
@@ -446,7 +435,7 @@ not the basis for current product claims. See [methodology](docs/evaluation.md).
 ```bash
 python test-site/app.py           # BuggyTasks  :5555
 python human-eye-fixture/app.py   # DarkShop    :5556
-python -m argus.bench --target all
+python -m argus_lab.bench --target all
 ```
 
 </details>
@@ -455,23 +444,25 @@ python -m argus.bench --target all
 
 ## Tool surface
 
-`argus-mcp` starts with the focused `core` web profile. Every public tool is documented below. The counts are also available directly from the installed server:
+`argus-mcp` starts with the `web` profile: one complete testing loop of exploring, acting, verifying, recording, reporting and re-checking earlier findings. Every public tool is documented below. The counts are also available directly from the installed server:
 
 ```bash
 uvx --from argus-testing argus-mcp --list-tools
+uvx --from argus-testing argus-mcp --tool-profile advanced --list-tools
 uvx --from argus-testing argus-mcp --tool-profile screen --list-tools
-uvx --from argus-testing argus-mcp --tool-profile full --list-tools
 ```
 
 | Profile | Public tools | Intended use |
 |---------|-------------:|--------------|
-| `core` | 30 | Primary browser QA workflow; the default. |
-| `agent` | 19 | Focused browser journeys, concise descriptions and batch coverage; pair with compact responses when the host supports structured results. |
-| `screen` | 14 | Focused native macOS testing through Accessibility and screenshots. |
-| `full` | 77 | Everything in core and screen, plus specialist browser, state, network, coordinate, and crawl controls. |
+| `web` | 28 | The complete browser testing loop with concise tool descriptions; the default. |
+| `advanced` | 61 | Everything in web, plus network mocks, cookies and storage, tabs, dialogs, waits, coordinate input, crawling, and link and performance probes. |
+| `screen` | 14 | Native macOS testing through Accessibility and screenshots; enabled separately. |
+| `full` | 77 | Every web and screen tool, including screen coordinate input. |
+
+Earlier profile names still start the server: `agent` and `core` load the `web` profile, so their tool sets change (19 → 28 and 30 → 28 tools).
 
 <details>
-<summary><b>Core profile — 30 tools</b></summary>
+<summary><b>Web profile — 28 tools</b></summary>
 
 | Tools | Purpose |
 |-------|---------|
@@ -490,7 +481,6 @@ uvx --from argus-testing argus-mcp --tool-profile full --list-tools
 | `capsule_save` · `capsule_restore` | Save and restore a named authenticated or seeded browser state, with an optional liveness check. |
 | `verify_persistence` | Force a fresh load and return target presence plus the page observation. This checks persistence, not semantic correctness. |
 | `test_action` · `test_form` | Perform a description-keyed action or form submission and return the resulting state diff in one round trip. |
-| `check_links` · `check_performance` | Probe current-page internal links and expose raw browser performance metrics without auto-certifying generic audit findings. |
 | `regression_check` | Re-test journaled findings for the current origin without requiring another discovery pass. |
 | `record_bug` · `record_observation` | Record a finding with evidence and its recheck outcome, or keep a qualitative review note separate. Inspect the receipt rather than treating recording as confirmation. |
 | `end_session` | Atomically apply optional final `coverage_updates`, close the active session, and emit HTML, JSON, JUnit, and SARIF reports. Invalid updates keep the session open. |
@@ -512,15 +502,16 @@ Reports keep original screenshots as evidence and, by default, write compact Web
 | `screen_screenshot_region` | Capture a precise rectangular screen region for fine visual evidence. |
 | `screen_session_status` | Report elapsed time, remaining session budget, action counts, and the abort-file path. |
 | `record_bug` · `record_observation` · `end_session` | Use the shared evidence, reporting, and teardown tools in screen mode. |
+| `screen_click_at` · `screen_hover_at` · `screen_drag` · `screen_keys` · `screen_type_at` | Only in `full`: absolute screen coordinates and multi-key sequences when a native app exposes no useful AX element. |
 
 **Safety:** per-call timeout, a 30-minute session cap, a `~/.argus/abort` panic file that halts every subsequent action, and an automatic before/after screenshot trail on every action.
 
 </details>
 
 <details>
-<summary><b>Full profile — 77 tools</b></summary>
+<summary><b>Advanced profile — 61 tools</b></summary>
 
-The full profile includes every core and screen tool above plus these 36 specialist tools. Use it when the workflow genuinely needs low-level state, fault injection, multi-tab control, coordinates, or crawling.
+The advanced profile includes every web tool above plus these 33 tools. Use it when a test genuinely needs low-level state, fault injection, multi-tab control, coordinates, or crawling.
 
 | Additional tools | Purpose |
 |------------------|---------|
@@ -538,12 +529,12 @@ The full profile includes every core and screen tool above plus these 36 special
 | `wait_for_text` · `wait_for_request` | Wait for specific visible text or matching outgoing traffic with a bounded timeout. |
 | `get_downloads` | Inspect files downloaded during the session, including their paths and sizes. |
 | `crawl_site` | Crawl bounded internal pages and collect browser events, link results, and performance evidence. |
-| `screen_click_at` · `screen_hover_at` · `screen_drag` · `screen_keys` · `screen_type_at` | Use absolute screen coordinates and multi-key sequences when a native app exposes no useful AX element. |
+| `check_links` · `check_performance` | Probe current-page internal links and expose raw browser performance metrics without auto-certifying generic audit findings. |
 
 To expose `eval_js` as an operational tool rather than a disabled safety stub:
 
 ```bash
-uvx --from argus-testing argus-mcp --tool-profile full --unsafe
+uvx --from argus-testing argus-mcp --tool-profile advanced --unsafe
 ```
 
 </details>
@@ -611,25 +602,24 @@ argus/
 ├── entrypoints/mcp/   # public tool catalog, profiles and MCP adaptation
 ├── application/       # session manager and focused QA use cases
 ├── domain/            # models, errors, states, replay and verification contracts
-├── adapters/          # monitoring, logs, file journal, report exporters, JS assets
+├── adapters/          # monitoring, logs, file journal, report service and exporters, JS assets
 ├── bootstrap.py       # composition root: injected backend/repository factories
 ├── ports.py           # narrow lifecycle, observation, verification and storage protocols
 ├── settings.py        # validated, per-runtime configuration
 ├── browser.py         # Playwright adapter (public operations; private page ownership)
 ├── screen/            # macOS AX adapter, permissions, safety
-├── reporter.py        # atomic report orchestration and exporter registry
 ├── resolver.py        # description → element (web + screen)
-├── cli.py             # autonomous exploration and shared regression entry point
+└── cli.py             # argus-regression and argus-cleanup commands
+argus_lab/            # repository-only: not in the installed wheel
 ├── evaluation/        # paired schemas, isolated fixtures, opt-in host runner, adjudication
-└── bench/             # deterministic capability + legacy heuristic harness
+└── bench/             # deterministic capability benchmark
 test-site/            # BuggyTasks  (22 mechanical bugs)
 human-eye-fixture/    # DarkShop    (12 human-eye bugs)
 ```
 
 Start with [Architecture](docs/architecture.md), [design decisions](docs/decisions.md)
 and [Contributing](CONTRIBUTING.md) for implementation boundaries, tests and
-extension points. The autonomous LiteLLM exploration loop remains a separate
-workflow; shared regression does not import or mutate the MCP server.
+extension points. Shared regression does not import or mutate the MCP server.
 
 ---
 

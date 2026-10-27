@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from argus.evaluation.models import Dataset
-from argus.evaluation.scoring import compare
+from argus_lab.evaluation.models import Dataset
+from argus_lab.evaluation.scoring import compare
 
 
 @pytest.mark.parametrize("cohort,count", [("pilot", 8), ("optimized", 20)])
@@ -113,7 +113,7 @@ def test_known_usage_is_scored_and_token_budget_is_checked():
 
 
 def test_compare_cli_round_trip(tmp_path, monkeypatch, capsys):
-    from argus.evaluation.__main__ import main
+    from argus_lab.evaluation.__main__ import main
 
     source = tmp_path / "trials.json"
     output = tmp_path / "validated.json"
@@ -127,7 +127,7 @@ def test_compare_cli_round_trip(tmp_path, monkeypatch, capsys):
 
 
 def test_compare_cli_rejects_invalid_pairs_without_echoing_data(tmp_path, monkeypatch, capsys):
-    from argus.evaluation.__main__ import main
+    from argus_lab.evaluation.__main__ import main
 
     payload = dataset_payload()
     payload["trials"].pop()
@@ -180,7 +180,7 @@ def test_malformed_trials_are_rejected(mutation):
 
 
 async def test_scripted_smoke_exercises_buggy_fixed_and_clean_controls():
-    from argus.evaluation.smoke import run_smoke
+    from argus_lab.evaluation.smoke import run_smoke
 
     dataset = await run_smoke()
     result = compare(dataset)

@@ -18,6 +18,7 @@ async def verify_persistence(
     target_text: str,
     after_url: str = "",
     clear_storage: bool = False,
+    expect_status: int = 0,
 ) -> str:
     """Force a fresh page load and report whether `target_text` is present
     or absent — your tool for catching the "Saved!" toast that lied.
@@ -51,6 +52,9 @@ async def verify_persistence(
             server-backed truth without logging out). Use True when the feature
             is supposed to persist to a server/account. If clearing logs the app
             out, the result is unreliable — re-check without it.
+        expect_status: Optional HTTP status the fresh load should return, such
+            as 404 for a deleted item's own page. Absence on an error or login
+            page is otherwise inconclusive; presence is always reported.
     """
     s = _require_session()
     expect_norm = (expect or "").strip().lower()
@@ -60,6 +64,8 @@ async def verify_persistence(
         )
     if not target_text.strip():
         return Rejection("verify_persistence: target_text must not be empty.")
+    if expect_status and not 100 <= expect_status <= 599:
+        return Rejection("verify_persistence: expect_status must be between 100 and 599.")
     await current_runtime().progress(Stage.VERIFYING)
 
     s.steps.append(
@@ -71,6 +77,9 @@ async def verify_persistence(
     nav_url = _resolve_url(s, after_url) if after_url else current_url
     before_state = await s.browser.get_state()
     before_present = _text_in_state(target_text, before_state)
+    if not before_present and expect_norm == "present":
+        # A just-saved row can sit below the fold or outside a virtualized window.
+        before_present = await _present_with_scroll(s, target_text, before_state)
     before_matches = before_present == (expect_norm == "present")
     if clear_storage:
         await s.browser.goto(nav_url)  # land on the right origin
@@ -80,12 +89,18 @@ async def verify_persistence(
     s._last_elements = after_state.elements
 
     present = await _present_with_scroll(s, target_text, after_state)
-    matches = (present and expect_norm == "present") or (not present and expect_norm == "absent")
-    conclusive = not _looks_logged_out(after_state) and not (
-        response is not None and response.status >= 400
+    text_matches = present == (expect_norm == "present")
+    status = response.status if response is not None else None
+    status_matches = (status == expect_status) if expect_status else None
+    unreliable_page = _looks_logged_out(after_state) or (
+        status is not None and status >= 400 and not status_matches
     )
-    if not conclusive:
-        matches = None
+    # Observed presence and an observed status mismatch are direct evidence;
+    # absence on an error or login page may have the wrong cause.
+    conclusive = present or not unreliable_page or status_matches is False
+    if expect_status and status is None:
+        conclusive = False
+    matches = (text_matches and status_matches is not False) if conclusive else None
     s.verification_checks.append(
         {
             "expect": expect_norm,
@@ -96,6 +111,10 @@ async def verify_persistence(
             "clear_storage": clear_storage,
             "before_matches": before_matches,
             "conclusive": conclusive,
+            "status": status,
+            "expect_status": expect_status or None,
+            "text_matches": text_matches,
+            "status_matches": status_matches,
         }
     )
     s.exploration.last_verified_action = len(s.action_trace)
@@ -112,11 +131,16 @@ async def verify_persistence(
             if present
             else "Target text is MISSING after refresh — does NOT match expectation."
         )
+    if status_matches is False:
+        verdict = f"HTTP {status}, expected {expect_status}. " + verdict
     if not conclusive:
-        verdict = "HTTP error or login wall — target presence cannot establish persistence."
+        verdict = (
+            "Target absent on an HTTP error or login page — absence cannot establish "
+            "persistence. Pass expect_status if this status is the expected outcome."
+        )
 
     suggested_verify = None
-    if not matches and conclusive and before_matches and not _looks_logged_out(before_state):
+    if conclusive and not text_matches and before_matches and not _looks_logged_out(before_state):
         suggested_verify = {
             "expect": "absent" if expect_norm == "present" else "present",
             "target_text": target_text.strip(),

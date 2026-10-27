@@ -368,11 +368,18 @@ def _apply_coverage_updates(s: Session, updates: list[dict], *, final: bool = Fa
     cursor = _coverage_cursor(s)
     cursors = dict(s._coverage_goal_cursors)
     ends = dict(s._coverage_goal_ends)
+    frozen = set(s._coverage_goal_frozen)
+    touched = {index for index, _, _ in changes}
     focused = {index for index, status, _ in changes if status == "in_progress"}
-    if focused:
-        for index in cursors:
-            if index not in focused and index not in ends:
-                ends[index] = dict(cursor)
+    other_work = any(status != "untested" for _, status, _ in changes)
+    for index in cursors:
+        if index in touched:
+            continue
+        # A new group closes every other window; other work closes finalized ones.
+        finalized = s.coverage_goals[index].get("status") in {"exercised", "blocked"}
+        if focused or (other_work and finalized):
+            ends.setdefault(index, dict(cursor))
+            frozen.add(index)
     planned = []
     for index, status, evidence in changes:
         selected = dict(s.coverage_goals[index])
@@ -381,13 +388,17 @@ def _apply_coverage_updates(s: Session, updates: list[dict], *, final: bool = Fa
             selected.pop("evidence_refs", None)
             cursors.pop(index, None)
             ends.pop(index, None)
+            frozen.discard(index)
         elif status == "in_progress":
             selected.pop("evidence_refs", None)
             cursors[index] = dict(cursor)
             ends.pop(index, None)
+            frozen.discard(index)
         else:
             start = cursors.setdefault(index, dict(s._coverage_evidence_cursor))
-            end = ends.setdefault(index, dict(cursor))
+            # Re-finalizing extends the window while no other goal has taken over.
+            end = ends[index] if index in frozen else dict(cursor)
+            ends[index] = end
             selected["evidence_refs"] = _coverage_evidence_refs(s, start, end, selected["goal"])
         planned.append((index, selected))
 
@@ -396,6 +407,7 @@ def _apply_coverage_updates(s: Session, updates: list[dict], *, final: bool = Fa
         s.coverage_goals[index].update(selected)
     s._coverage_goal_cursors = cursors
     s._coverage_goal_ends = ends
+    s._coverage_goal_frozen = frozen
     if any(status in {"exercised", "blocked"} for _, status, _ in changes):
         s._coverage_evidence_cursor = cursor
     return None

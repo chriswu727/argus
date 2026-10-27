@@ -92,7 +92,7 @@ def command(
         "mcp_servers.testing.command": sys.executable,
         "mcp_servers.testing.args": [
             "-m",
-            "argus.evaluation.gateway",
+            "argus_lab.evaluation.gateway",
             "--arm",
             arm,
             "--origin",

@@ -129,7 +129,7 @@ for product semantics, user constraints and choosing the next action. A stalled
 hint is a signal to reconsider, not an automatic stop or retry.
 
 The optional `agent` profile narrows discovery to 19 common tools; `core` stays
-the default. Atomic batch coverage avoids separate calls for goals sharing a
+the default (superseded by ADR 12). Atomic batch coverage avoids separate calls for goals sharing a
 journey without inferring that those goals passed. Verification returns its page
 observation, so a host can reuse evidence rather than observing reflexively.
 
@@ -167,3 +167,26 @@ Trade-off: a reopened goal starts a new evidence range, and untagged deferred
 findings cannot be reliably assigned to earlier journeys. The host must supply
 the correct goal and requirements. A reproduced predicate still does not prove
 a root cause or a semantic defect.
+
+## ADR 12 — One complete default testing profile
+
+Status: shipped in 0.11.0.
+
+Context: the recommended 19-tool `agent` profile omitted `regression_check` and
+`get_errors`, so following the recommendation broke the test, fix and re-check
+loop, while the 30-tool `core` default carried long descriptions and two probes
+that rarely belong in a first pass.
+
+Decision: replace `agent` and `core` with a 28-tool `web` default that covers
+exploration, actions, verification, findings, reports and regression rechecks
+with concise descriptions. `advanced` adds network mocks, cookies and storage,
+tabs, dialogs, waits, coordinate input, crawling and link/performance probes.
+`screen` stays separate and `full` still exposes everything. The tool count
+follows the workflow; capabilities move between profiles rather than being
+deleted. Earlier names map to `web` so existing configurations keep starting.
+
+Trade-off: earlier names guarantee that the server starts, not that the tool
+set is unchanged. `agent` users see nine more tools and a larger discovery
+payload (34,379 versus 24,386 bytes); `core` users lose `check_links` and
+`check_performance` from the default (now in `advanced`) and receive a smaller
+payload (versus 51,732 bytes on Python 3.11/3.12 or 50,564 on 3.13).

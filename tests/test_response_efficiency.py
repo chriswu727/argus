@@ -188,25 +188,26 @@ async def test_measurements_are_request_local_and_record_failure_and_cancellatio
 
 async def test_monitor_counts_only_and_discovery_accounting(isolated_runtime):
     isolated_runtime.settings = replace(isolated_runtime.settings, response_mode="delta")
-    server = create_server(isolated_runtime, "agent")
+    server = create_server(isolated_runtime, "web")
     result = await server.call_tool("observe", {})
     assert result.isError
     totals = isolated_runtime.snapshot()["overhead"]["response_totals"]
     assert totals["responses"] == 1
     assert all(isinstance(value, int) for value in totals.values())
     discovery = discovery_bytes(await server.list_tools(), server.instructions)
-    assert discovery["tools"] == 19 and discovery["output_schema_json_bytes"] > 0
+    assert discovery["tools"] == 28 and discovery["output_schema_json_bytes"] > 0
 
 
 async def test_fixed_encoding_benchmark_preserves_evidence_and_measures_tradeoffs():
-    from argus.evaluation.overhead import benchmark
+    from argus_lab.evaluation.overhead import benchmark
 
     result = await benchmark()
+    assert result["python_version"] and result["mcp_sdk_version"]
     assert result["aggregate"]["reduction_percent"] > 20
     cases = {case["case"]: case for case in result["cases"]}
     assert all(case["lossless_roundtrip"] for case in cases.values())
     assert cases["navigation"]["delta_vs_compact_reduction_percent"] < 0
-    assert result["discovery"]["agent"]["tools_json_bytes"] < 28_812
+    assert result["discovery"]["web"]["tools_json_bytes"] < 36_000
 
 
 def test_output_schema_retains_validation_without_repeated_display_titles():
@@ -260,6 +261,22 @@ def test_sparse_envelope_roundtrips_and_preserves_nondefault_metadata(mode):
         )
         assert failure.isError and failure.structuredContent["recovery"]
         assert "[backend_error]" in failure.content[0].text
+
+
+@pytest.mark.parametrize("profile", ["web", "advanced", "screen", "full"])
+async def test_advertised_input_schemas_carry_no_generated_titles(isolated_runtime, profile):
+    server = create_server(isolated_runtime, profile)
+    for tool in await server.list_tools():
+        assert '"title": "' not in json.dumps(tool.inputSchema), tool.name
+
+
+async def test_advertised_descriptions_do_not_depend_on_python_docstring_handling(
+    isolated_runtime,
+):
+    import inspect
+
+    for tool in await create_server(isolated_runtime, "full").list_tools():
+        assert tool.description and tool.description == inspect.cleandoc(tool.description)
 
 
 async def test_input_schema_cleanup_retains_constraints_and_literal_title_fields(isolated_runtime):

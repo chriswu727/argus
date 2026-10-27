@@ -1,7 +1,8 @@
 {
   "schema_version": 1,
-  "argus_version": "0.10.0",
+  "argus_version": "0.11.0",
   "mcp_sdk_version": "1.30.0",
+  "python_version": "3.13.17",
   "method": "synthetic-identical-input-encoding-v1",
   "baseline": "0.8-compatible compact encoder semantics; same structured evidence",
   "limitations": [
@@ -11,36 +12,36 @@
     "Synthetic repeated catalog content favors deltas; navigation invalidates them"
   ],
   "discovery": {
-    "agent": {
-      "tools": 19,
-      "tools_json_bytes": 24163,
+    "web": {
+      "tools": 28,
+      "tools_json_bytes": 34156,
       "instructions_utf8_bytes": 223,
-      "description_utf8_bytes": 3055,
-      "input_schema_json_bytes": 4457,
-      "output_schema_json_bytes": 12673
+      "description_utf8_bytes": 4267,
+      "input_schema_json_bytes": 5314,
+      "output_schema_json_bytes": 18676
     },
-    "core": {
-      "tools": 30,
-      "tools_json_bytes": 51509,
+    "advanced": {
+      "tools": 61,
+      "tools_json_bytes": 78816,
       "instructions_utf8_bytes": 223,
-      "description_utf8_bytes": 19358,
-      "input_schema_json_bytes": 5333,
-      "output_schema_json_bytes": 20010
+      "description_utf8_bytes": 16345,
+      "input_schema_json_bytes": 8650,
+      "output_schema_json_bytes": 40687
     },
     "screen": {
       "tools": 14,
-      "tools_json_bytes": 24417,
+      "tools_json_bytes": 23851,
       "instructions_utf8_bytes": 223,
-      "description_utf8_bytes": 8598,
+      "description_utf8_bytes": 8045,
       "input_schema_json_bytes": 3282,
       "output_schema_json_bytes": 9338
     },
     "full": {
       "tools": 77,
-      "tools_json_bytes": 117342,
+      "tools_json_bytes": 115129,
       "instructions_utf8_bytes": 223,
-      "description_utf8_bytes": 38142,
-      "input_schema_json_bytes": 10608,
+      "description_utf8_bytes": 35940,
+      "input_schema_json_bytes": 10655,
       "output_schema_json_bytes": 51359
     }
   },

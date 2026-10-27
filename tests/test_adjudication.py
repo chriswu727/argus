@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from argus.evaluation.adjudication import assemble
+from argus_lab.evaluation.adjudication import assemble
 
 
 @pytest.fixture
@@ -93,7 +93,7 @@ def test_unsupported_claim_and_failed_trial_remain_in_dataset(collection):
 
 
 def test_historical_cases_require_explicit_reviewed_ground_truth(collection):
-    from argus.evaluation.models import Case
+    from argus_lab.evaluation.models import Case
 
     directory, reviews = collection
     for review in reviews.values():

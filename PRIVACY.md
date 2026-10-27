@@ -47,12 +47,11 @@ inputs require approved directories in `ARGUS_FILE_ROOTS`; see [Security](SECURI
   apply independently of Argus.
 - Browser tests connect to the URLs the user or agent chooses to test, along
   with resources those pages load.
-- CLI mode uses LiteLLM and sends planner context to the model provider selected
-  by the user. MCP mode does not require an Argus API key or an Argus-operated
-  model service.
+- Argus does not call a model itself and does not require an Argus API key or
+  an Argus-operated model service.
 - Installing or upgrading through PyPI, `pip`, or `uvx` contacts those package
   distribution services under their own policies.
-- The optional `argus.evaluation.codex_runner` sends synthetic testing prompts
+- The optional `argus_lab.evaluation.codex_runner` sends synthetic testing prompts
   and tool evidence to the operator's ChatGPT-backed Codex session only after
   explicit subscription-usage opt-in. It stores local answers, usage, tool traces
   and fixture oracle logs, not model reasoning. Raw traces can contain local

@@ -1,10 +1,10 @@
-# Argus
+# Argus — Testing for Coding Agents
 
-**让 AI agent 像测试工程师一样探索用户流程、检查真实结果，并用证据复现缺陷现象的 MCP 工具集。**
+**帮 coding agent 把写好的应用实际测一遍，发现问题，并用证据核实。**
 
 [English — 主文档](README.md) · 简体中文 · [产品主页](https://yichenwu.dev/projects/argus) · [更新日志](CHANGELOG.md)
 
-本文对应 **0.10.0**。英文 README 是项目的权威说明；代码、协议文档和发布说明以英文维护。
+本文对应 **0.11.0**。英文 README 是项目的权威说明；代码、协议文档和发布说明以英文维护。
 
 [![PyPI](https://img.shields.io/pypi/v/argus-testing)](https://pypi.org/project/argus-testing/)
 [![Python](https://img.shields.io/pypi/pyversions/argus-testing)](https://pypi.org/project/argus-testing/)
@@ -12,7 +12,7 @@
 
 ## Argus 提供什么
 
-Argus 是本地运行的 MCP server，为现有 coding agent 增加一套可追踪的测试工作流：
+Argus 是本地运行的 MCP server，自带浏览器操作，无需再拼装另一个浏览器 MCP。目标覆盖、持久化检查、独立复查、报告和回归检查用来支撑测试，而不是取代测试本身：
 
 - 围绕用户目标探索真实流程，而不只是读取页面或执行预写脚本。
 - 点击、输入、导航后直接返回页面观察，减少重复调用 `observe`。
@@ -22,26 +22,24 @@ Argus 是本地运行的 MCP server，为现有 coding agent 增加一套可追�
 - 通过 MCP 进度通知和本地 dashboard 展示实际执行阶段。
 - 导出 HTML、JSON、JUnit 和 SARIF，并支持对符合条件的已知缺陷做无模型回归检查。
 
+每个发现都会注明依据：由独立检查复现、由 agent 观察得出（例如视觉判断）、未复现或无法判断。
 宿主 agent 负责判断产品需求和选择下一步；Argus 提供执行、证据与确定性检查。
 它不会保证发现所有 bug，也不会因为工具执行成功就认定应用通过测试。
 浏览器模式跨平台可用；原生 macOS 模式使用独立工具配置。
 
-## 0.10.0 更新
+## 0.11.0 更新
 
-- **避免重复写入：**持久化检查发现状态丢失时，可以建议只读的 fresh-load 复查条件，
-  无须再次执行 Save/Delete。已有 finding 最多显式复查两次，并保留历史 receipt。
-- **修正证据归属：**在核验页面采集截图，再返回 agent 原来的页面。
-  延后记录 bug 不再自动附上无关页面的截图；截图缺失或 URL 不匹配会明确给出 warning。
-- **完整保存预期与实际：**`evidence.expected`、`evidence.actual` 会保留在 JSON 字段及各报告格式中。
-  调用方提供的调用编号标记为 `claimed_evidence_calls`，不是独立核验过的 trace ID。
-- **聚焦覆盖范围：**切换目标组会冻结上一组的证据窗口，但不会自动完成目标。
-  回访页面和显式关联目标的延后 finding 会保留到对应流程中。
-- **减少收尾调用：**可以用 `end_session(coverage_updates=[...])` 一次完成最终覆盖登记与报告导出；
-  整批参数验证失败时会话保持打开。compact/delta 输出可共享重复证据并省略空的可选元数据。
-- **更清楚的变化摘要：**识别页面文字与字段值变化，但不在差异摘要中导出输入值。
+- **一个完整的默认测试闭环：**28 个工具的 `web` 配置覆盖探索、操作、核验、记录、报告和
+  `regression_check`。`advanced` 再加入网络、会话状态、多标签、坐标和爬取等能力。
+- **更轻的安装：**移除旧的 LLM 规划 CLI 和 LiteLLM，全新安装的运行时依赖从 82 个包降到 41 个。
+  基准测试和评测代码移到仓库内的 `argus_lab`，不再进入安装包。
+- **更准确的证据：**错误页上看到目标文字也算确定的结果；`expect_status` 用于声明预期的 404；
+  再次提交已完成目标时证据窗口保持最新；复查回执会注明第几次复查。
 
-这不是一次新的模型效果或 token 成本评测。默认工具配置仍为 `core`，默认响应模式仍为
-`compatible`，结果 envelope 版本仍为 `1`。详见 [协议](docs/agent-protocol.md)。
+**从 0.10 升级：**`agent` 和 `core` 仍可启动，但都会加载 `web`，工具集因此变化：
+原 `agent` 用户从 19 个变为 28 个工具（discovery 体积 34,379 字节，原为 24,386），
+原 `core` 用户从 30 个变为 28 个（原为 51,732 字节，Python 3.13 下为 50,564），`check_links` 与 `check_performance`
+移到 `advanced`。`argus <url>` 命令已移除。详见 [更新日志](CHANGELOG.md)。
 
 ## 快速开始
 
@@ -82,7 +80,7 @@ Cursor 或其他支持标准 `mcpServers` 配置的客户端可以使用：
 ```
 
 如果默认 Python 版本较旧，在启动参数中使用 `uvx --python 3.12 --from argus-testing argus-mcp`。
-需要固定版本时，将包名替换为 `argus-testing==0.10.0`。也可以使用 pip：
+需要固定版本时，将包名替换为 `argus-testing==0.11.0`。也可以使用 pip：
 
 ```bash
 pip install argus-testing
@@ -103,15 +101,17 @@ uvx --from argus-testing python -m argus.install_check
 
 | 配置 | 工具数 | 用途 |
 |---|---:|---|
-| `core` | 30 | 默认浏览器 QA 工作流。 |
-| `agent` | 19 | 聚焦常用流程，使用简洁描述，适合支持结构化结果的 agent。 |
-| `screen` | 14 | 原生 macOS Accessibility 与截图测试。 |
-| `full` | 77 | 加入网络、存储、多标签、坐标和爬取等高级能力。 |
+| `web` | 28 | 默认配置：完整的浏览器测试闭环，使用简洁的工具描述。 |
+| `advanced` | 61 | 在 web 基础上加入网络 mock、cookie/存储、多标签、弹窗、等待、坐标操作、爬取和链接/性能探测。 |
+| `screen` | 14 | 原生 macOS Accessibility 与截图测试，需单独启用。 |
+| `full` | 77 | 全部 web 与 screen 工具，包括屏幕坐标操作。 |
+
+旧配置名仍可启动：`agent` 和 `core` 会加载 `web` 配置，因此工具集会变化（19 → 28、30 → 28 个工具）。
 
 推荐支持 MCP `structuredContent` 的宿主使用：
 
 ```bash
-uvx --from argus-testing argus-mcp --tool-profile agent --response-mode compact --monitor-port 8765
+uvx --from argus-testing argus-mcp --response-mode compact --monitor-port 8765
 ```
 
 `compact` 减少迁移工具的重复文字，但保留结构化证据和图片。
@@ -211,8 +211,7 @@ argus-mcp --tool-profile screen
 原生模式需要 Screen Recording 和 Accessibility 授权。默认有单次超时、30 分钟会话上限，
 以及 `~/.argus/abort` 紧急停止文件。Linux CI 不验证真实 macOS 权限与应用交互。
 
-MCP 模式使用宿主已有的模型，不需要 Argus 专用 provider key。
-独立 `argus URL --model ...` CLI 是另一条 LiteLLM 工作流，需要自行配置模型提供商和密钥。
+Argus 使用宿主已有的模型，不需要 Argus 专用 provider key。
 
 ## 安全与隐私
 
@@ -243,8 +242,8 @@ Argus 没有维护者运营的遥测收集服务，但 MCP 宿主及其模型提
 pip install -e '.[dev]'
 playwright install chromium
 ARGUS_REQUIRE_BROWSER=1 pytest -q
-python -m argus.evaluation --smoke
-python -m argus.evaluation.overhead
+python -m argus_lab.evaluation --smoke
+python -m argus_lab.evaluation.overhead
 ```
 
 以上测试和 smoke 不调用模型。单独的模型评测需要明确授权，原始 traces 应保持私有。
