@@ -5,8 +5,11 @@
 - Remove the standalone `argus <url>` CLI mode, its LiteLLM planner and the
   LiteLLM-driven bench runner. Argus is a tool for the host agent and never
   calls a model itself. `argus-regression` and `argus-cleanup` are unchanged.
-- Drop LiteLLM, PyYAML, Jinja2, aiohttp, multidict and urllib3 from runtime
-  dependencies; a fresh install resolves 41 packages instead of 82.
+- Drop LiteLLM and PyYAML, plus the Jinja2, aiohttp, multidict and urllib3
+  security floors that only applied to LiteLLM's dependency tree; none is
+  installed at runtime any more. PyJWT, cryptography and certifi floors stay
+  because MCP still installs them. A fresh runtime install resolves 41
+  packages instead of 82, and pip-audit (OSV) reports no known vulnerabilities.
 - Re-finalizing a goal now extends its evidence window while no other goal has
   started or been finalized, so updated evidence text no longer points at an
   earlier window. Windows closed by other work stay closed.
