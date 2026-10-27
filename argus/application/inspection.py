@@ -125,7 +125,7 @@ async def inspect_element(description: str) -> str:
         return "\n".join(lines)
     return (
         err
-        or f"No visible element matches {description!r}. Call observe() and rephrase the target."
+        or f"No visible element matches {description!r}. Pass a target description from observe() as-is, or describe the element differently."
     )
 
 

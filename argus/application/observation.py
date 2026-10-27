@@ -408,8 +408,8 @@ def _resolve_or_error(
         near = _nearest_labels(description, s._last_elements)
         hint = ("\nClosest on the page:\n" + "\n".join(f"  {d}" for d in near)) if near else ""
         return None, Rejection(
-            f"No element matches {description!r}. Call observe() to see what's "
-            f"actually on the page, or rephrase your description.{hint}"
+            f"No element matches {description!r}. Pass a target description from "
+            f"observe() as-is, or describe the element differently.{hint}"
         )
 
     # ambiguous

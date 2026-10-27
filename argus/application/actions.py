@@ -20,7 +20,8 @@ async def click_what(description: str) -> str:
     """Click the element best matching the natural-language `description`.
 
     Examples: "Login button", "Add Task", "the email field", "Delete near
-    Buy groceries". Argus matches against visible text, aria-label,
+    Buy groceries". A target description from observe() can be passed as-is.
+    Argus matches against visible text, aria-label,
     placeholder, name, id, and the parent context. Trailing kind hints
     ("button" / "field" / "link" / "dropdown") narrow the candidate pool.
 
