@@ -58,7 +58,7 @@ wheels = [
 ]
 
 [[package]]
-name = "argus-testing-claude-plugin"
+name = "argus-testing-plugin-runtime"
 version = "0.11.0"
 source = { virtual = "." }
 dependencies = [

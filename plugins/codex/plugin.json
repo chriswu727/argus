@@ -1,0 +1,30 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "argus-testing",
+  "version": "0.11.0",
+  "description": "Testing for coding agents: exercise real user journeys, find bugs, and verify them with evidence.",
+  "author": {
+    "name": "Yichen Wu",
+    "url": "https://yichenwu.dev"
+  },
+  "homepage": "https://github.com/chriswu727/argus/tree/main/plugins/codex",
+  "repository": "https://github.com/chriswu727/argus",
+  "license": "MIT",
+  "keywords": ["testing", "qa", "playwright", "regression", "mcp"],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Argus",
+        "shortDescription": "Test the web apps you build: real journeys, bugs, and evidence",
+        "developerName": "Yichen Wu",
+        "category": "Developer Tools",
+        "capabilities": ["Interactive", "Read"],
+        "websiteURL": "https://github.com/chriswu727/argus",
+        "privacyPolicyURL": "https://github.com/chriswu727/argus/blob/main/PRIVACY.md",
+        "defaultPrompt": [
+          "Test my app at http://localhost:3000 and report reproducible bugs with evidence."
+        ]
+      }
+    }
+  }
+}
