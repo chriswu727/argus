@@ -72,3 +72,31 @@ async def test_test_form_sets_the_resolved_option_of_a_shared_name():
         assert "size=large" in state.page_text
     finally:
         await _end()
+
+
+_PERSISTED = """<html><body>
+<label><input type="checkbox" id="keep"> Keep me signed in</label>
+<script>
+  const box = document.getElementById('keep');
+  box.checked = localStorage.getItem('keep') === '1';
+  box.addEventListener('change', () => localStorage.setItem('keep', box.checked ? '1' : '0'));
+</script>
+</body></html>"""
+
+
+async def test_checkbox_replay_applies_the_state_instead_of_toggling():
+    # Replays start from a copy of the live storage, where the box is already
+    # checked; a recorded click would uncheck it.
+    await _session_on_page(_PERSISTED)
+    try:
+        s = m.runtime.session
+        fn = getattr(m.test_form, "fn", m.test_form)
+        await fn({"Keep me signed in": True}, "enter")
+        action = next(a for a in s.action_trace if a["description"] == "Keep me signed in")
+        assert action["tool"] == "set_checked" and action["value"] == "true"
+        result = await s.browser.replay(s.browser.current_url, [action])
+        assert not result["diverged"]
+        boxes = [el for el in result["final_state"].elements if el.type == "checkbox"]
+        assert boxes and boxes[0].checked is True
+    finally:
+        await _end()

@@ -253,8 +253,10 @@ async def test_form(
                     await s.browser.set_checked_resolved(
                         state.elements.index(el), state.elements, wanted
                     )
-                    # Replays start from the same state, so one click reproduces it.
-                    _record_action(s, "click_what", field_desc)
+                # Record the target state, not a click: a replay can start with
+                # the box already checked (persisted storage), and a click would
+                # then undo it.
+                _record_action(s, "set_checked", field_desc, "true" if wanted else "false")
                 field_results.append(
                     f"[OK] {field_desc!r} set to {'checked' if wanted else 'unchecked'}"
                 )

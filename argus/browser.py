@@ -1203,6 +1203,9 @@ class BrowserDriver:
                         await loc.fill(val or "", timeout=5_000)
                     elif tool == "select_into":
                         await loc.select_option(val or "", timeout=5_000)
+                    elif tool == "set_checked":
+                        await loc.set_checked(str(val).lower() == "true", timeout=5_000)
+                        await self._settle_network(page)
                     else:
                         steps.append(
                             {"act": f"{tool} {desc!r}", "ok": False, "reason": "unknown tool"}
