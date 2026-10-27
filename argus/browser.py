@@ -216,6 +216,13 @@ class BrowserDriver:
     async def select_selector(self, selector: str, value: str, timeout: int = 5000) -> None:
         await self._page.select_option(selector, value, timeout=timeout)
 
+    async def set_checked_resolved(
+        self, index: int, elements: list[InteractiveElement], checked: bool
+    ) -> None:
+        # Radios share a name, so a selector alone would hit the group's first
+        # option; _locator keeps the resolved element's identity.
+        await self._locator(index, elements).set_checked(checked, timeout=5000)
+
     async def click_selector(self, selector: str, timeout: int = 5000) -> None:
         await self._page.click(selector, timeout=timeout)
 
@@ -1196,6 +1203,9 @@ class BrowserDriver:
                         await loc.fill(val or "", timeout=5_000)
                     elif tool == "select_into":
                         await loc.select_option(val or "", timeout=5_000)
+                    elif tool == "set_checked":
+                        await loc.set_checked(str(val).lower() == "true", timeout=5_000)
+                        await self._settle_network(page)
                     else:
                         steps.append(
                             {"act": f"{tool} {desc!r}", "ok": False, "reason": "unknown tool"}

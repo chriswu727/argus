@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- `test_form` sets checkbox, radio and switch fields from `true`/`false` (or
+  on/off-style text) instead of trying to type into them, which failed with
+  "Input of type checkbox cannot be filled" and skipped the field.
+- Text checks (`verify`, `verify_persistence`, `text_present`) accept a target
+  that starts or ends with punctuation even when it touches other text, such as
+  a "-50%" badge printed straight after "$89.99". Word boundaries still apply
+  where the target begins or ends with a letter or digit.
 - `record_bug` keeps a finding whose `bug_type` it does not recognize. It is
   recorded as `ux_issue` with an evidence warning that lists the known types,
   instead of rejecting the whole finding and forcing a resubmission. A small
