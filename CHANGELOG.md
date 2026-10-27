@@ -12,6 +12,12 @@
 - The Claude plugin keeps its virtual environment in `${CLAUDE_PLUGIN_DATA}/venv`
   instead of the installed plugin files, following Claude Code's guidance not to
   write state under the plugin root; uv keeps it in step with the lock.
+- Prepare for MCP Python SDK 2.x without switching: every version-sensitive
+  name (FastMCP/MCPServer, the server version, camelCase/snake_case result and
+  tool fields) now goes through `argus.entrypoints.mcp.compat`. With mcp 2.3.0,
+  `python -m argus.install_check` passes for every profile. A non-blocking CI
+  job installs mcp 2.x over the 1.x pin and runs that check plus
+  `tests/test_mcp_compat.py`. The release dependency stays `mcp<2`.
 - Add a Codex plugin bundle (`plugins/codex`, Agent Plugins 1.0 format) served
   from this repository's marketplace: `codex plugin marketplace add
   chriswu727/argus`, then `codex plugin add argus-testing@argus`. It runs the

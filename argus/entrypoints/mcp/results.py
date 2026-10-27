@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from typing import Any, Literal
 
-from mcp.server.fastmcp.utilities.types import Image
 from mcp.types import CallToolResult, TextContent
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -12,6 +11,7 @@ from argus.domain.contracts import ImageArtifact, OperationResult, ToolText
 from argus.measurement import timed
 from argus.security import redacted_copy
 
+from .compat import Image
 from .snapshots import ObservationSnapshots
 
 

@@ -3,9 +3,6 @@ from __future__ import annotations
 import inspect
 from functools import wraps
 
-from mcp.server.fastmcp import Context, FastMCP
-from mcp.server.fastmcp.exceptions import ToolError
-from mcp.server.fastmcp.utilities.types import Image
 from mcp.types import ToolAnnotations
 
 from argus import __version__
@@ -26,6 +23,7 @@ from .catalog import (
     PROFILE_ALIASES,
     PROFILES,
 )
+from .compat import Context, Image, MCPServer, ToolError, create_mcp_server
 from .overhead import response_bytes
 from .results import AgentResult, _omit_schema_titles, to_mcp_result
 from .snapshots import FIELDS, ObservationSnapshots
@@ -115,19 +113,18 @@ def bind_tool(runtime: SessionManager, operation, snapshots: ObservationSnapshot
     return call
 
 
-def create_server(runtime: SessionManager, profile: str = "web") -> FastMCP:
-    server = FastMCP("argus", instructions=INSTRUCTIONS)
-    # FastMCP 1.x does not expose the low-level server's product version argument.
-    server._mcp_server.version = __version__
-    snapshots = ObservationSnapshots()
+def create_server(runtime: SessionManager, profile: str = "web") -> MCPServer:
+    instructions = INSTRUCTIONS
     if runtime.settings.response_mode == "delta":
-        server._mcp_server.instructions += (
+        instructions += (
             " Delta mode: retain observation snapshots by ID. In delta snapshots, inherit only "
             + ", ".join(sorted(FIELDS))
             + "; replace returned fields and delete snapshot.removed fields. base_id must match. "
             "Other fields are current-call-only. On a missing base call observe for full state. "
             "Never infer unchanged from an unavailable base."
         )
+    server = create_mcp_server("argus", instructions, __version__)
+    snapshots = ObservationSnapshots()
     # Web profiles use concise descriptions; screen and full keep full docstrings.
     concise = resolve_profile(profile) in {"web", "advanced"}
     for name in sorted(tool_names(profile)):
