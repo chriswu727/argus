@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `observe`'s description, the "no element matches" message and the agent guide
+  now say that a target description from `observe` can be passed as-is to
+  `click_what`, `type_into`, `select_into` and `test_action`, instead of telling
+  the agent to rephrase.
 - `test_form` sets checkbox, radio and switch fields from `true`/`false` (or
   on/off-style text) instead of trying to type into them, which failed with
   "Input of type checkbox cannot be filled" and skipped the field.
