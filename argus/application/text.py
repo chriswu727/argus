@@ -40,8 +40,11 @@ def _token_present(needle: str, haystack: str) -> bool:
     haystack = " ".join(haystack.lower().split())
     if not needle:
         return False
-    pattern = r"(?<!\w)" + re.escape(needle) + r"(?!\w)"
-    return re.search(pattern, haystack) is not None
+    # A boundary matters only on a word-character edge of the needle: "-50%"
+    # printed straight after a price ("$89.99-50%") is a real occurrence.
+    before = r"(?<!\w)" if re.match(r"\w", needle) else ""
+    after = r"(?!\w)" if re.search(r"\w$", needle) else ""
+    return re.search(before + re.escape(needle) + after, haystack) is not None
 
 
 def _text_in_state(text: str, state: PageState) -> bool:

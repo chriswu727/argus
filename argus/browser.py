@@ -216,6 +216,9 @@ class BrowserDriver:
     async def select_selector(self, selector: str, value: str, timeout: int = 5000) -> None:
         await self._page.select_option(selector, value, timeout=timeout)
 
+    async def set_checked_selector(self, selector: str, checked: bool, timeout: int = 5000) -> None:
+        await self._page.set_checked(selector, checked, timeout=timeout)
+
     async def click_selector(self, selector: str, timeout: int = 5000) -> None:
         await self._page.click(selector, timeout=timeout)
 

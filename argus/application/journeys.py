@@ -9,6 +9,7 @@ from argus.domain.models import (
     InteractiveElement,
 )
 from argus.resolver import (
+    kind_of,
     resolve_element,
 )
 
@@ -181,6 +182,18 @@ async def test_action(target: str, expectation: str = "", expect: Optional[dict]
     )
 
 
+def _checked_value(value) -> bool | None:
+    """Read a checkbox value given as a bool or as on/off-style text."""
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in {"true", "yes", "on", "1", "checked", "check", "x"}:
+        return True
+    if text in {"false", "no", "off", "0", "unchecked", "uncheck", ""}:
+        return False
+    return None
+
+
 async def test_form(
     form_fields: dict,
     submit: str = "auto",
@@ -232,6 +245,19 @@ async def test_form(
 
         selector = s.browser.selector_for(el)
         try:
+            if kind_of(el) in ("checkbox", "radio", "switch"):
+                wanted = _checked_value(value)
+                if wanted is None:
+                    raise ValueError(f"{kind_of(el)} takes true or false, not {value!r}")
+                if el.checked != wanted:
+                    await s.browser.set_checked_selector(selector, wanted, timeout=5000)
+                    # Replays start from the same state, so one click reproduces it.
+                    _record_action(s, "click_what", field_desc)
+                field_results.append(
+                    f"[OK] {field_desc!r} set to {'checked' if wanted else 'unchecked'}"
+                )
+                s.steps.append(f"Set {field_desc!r} to {'checked' if wanted else 'unchecked'}")
+                continue
             if el.tag == "select":
                 await s.browser.select_selector(selector, str(value), timeout=5000)
             else:
