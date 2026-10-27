@@ -164,7 +164,9 @@ Argus's own Playwright environment, then restart the MCP host:
 uvx --from argus-testing python -m playwright install chromium
 ```
 
-Then connect Argus to your MCP client.
+`uvx --from argus-testing argus-mcp --doctor` checks that Chromium matches Argus's
+Playwright, launches it once, and confirms the report directory is writable; each
+failed check prints the exact fix. Then connect Argus to your MCP client.
 
 ### Claude Code
 
@@ -264,7 +266,7 @@ claude mcp add argus -- argus-mcp
 ```bash
 pip install 'argus-testing[mac]'
 brew install cliclick          # keystroke / coordinate fallback
-argus-mcp --doctor             # check Screen Recording + Accessibility grants
+argus-mcp --doctor             # web checks plus Screen Recording + Accessibility grants
 claude mcp add argus-screen -- argus-mcp --tool-profile screen
 ```
 

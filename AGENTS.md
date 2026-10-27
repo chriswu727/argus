@@ -22,7 +22,7 @@ brew install cliclick
 claude mcp add argus -- argus-mcp
 argus-mcp --version       # confirm host loaded the version you expect
 argus-mcp --list-tools    # show the selected profile and public tools
-argus-mcp --doctor        # macOS Screen Recording + Accessibility check
+argus-mcp --doctor        # Chromium, report dir; on macOS also screen grants
 ```
 
 The default `web` profile has 28 tools covering the complete testing loop,
@@ -199,7 +199,9 @@ Don't record speculation, polish nits, or static a11y / SEO that
 ## Diagnostics
 
 - `argus-mcp --version` — what version your MCP host actually loaded.
-- `argus-mcp --doctor` — macOS permission probes for screen mode.
+- `argus-mcp --doctor` — checks the matching Chromium (with a real headless
+  launch) and the report directory, printing exact fixes; on macOS it also
+  probes Screen Recording and Accessibility for screen mode.
 - `argus-mcp --list-tools` — selected tool profile and exported names.
 - `argus-mcp --tool-profile web|advanced|screen|full` — control discovery size.
 - `argus-mcp --unsafe` — turn on `eval_js` (off by default).
