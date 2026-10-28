@@ -675,3 +675,41 @@ async def test_replay_starts_where_the_journey_began(isolated_runtime):
     finally:
         await _fn("end_session")()
         server.shutdown()
+
+
+async def test_a_back_step_whose_history_predates_the_replay_is_inconclusive(isolated_runtime):
+    # start(A) -> navigate(B) -> record_bug -> go_back: the next replay starts on
+    # B with no A in its history, so it must not report going back as done.
+    class _Server(socketserver.ThreadingTCPServer):
+        allow_reuse_address = True
+        daemon_threads = True
+
+    server = _Server(("127.0.0.1", 0), _TwoPagesHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        try:
+            await _fn("start_session")(base + "/a")
+        except Exception as exc:
+            pytest.skip(f"Chromium/session unavailable: {exc}")
+        await _fn("navigate")(base + "/b")
+        await _fn("record_bug")(
+            "B shows its heading",
+            "low",
+            {"expected": "x", "actual": "y"},
+            verify={"expect": "present", "target_text": "Page B", "at_url": base + "/b"},
+        )
+        await _fn("go_back")()
+        s = m.runtime.session
+        assert s.action_trace[-1]["value"] == base + "/a"
+        await _fn("record_bug")(
+            "Back shows A",
+            "low",
+            {"expected": "x", "actual": "y"},
+            verify={"replay": True, "expect": "present", "target_text": "Page A"},
+        )
+        receipt = s.bugs[-1].reproduction_receipt
+        assert receipt["reproduced"] is None and receipt.get("diverged"), receipt
+    finally:
+        await _fn("end_session")()
+        server.shutdown()

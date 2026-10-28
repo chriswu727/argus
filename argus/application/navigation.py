@@ -180,7 +180,8 @@ async def go_back() -> str:
         if state.url not in s.pages_visited:
             s.pages_visited.append(state.url)
         # Recorded for replay and export_test, which would otherwise skip it.
-        _record_action(s, "go_back", _coverage_reference_url(state.url))
+        # The destination lets replay confirm it went back to the same page.
+        _record_action(s, "go_back", _coverage_reference_url(state.url), value=state.url)
         return await action_result(s, f"Went back to {state.url}", "back", state)
     return Rejection("Failed to go back", ErrorCode.BACKEND)
 

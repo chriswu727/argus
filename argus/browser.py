@@ -3,6 +3,7 @@ from datetime import datetime
 from importlib.resources import files
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 from playwright.async_api import Browser, BrowserContext, Page, async_playwright
 
@@ -16,6 +17,17 @@ from argus.security import redact_body
 from .domain.models import InteractiveElement, PageState
 from .runtime import BoundedEventLog
 from .settings import CaptureSettings
+
+
+def _same_page(actual: str, recorded: str) -> bool:
+    """Same origin, path and hash route; a changing query string is allowed."""
+    a, r = urlparse(actual), urlparse(recorded)
+    return (a.scheme, a.netloc, a.path.rstrip("/"), a.fragment) == (
+        r.scheme,
+        r.netloc,
+        r.path.rstrip("/"),
+        r.fragment,
+    )
 
 
 def _capture_body(raw: bytes, headers: dict, cap: int = 16 * 1024) -> Optional[str]:
@@ -1223,6 +1235,13 @@ class BrowserDriver:
                         if tool == "go_back":
                             await page.go_back(wait_until="domcontentloaded", timeout=10_000)
                             await self._settle_network(page)
+                            # The replay's history can lack the page the session
+                            # went back to (it predates the replayed slice).
+                            if val and not _same_page(page.url, str(val)):
+                                raise RuntimeError(
+                                    f"went back to {urlparse(page.url).path or '/'}, "
+                                    f"not {urlparse(str(val)).path or '/'}"
+                                )
                         elif tool == "scroll_down":
                             await page.evaluate("window.scrollBy(0, 500)")
                             await asyncio.sleep(0.5)
