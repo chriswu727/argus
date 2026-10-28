@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "argus_version": "0.11.0",
+  "argus_version": "0.12.0",
   "mcp_sdk_version": "1.30.0",
-  "python_version": "3.13.17",
+  "python_version": "3.12.13",
   "method": "synthetic-identical-input-encoding-v1",
   "baseline": "0.8-compatible compact encoder semantics; same structured evidence",
   "limitations": [
@@ -13,20 +13,20 @@
   ],
   "discovery": {
     "web": {
-      "tools": 28,
-      "tools_json_bytes": 34156,
+      "tools": 29,
+      "tools_json_bytes": 36057,
       "instructions_utf8_bytes": 223,
-      "description_utf8_bytes": 4267,
-      "input_schema_json_bytes": 5314,
-      "output_schema_json_bytes": 18676
+      "description_utf8_bytes": 4961,
+      "input_schema_json_bytes": 5646,
+      "output_schema_json_bytes": 19343
     },
     "advanced": {
-      "tools": 61,
-      "tools_json_bytes": 78816,
+      "tools": 62,
+      "tools_json_bytes": 80717,
       "instructions_utf8_bytes": 223,
-      "description_utf8_bytes": 16345,
-      "input_schema_json_bytes": 8650,
-      "output_schema_json_bytes": 40687
+      "description_utf8_bytes": 17039,
+      "input_schema_json_bytes": 8982,
+      "output_schema_json_bytes": 41354
     },
     "screen": {
       "tools": 14,
@@ -37,12 +37,12 @@
       "output_schema_json_bytes": 9338
     },
     "full": {
-      "tools": 77,
-      "tools_json_bytes": 115129,
+      "tools": 78,
+      "tools_json_bytes": 117935,
       "instructions_utf8_bytes": 223,
-      "description_utf8_bytes": 35940,
-      "input_schema_json_bytes": 10655,
-      "output_schema_json_bytes": 51359
+      "description_utf8_bytes": 37512,
+      "input_schema_json_bytes": 10987,
+      "output_schema_json_bytes": 52026
     }
   },
   "cases": [
