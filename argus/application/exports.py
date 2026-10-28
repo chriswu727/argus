@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-
 from argus.domain.contracts import ErrorCode, Rejection, ToolText
 
 from .context import current_runtime
@@ -96,7 +94,9 @@ async def export_test(finding_id: str, run: bool = False) -> str:
         lines.extend(f"    {note}" for note in notes)
     result = None
     if run:
-        result = await asyncio.to_thread(run_exported_test, path, secrets=secrets)
+        # Finish inside the operation deadline; cancellation kills the test.
+        budget = max(10.0, current_runtime().settings.operation_timeout - 15.0)
+        result = await run_exported_test(path, timeout=min(180.0, budget), secrets=secrets)
         outcome = result["outcome"]
         if outcome == "fails_on_symptom":
             lines.append("  Ran once: FAILS on the symptom, as it should while the bug is present.")

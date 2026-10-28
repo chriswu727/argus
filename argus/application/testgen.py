@@ -9,10 +9,11 @@ natural-language resolver.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
-import subprocess
+import signal
 import sys
 from pathlib import Path
 from typing import List, Optional
@@ -108,7 +109,9 @@ def _slug(title: str) -> str:
 def _path_or_url(url: str, origin: str) -> str:
     parsed = urlparse(url)
     if f"{parsed.scheme}://{parsed.netloc}" == origin:
-        return parsed.path + (f"?{parsed.query}" if parsed.query else "") or "/"
+        relative = (parsed.path or "/") + (f"?{parsed.query}" if parsed.query else "")
+        # Keep the fragment: a hash-routed app (#/tasks) shows another screen.
+        return relative + (f"#{parsed.fragment}" if parsed.fragment else "")
     return url
 
 
@@ -140,14 +143,34 @@ def _url(path):
     return urljoin(BASE_URL, path)
 
 
-def _present(text, page):
-    """Visible-text check with Argus's word-boundary rule."""
-    page.wait_for_load_state("networkidle")
-    haystack = " ".join(page.inner_text("body").lower().split())
+def _matches(text, haystack):
+    """Argus's word-boundary rule on whitespace-normalised text."""
+    haystack = " ".join(haystack.lower().split())
     needle = " ".join(text.lower().split())
     before = r"(?<!\\w)" if re.match(r"\\w", needle) else ""
     after = r"(?!\\w)" if re.search(r"\\w$", needle) else ""
     return re.search(before + re.escape(needle) + after, haystack) is not None
+
+
+def _present(text, page, max_scrolls=20):
+    """Text and field values, scrolling (bounded) like Argus's fresh-load check
+    so a row a virtualized or lazy list renders further down is still found."""
+    page.wait_for_load_state("networkidle")
+    last_y = None
+    for scrolls in range(max_scrolls + 1):
+        values = page.eval_on_selector_all("input, textarea", "els => els.map(e => e.value)")
+        if _matches(text, page.inner_text("body") + " " + " ".join(values)):
+            return True
+        y, at_bottom = page.evaluate(
+            "() => [window.scrollY, "
+            "window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2]"
+        )
+        if scrolls == max_scrolls or at_bottom or y == last_y:
+            return False
+        last_y = y
+        page.evaluate("() => window.scrollBy(0, 1000)")
+        page.wait_for_timeout(400)
+    return False
 
 
 def {test_name}():
@@ -257,6 +280,9 @@ def generate_test(
         if action.get("accept_dialog"):
             lines.append('accept_dialog["pending"] = False')
 
+    # Leave the page first so the check is a fresh load even when only the hash
+    # route matches the current URL.
+    lines.append('page.goto("about:blank")')
     lines.append(f"page.goto(_url({_q(_path_or_url(at_url, origin))}))")
     if expect == "present":
         lines.append(
@@ -295,22 +321,49 @@ def generate_test(
     return header + body + _FOOTER.format(test_name=test_name), notes
 
 
-def run_exported_test(path: Path, timeout: float = 180.0, secrets: Optional[dict] = None) -> dict:
-    """Run the exported test once and classify the outcome."""
+def _kill_tree(proc) -> None:
+    """Stop the test and everything it started (Playwright driver, Chromium)."""
+    if proc.returncode is not None:
+        return
     try:
-        done = subprocess.run(
-            [sys.executable, str(path)],
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            env={**os.environ, **(secrets or {})},
-        )
-    except subprocess.TimeoutExpired:
+        if os.name == "posix":
+            os.killpg(proc.pid, signal.SIGKILL)
+        else:
+            proc.kill()
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
+async def run_exported_test(path: Path, timeout: float, secrets: Optional[dict] = None) -> dict:
+    """Run the exported test once and classify the outcome.
+
+    The test runs in its own process group. On timeout or cancellation the
+    whole group is killed before returning, so its browser cannot keep
+    repeating the journey's writes after the operation ends."""
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable,
+        str(path),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env={**os.environ, **(secrets or {})},
+        start_new_session=os.name == "posix",
+    )
+    try:
+        out, err = await asyncio.wait_for(proc.communicate(), timeout)
+    except asyncio.TimeoutError:
+        _kill_tree(proc)
+        await proc.wait()
         return {"outcome": "errored", "detail": f"timed out after {timeout:.0f}s"}
-    tail = (done.stderr or done.stdout or "").strip().splitlines()
+    except BaseException:
+        _kill_tree(proc)
+        await asyncio.shield(proc.wait())
+        raise
+    stdout = out.decode(errors="replace")
+    stderr = err.decode(errors="replace")
+    tail = (stderr or stdout).strip().splitlines()
     last = tail[-1][:300] if tail else ""
-    if done.returncode == 0:
+    if proc.returncode == 0:
         return {"outcome": "passes", "detail": "the symptom did not appear"}
-    if "ARGUS_SYMPTOM_PRESENT" in (done.stderr or ""):
+    if "ARGUS_SYMPTOM_PRESENT" in stderr:
         return {"outcome": "fails_on_symptom", "detail": last}
     return {"outcome": "errored", "detail": last}

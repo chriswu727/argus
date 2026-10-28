@@ -254,7 +254,7 @@ def test_backslashes_and_quotes_in_finding_text_keep_the_file_valid():
     assert "C:\\new\\x01 shows \\N" in doc and "Shows \\d+ items" in doc
 
 
-def test_a_run_passes_sensitive_inputs_only_through_the_environment(tmp_path):
+async def test_a_run_passes_sensitive_inputs_only_through_the_environment(tmp_path):
     from argus.application.testgen import run_exported_test
 
     script = tmp_path / "t.py"
@@ -262,5 +262,112 @@ def test_a_run_passes_sensitive_inputs_only_through_the_environment(tmp_path):
         "import os\n"
         "assert os.environ.get('ARGUS_INPUT_1') == 'pw', 'ARGUS_SYMPTOM_PRESENT: no input'\n"
     )
-    assert run_exported_test(script)["outcome"] == "fails_on_symptom"
-    assert run_exported_test(script, secrets={"ARGUS_INPUT_1": "pw"})["outcome"] == "passes"
+    assert (await run_exported_test(script, 30))["outcome"] == "fails_on_symptom"
+    secrets = {"ARGUS_INPUT_1": "pw"}
+    assert (await run_exported_test(script, 30, secrets=secrets))["outcome"] == "passes"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="process groups")
+@pytest.mark.parametrize("how", ["cancel", "timeout"])
+async def test_a_stopped_run_kills_the_test_and_what_it_started(tmp_path, how):
+    # The child stands in for the browser the exported test launches.
+    import asyncio
+
+    from argus.application.testgen import run_exported_test
+
+    pids = tmp_path / "pids"
+    script = tmp_path / "t.py"
+    script.write_text(
+        "import os, subprocess, sys, time\n"
+        "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+        f"open({str(pids)!r}, 'w').write(f'{{os.getpid()}} {{child.pid}}')\n"
+        "time.sleep(60)\n"
+    )
+    loop = asyncio.get_running_loop()
+    if how == "cancel":
+        task = asyncio.ensure_future(run_exported_test(script, 60))
+        for _ in range(100):
+            if pids.exists() and pids.read_text():
+                break
+            await asyncio.sleep(0.1)
+        started = loop.time()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    else:
+        started = loop.time()
+        result = await run_exported_test(script, 2)
+        assert result["outcome"] == "errored" and "timed out" in result["detail"]
+    assert loop.time() - started < 15  # stopped, not waited out
+    await asyncio.sleep(0.2)
+    for pid in map(int, pids.read_text().split()):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            continue
+        # A killed child not yet reaped by its (dead) parent is a zombie.
+        state = open(f"/proc/{pid}/stat").read().split(")")[-1].split()[0]
+        assert state == "Z", (pid, state)
+
+
+def test_hash_routes_are_kept_and_the_check_is_a_fresh_load():
+    source, _ = generate_test(
+        finding_id="run:1",
+        title="t",
+        expected="",
+        receipt={"expect": "present", "target_text": "x", "at_url": "http://h/app?a=1#/tasks"},
+        journey=[{"tool": "navigate", "value": "http://h/#/done"}],
+        start_url="http://h/#/home",
+        resolve_input=lambda action: None,
+        filename="t.py",
+    )
+    assert 'page.goto(_url("/#/home"))' in source
+    assert 'page.goto(_url("/#/done"))' in source
+    assert 'page.goto("about:blank")\n            page.goto(_url("/app?a=1#/tasks"))' in source
+
+
+class _LazyHandler(http.server.BaseHTTPRequestHandler):
+    """A long page whose last row renders only once it is scrolled near."""
+
+    def log_message(self, *args):
+        pass
+
+    def do_GET(self):
+        body = b"""<html><body><h1>Rows</h1><div style="height:3000px"></div><ul id="rows"></ul>
+<script>window.addEventListener('scroll', () => {
+  if (window.scrollY > 1500 && !document.getElementById('late'))
+    document.getElementById('rows').innerHTML = '<li id="late">Late row</li>';
+});</script></body></html>"""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html")
+        self.end_headers()
+        self.wfile.write(body)
+
+
+async def test_the_exported_check_scrolls_like_the_verifier(tmp_path):
+    from argus.application.testgen import run_exported_test
+
+    class _Server(socketserver.ThreadingTCPServer):
+        allow_reuse_address = True
+        daemon_threads = True
+
+    server = _Server(("127.0.0.1", 0), _LazyHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        source, _ = generate_test(
+            finding_id="run:1",
+            title="Late row is missing",
+            expected="Late row is listed",
+            receipt={"expect": "absent", "target_text": "Late row", "at_url": base + "/"},
+            journey=[],
+            start_url=base + "/",
+            resolve_input=lambda action: None,
+            filename="t.py",
+        )
+        script = tmp_path / "t.py"
+        script.write_text(source)
+        # The row exists further down, so the "missing" symptom is not present.
+        assert (await run_exported_test(script, 90))["outcome"] == "passes"
+    finally:
+        server.shutdown()
