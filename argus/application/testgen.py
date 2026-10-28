@@ -324,7 +324,10 @@ def generate_test(
             lines.append(f"page.goto(_url({_q(_path_or_url(str(value), origin))}))")
         elif tool in ("double_click", "hover_what") and str(value or "").startswith("text:"):
             method = "dblclick" if tool == "double_click" else "hover"
-            lines.append(f"page.get_by_text({_q(str(value)[5:])}, exact=True).{method}()")
+            # Visible matches only, as when recorded: a hidden copy of the same
+            # text (another layout) would otherwise make the locator ambiguous.
+            text = _q(str(value)[5:])
+            lines.append(f"page.get_by_text({text}, exact=True).filter(visible=True).{method}()")
         elif tool in ("click_what", "double_click", "hover_what") and locator:
             method = {"click_what": "click", "double_click": "dblclick", "hover_what": "hover"}
             lines.append(f"{locator}.{method[tool]}()")

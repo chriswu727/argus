@@ -765,3 +765,55 @@ def test_a_back_step_must_land_on_the_recorded_query():
     assert _same_page("http://h/item?id=1", "http://h/item/?id=1")
     assert not _same_page("http://h/item?id=2", "http://h/item?id=1")
     assert not _same_page("http://h/#/a", "http://h/#/b")
+
+
+class _HiddenCopyHandler(http.server.BaseHTTPRequestHandler):
+    """A row title with a hidden copy (another layout); double-clicking the
+    visible one records that it was edited."""
+
+    def log_message(self, *args):
+        pass
+
+    def do_GET(self):
+        body = b"""<html><body>
+<div style="display:none"><span>Walk dog</span></div>
+<ul><li><span ondblclick="localStorage.edited='yes'">Walk dog</span></li></ul>
+<p id="state"></p>
+<script>document.getElementById('state').textContent = 'edited: ' + (localStorage.edited || 'no');</script>
+</body></html>"""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html")
+        self.end_headers()
+        self.wfile.write(body)
+
+
+async def test_exported_text_steps_target_the_visible_copy(tmp_path):
+    from argus.application.testgen import run_exported_test
+
+    class _Server(socketserver.ThreadingTCPServer):
+        allow_reuse_address = True
+        daemon_threads = True
+
+    server = _Server(("127.0.0.1", 0), _HiddenCopyHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        source, _ = generate_test(
+            finding_id="run:1",
+            title="Edit is not kept",
+            expected="The edit is kept",
+            receipt={"expect": "absent", "target_text": "edited: yes", "at_url": base + "/"},
+            journey=[
+                {"tool": "hover_what", "description": "Walk dog", "value": "text:Walk dog"},
+                {"tool": "double_click", "description": "Walk dog", "value": "text:Walk dog"},
+            ],
+            start_url=base + "/",
+            resolve_input=lambda action: None,
+            filename="t.py",
+        )
+        script = tmp_path / "t.py"
+        script.write_text(source)
+        # Without the visibility filter both steps hit a strict-mode error.
+        assert (await run_exported_test(script, 90))["outcome"] == "passes"
+    finally:
+        server.shutdown()

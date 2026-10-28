@@ -85,7 +85,7 @@ async def test_a_row_is_hovered_by_its_text_to_reveal_its_controls():
             resolve_input=lambda action: None,
             filename="t.py",
         )
-        assert 'page.get_by_text("Buy milk", exact=True).hover()' in source
+        assert 'page.get_by_text("Buy milk", exact=True).filter(visible=True).hover()' in source
     finally:
         await _end()
 
