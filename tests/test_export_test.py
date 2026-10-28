@@ -409,7 +409,7 @@ def test_an_unnamed_checkbox_is_found_by_role_inside_its_row():
     toggle.css_path = "body > ul > li:nth-of-type(1) > input"
     toggle.parent_context = "Buy milk"
     assert locator_expr(toggle, [toggle]) == (
-        '_in_row(page, "Buy milk", lambda scope: scope.get_by_role("checkbox"))'
+        '_in_row(page, "Buy milk", lambda scope: scope.locator("input[type=\\"checkbox\\"]"))'
     )
     # Another checkbox in the same row makes the role ambiguous: keep the path.
     starred = make_element(1, tag="input", type="checkbox", id="star-1")
@@ -467,12 +467,15 @@ def test_row_keys_account_for_controls_located_another_way():
     assert '_in_row(page, "Buy milk",' in locator_expr(milk, [later, milk])
 
 
-def test_an_explicit_switch_role_keeps_its_path():
+def test_an_unnamed_input_is_found_by_type_whatever_its_role_or_aria():
+    # get_by_role would miss role="switch" and aria-hidden inputs; the type does not.
     switch = make_element(0, tag="input", type="checkbox")
     switch.role = "switch"
     switch.css_path = "li:nth-of-type(1) > input"
     switch.parent_context = "Dark mode"
-    assert locator_expr(switch, [switch]) == 'page.locator("li:nth-of-type(1) > input")'
+    assert locator_expr(switch, [switch]) == (
+        '_in_row(page, "Dark mode", lambda scope: scope.locator("input[type=\\"checkbox\\"]"))'
+    )
 
 
 def test_roles_follow_the_explicit_role_not_the_tag():
@@ -487,3 +490,61 @@ def test_roles_follow_the_explicit_role_not_the_tag():
     )
     tab.id = None
     assert locator_expr(tab, [tab, button]) == 'page.get_by_role("tab", name="Open", exact=True)'
+
+
+class _TogglesHandler(http.server.BaseHTTPRequestHandler):
+    """Rows whose checkboxes are aria-hidden or role=switch; a tick is kept in
+    localStorage and shown after a reload."""
+
+    def log_message(self, *args):
+        pass
+
+    def do_GET(self):
+        body = b"""<html><body><ul>
+<li>Buy milk <input type="checkbox" aria-hidden="true" onchange="localStorage.done='Buy milk'"></li>
+<li>Walk dog <input type="checkbox" role="switch" onchange="localStorage.done='Walk dog'"></li>
+</ul><p id="done"></p>
+<script>document.getElementById('done').textContent = 'done: ' + (localStorage.done || '-');</script>
+</body></html>"""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html")
+        self.end_headers()
+        self.wfile.write(body)
+
+
+@pytest.mark.parametrize("row", ["Buy milk", "Walk dog"])
+async def test_unnamed_hidden_or_switch_inputs_replay_in_a_browser(tmp_path, row):
+    from argus.application.testgen import run_exported_test
+
+    class _Server(socketserver.ThreadingTCPServer):
+        allow_reuse_address = True
+        daemon_threads = True
+
+    server = _Server(("127.0.0.1", 0), _TogglesHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        rows = []
+        for index, (context, role) in enumerate([("Buy milk", None), ("Walk dog", "switch")]):
+            toggle = make_element(index, tag="input", type="checkbox")
+            toggle.role = role
+            toggle.css_path = f"li:nth-of-type({index + 1}) > input"
+            toggle.parent_context = context
+            rows.append(toggle)
+        target = next(el for el in rows if el.parent_context == row)
+        source, _ = generate_test(
+            finding_id="run:1",
+            title="Tick is not kept",
+            expected="The tick is kept",
+            receipt={"expect": "absent", "target_text": f"done: {row}", "at_url": base + "/"},
+            journey=[{"tool": "click_what", "locator": locator_expr(target, rows)}],
+            start_url=base + "/",
+            resolve_input=lambda action: None,
+            filename="t.py",
+        )
+        script = tmp_path / "t.py"
+        script.write_text(source)
+        # The click reaches the right input, so the "not kept" symptom is gone.
+        assert (await run_exported_test(script, 90))["outcome"] == "passes"
+    finally:
+        server.shutdown()

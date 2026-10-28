@@ -15,8 +15,9 @@
 - Exported tests stay stable as the app changes, after Haiku runs on TodoMVC
   and BuggyTasks: a repeated control is scoped by the fewest leading words of
   its row (its title), not by changing details such as "5 days ago"; an unnamed
-  checkbox or radio is found by role inside its row instead of by a DOM path;
-  and helpers are written only when the test uses them.
+  checkbox or radio is found by its input type inside its row instead of by a
+  DOM path; role locators use the element's explicit role; and helpers are
+  written only when the test uses them.
 - Interactions that real apps need, found by running the test skill on TodoMVC
   and Flask's tutorial app:
   - `hover_what` returns the observation taken while hovering, so controls that

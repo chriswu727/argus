@@ -59,6 +59,9 @@ def _effective_role(el: InteractiveElement) -> Optional[str]:
     return _ROLES.get(kind_of(el))
 
 
+_UNNAMED_INPUT = {"checkbox": 'input[type="checkbox"]', "radio": 'input[type="radio"]'}
+
+
 def _q(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
@@ -74,11 +77,11 @@ def _single_locator(el: InteractiveElement) -> Optional[str]:
         if el.name and (el.type or "").lower() not in ("checkbox", "radio"):
             return f"page.locator({_q(f'{tag}[name={json.dumps(el.name)}]')})"
         kind = (el.type or "").lower()
-        explicit = (el.role or kind).lower()
-        if el.css_path and kind in ("checkbox", "radio") and explicit == kind and el.parent_context:
-            # Unnamed: locate it by role inside its row (see locator_expr), not
-            # by a DOM path that breaks when the markup or the order changes.
-            return f"page.get_by_role({_q(kind)})"
+        if el.css_path and kind in ("checkbox", "radio") and el.parent_context:
+            # Unnamed: locate it by input type inside its row (see locator_expr),
+            # not by a DOM path that breaks when the markup or order changes.
+            # CSS, unlike get_by_role, also finds role="switch" or aria-hidden.
+            return f"page.locator({_q(_UNNAMED_INPUT[kind])})"
         if el.css_path:
             return f"page.locator({_q(el.css_path)})"
     role, name = _role_and_name(el)
@@ -93,13 +96,16 @@ def _single_locator(el: InteractiveElement) -> Optional[str]:
     return None
 
 
+_UNNAMED_BASES = {f"page.locator({_q(css)})" for css in _UNNAMED_INPUT.values()}
+
+
 def locator_expr(el: InteractiveElement, elements: List[InteractiveElement]) -> Optional[str]:
     """Locator expression for `el`, scoped to its row when the bare locator
     would also match another listed element (N identical Delete buttons)."""
     base = _single_locator(el)
     if base is None:
         return None
-    unnamed = base in ('page.get_by_role("checkbox")', 'page.get_by_role("radio")')
+    unnamed = base in _UNNAMED_BASES
     # Every listed control the emitted locator could also match, including
     # ones Argus locates differently (an id-bearing "Delete" in another row).
     twins = [other for other in elements if other is not el and _overlaps(el, other, base)]
@@ -130,6 +136,9 @@ def _overlaps(el: InteractiveElement, other: InteractiveElement, base: str) -> b
     """Whether `base`, emitted for `el`, would also match `other` on the page."""
     if _single_locator(other) == base:
         return True
+    if base in _UNNAMED_BASES:
+        # input[type=...] matches every input of that type, however located.
+        return other.tag == "input" and (other.type or "").lower() == (el.type or "").lower()
     if not base.startswith("page.get_by_role("):
         return False
     role, name = _role_and_name(el)
