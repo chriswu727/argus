@@ -411,6 +411,12 @@ def test_an_unnamed_checkbox_is_found_by_role_inside_its_row():
     assert locator_expr(toggle, [toggle]) == (
         '_in_row(page, "Buy milk", lambda scope: scope.get_by_role("checkbox"))'
     )
+    # Another checkbox in the same row makes the role ambiguous: keep the path.
+    starred = make_element(1, tag="input", type="checkbox", id="star-1")
+    starred.parent_context = "Buy milk"
+    assert locator_expr(toggle, [starred, toggle]) == (
+        'page.locator("body > ul > li:nth-of-type(1) > input")'
+    )
     toggle.parent_context = None
     assert locator_expr(toggle, [toggle]) == 'page.locator("body > ul > li:nth-of-type(1) > input")'
 

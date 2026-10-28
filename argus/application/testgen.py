@@ -83,6 +83,10 @@ def locator_expr(el: InteractiveElement, elements: List[InteractiveElement]) -> 
         return None
     twins = [other for other in elements if other is not el and _single_locator(other) == base]
     unnamed = base in ('page.get_by_role("checkbox")', 'page.get_by_role("radio")')
+    if unnamed and _shares_row_with_same_type(el, elements):
+        # The role alone would match another control in the row (an id-bearing
+        # checkbox listed under its own locator), so keep the precise path.
+        return f"page.locator({_q(el.css_path or '')})"
     if not twins and not unnamed:
         return base
     key = _row_key(el.parent_context or "", [o.parent_context or "" for o in twins])
@@ -93,6 +97,17 @@ def locator_expr(el: InteractiveElement, elements: List[InteractiveElement]) -> 
         return f"page.locator({_q(el.css_path)})"
     position = sum(1 for o in elements[: elements.index(el)] if _single_locator(o) == base)
     return f"{base}.nth({position})"
+
+
+def _shares_row_with_same_type(el: InteractiveElement, elements: List[InteractiveElement]) -> bool:
+    row = " ".join((el.parent_context or "").split())
+    kind = (el.type or "").lower()
+    return any(
+        other is not el
+        and (other.type or "").lower() == kind
+        and " ".join((other.parent_context or "").split()) == row
+        for other in elements
+    )
 
 
 def _row_key(row: str, others: List[str]) -> Optional[str]:
