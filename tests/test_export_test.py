@@ -630,3 +630,48 @@ async def test_going_back_is_recorded_replayed_and_exported(isolated_runtime):
     finally:
         await _fn("end_session")()
         server.shutdown()
+
+
+async def test_replay_starts_where_the_journey_began(isolated_runtime):
+    # start(A) -> navigate(B) -> go_back must replay from A, or going back
+    # cannot return there and the verdict is wrong.
+    class _Server(socketserver.ThreadingTCPServer):
+        allow_reuse_address = True
+        daemon_threads = True
+
+    server = _Server(("127.0.0.1", 0), _TwoPagesHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        try:
+            await _fn("start_session")(base + "/a")
+        except Exception as exc:
+            pytest.skip(f"Chromium/session unavailable: {exc}")
+        await _fn("navigate")(base + "/b")
+        await _fn("go_back")()
+        await _fn("record_bug")(
+            "Back returns to the first page",
+            "low",
+            {"expected": "Stays on B", "actual": "Shows A"},
+            verify={"replay": True, "expect": "present", "target_text": "Page A"},
+        )
+        receipt = m.runtime.session.bugs[-1].reproduction_receipt
+        # Replay started on A (the old heuristic began at the first navigate, B).
+        assert receipt["at_url"] == base + "/a", receipt
+        assert not receipt.get("diverged"), receipt
+        # The next journey starts on the page the agent is on now (A).
+        assert m.runtime.session._replay_start_url == base + "/a"
+        injected = await m.runtime.verifiers.verify(
+            m.runtime.session,
+            {
+                "replay": True,
+                "expect": "present",
+                "target_text": "Page A",
+                "_replay_start_url": "x",
+            },
+            [],
+        )
+        assert injected["attempted"] is False  # no steps; the injected key was dropped
+    finally:
+        await _fn("end_session")()
+        server.shutdown()

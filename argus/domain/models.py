@@ -135,6 +135,8 @@ class Bug:
     # replay engine can re-drive (tool + description + value), parallel to the
     # human-readable steps_to_reproduce.
     replay_steps: List[Dict] = field(default_factory=list)
+    # The page replay_steps began on, so a replay starts from the same history.
+    replay_start_url: str = ""
     verification_history: List[Dict] = field(default_factory=list)
     expected: str = ""
     actual: str = ""

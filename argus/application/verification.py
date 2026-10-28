@@ -246,10 +246,9 @@ async def _run_replay_receipt(s: "Session", verify: dict, actions: list) -> dict
             "select_into/navigate so the action trace is captured",
         }
 
-    start_url = next(
-        (a.get("value") for a in actions if a.get("tool") == "navigate" and a.get("value")), None
-    )
-    start_url = _resolve_url(s, start_url) if start_url else (s.url or s.browser.current_url)
+    # Start where the journey began, then replay every step (a first navigate
+    # included), so the page history matches the session's for go_back.
+    start_url = verify.get("_replay_start_url") or s.url or s.browser.current_url
     try:
         res = await s.browser.replay(start_url, actions)
     except Exception as e:
