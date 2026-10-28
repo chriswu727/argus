@@ -80,6 +80,8 @@ class Session:
         # export_test cannot repeat a restore, so export_test marks it TODO.
         self.capsule_restores: List[tuple] = []
         self._actions_since_last_bug: int = 0
+        # Page the actions since the previous bug started on (None: session URL).
+        self._replay_start_url: Optional[str] = None
         # Liveness marker of the most recently restored state capsule (or None).
         # record_bug re-checks it against the CURRENT page so a finding made
         # while the capsule's server session is dead gets flagged — and one made

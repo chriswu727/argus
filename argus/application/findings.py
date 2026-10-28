@@ -251,11 +251,16 @@ async def record_bug(
                     warnings.append("Finding screenshot capture failed.")
 
     replay_slice = list(s.action_trace[s._actions_since_last_bug :])
+    replay_start = s._replay_start_url or s.url
     if verify:
         await current_runtime().progress(Stage.VERIFYING)
     receipt = (
         await current_runtime().verifiers.verify(
-            s, verify, replay_slice, screenshot_label=screenshot_label if fresh_load else None
+            s,
+            verify,
+            replay_slice,
+            screenshot_label=screenshot_label if fresh_load else None,
+            replay_start=replay_start,
         )
         if verify
         else None
@@ -287,6 +292,7 @@ async def record_bug(
         screenshot_path=screenshot_path,
         reproduction_receipt=receipt,
         replay_steps=replay_slice,
+        replay_start_url=replay_start or "",
         expected=expected,
         actual=actual,
         coverage_goals=coverage_goals,
@@ -315,6 +321,9 @@ async def record_bug(
     # taken between this call and that one.
     s._steps_since_last_bug = len(s.steps)
     s._actions_since_last_bug = len(s.action_trace)
+    if s.mode == "web" and s.browser is not None and s.browser.has_page:
+        # The next journey starts from the page the agent is on now.
+        s._replay_start_url = s.browser.current_url
 
     out = [
         f"Recorded bug [{sev.value.upper()}] {title}",
@@ -518,7 +527,9 @@ async def _recheck_finding(
         },
     }
     bug.verification_history.append(history)
-    receipt = await runtime.verifiers.verify(s, verify, list(bug.replay_steps))
+    receipt = await runtime.verifiers.verify(
+        s, verify, list(bug.replay_steps), replay_start=bug.replay_start_url or s.url
+    )
     bug.description, receipt = await _guard_capsule(s, bug.description, receipt)
     if isinstance(receipt, dict):
         receipt = {

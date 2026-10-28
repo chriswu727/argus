@@ -3,6 +3,7 @@ from datetime import datetime
 from importlib.resources import files
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 from playwright.async_api import Browser, BrowserContext, Page, async_playwright
 
@@ -16,6 +17,19 @@ from argus.security import redact_body
 from .domain.models import InteractiveElement, PageState
 from .runtime import BoundedEventLog
 from .settings import CaptureSettings
+
+
+def _same_page(actual: str, recorded: str) -> bool:
+    """Going back returns to an exact history entry, so everything but a
+    trailing slash must match: the query can select the resource (?id=1)."""
+    a, r = urlparse(actual), urlparse(recorded)
+    return (a.scheme, a.netloc, a.path.rstrip("/"), a.query, a.fragment) == (
+        r.scheme,
+        r.netloc,
+        r.path.rstrip("/"),
+        r.query,
+        r.fragment,
+    )
 
 
 def _capture_body(raw: bytes, headers: dict, cap: int = 16 * 1024) -> Optional[str]:
@@ -1215,6 +1229,37 @@ class BrowserDriver:
                         steps.append({"act": f"navigate {val}", "ok": True})
                     except Exception as e:
                         steps.append({"act": f"navigate {val}", "ok": False, "reason": str(e)[:80]})
+                        diverged = True
+                        break
+                    continue
+                if tool in ("go_back", "scroll_down", "resize", "upload_file"):
+                    try:
+                        if tool == "go_back":
+                            resp = await page.go_back(wait_until="domcontentloaded", timeout=10_000)
+                            await self._settle_network(page)
+                            if resp is not None and resp.status >= 400:
+                                # An error page could fake an "absent" symptom.
+                                raise RuntimeError(f"HTTP {resp.status}")
+                            # The replay's history can lack the page the session
+                            # went back to (it predates the replayed slice).
+                            if val and not _same_page(page.url, str(val)):
+                                raise RuntimeError(
+                                    f"went back to {urlparse(page.url).path or '/'}, "
+                                    f"not {urlparse(str(val)).path or '/'}"
+                                )
+                        elif tool == "scroll_down":
+                            await page.evaluate("window.scrollBy(0, 500)")
+                            await asyncio.sleep(0.5)
+                        elif tool == "resize":
+                            width, height = (int(n) for n in desc.lower().split("x"))
+                            await page.set_viewport_size({"width": width, "height": height})
+                        else:
+                            raise RuntimeError("file uploads are not replayed")
+                        steps.append({"act": f"{tool} {desc!r}", "ok": True})
+                    except Exception as e:
+                        steps.append(
+                            {"act": f"{tool} {desc!r}", "ok": False, "reason": str(e)[:80]}
+                        )
                         diverged = True
                         break
                     continue

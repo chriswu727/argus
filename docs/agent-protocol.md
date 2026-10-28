@@ -175,6 +175,36 @@ window closes, including after its status is finalized. They do not contaminate
 unrelated goals. Untagged findings remain linked only by their time window;
 Argus does not infer semantic goal associations or completeness.
 
+## Exporting a regression test
+
+`export_test(finding_id, run=False)` accepts a finding of the current session
+whose receipt is reproduced by a fresh-load text check (`expect` `present` or
+`absent` with `target_text`). Replay-verified, status-code, observed and
+inconclusive findings are rejected with `INVALID_ARGUMENT`. The tool writes a
+standalone Playwright (Python, sync) file under the output directory's `tests/`
+and returns `data`:
+
+| Field | Meaning |
+|---|---|
+| `finding_id` | The exported finding. |
+| `path` | Absolute path of the written test file. |
+| `manual_steps` | Steps that could not be translated; each is also a `TODO(argus)` line in the file. An empty list means every recorded step was exported. |
+| `run` | `null` unless `run=true`; otherwise `{"outcome", "detail"}` with outcome `fails_on_symptom`, `passes` or `errored`. |
+
+The file replays the actions recorded up to the finding with locators captured
+from the resolved elements, then loads the checked URL afresh and asserts the
+opposite of the symptom with the verifier's word-boundary text rule and bounded
+scrolling. `fails_on_symptom` means the test failed on that assertion, as it
+should while the bug is present. `passes` means it did not reproduce the
+symptom and must not be relied on as a regression test. `errored` means it
+stopped before the assertion (a step failed or timed out). A capsule restore
+cannot be replayed and is reported as a manual step. Uploaded files are not
+attached, and an upload is likewise a manual step. Sensitive inputs are read
+from `ARGUS_INPUT_n` environment variables; `run=true` passes the session's values that way and never
+writes them to the file. A run repeats the journey's writes, executes in its own
+process group inside the operation deadline, and is killed with its browser on
+timeout or cancellation.
+
 ## Guidance and compact output
 
 The default `web` profile exposes 29 browser-testing tools with concise
