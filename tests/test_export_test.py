@@ -757,3 +757,11 @@ async def test_a_replayed_back_step_onto_an_error_page_is_inconclusive(isolated_
         _TwoPagesHandler.a_requests_until_error = None
         await _fn("end_session")()
         server.shutdown()
+
+
+def test_a_back_step_must_land_on_the_recorded_query():
+    from argus.browser import _same_page
+
+    assert _same_page("http://h/item?id=1", "http://h/item/?id=1")
+    assert not _same_page("http://h/item?id=2", "http://h/item?id=1")
+    assert not _same_page("http://h/#/a", "http://h/#/b")

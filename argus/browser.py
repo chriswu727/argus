@@ -20,12 +20,14 @@ from .settings import CaptureSettings
 
 
 def _same_page(actual: str, recorded: str) -> bool:
-    """Same origin, path and hash route; a changing query string is allowed."""
+    """Going back returns to an exact history entry, so everything but a
+    trailing slash must match: the query can select the resource (?id=1)."""
     a, r = urlparse(actual), urlparse(recorded)
-    return (a.scheme, a.netloc, a.path.rstrip("/"), a.fragment) == (
+    return (a.scheme, a.netloc, a.path.rstrip("/"), a.query, a.fragment) == (
         r.scheme,
         r.netloc,
         r.path.rstrip("/"),
+        r.query,
         r.fragment,
     )
 
