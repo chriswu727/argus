@@ -118,7 +118,9 @@ package, so they move only after PyPI has the new version. Raise the
 version in both plugin manifests, run `uv lock` in `plugins/claude` and copy its
 `uv.lock` to `plugins/codex`. Then update the versioned `uvx` commands in both
 plugin READMEs and skills, including the locked Playwright version, and run
-`pytest plugins/tests`. Hosts update installed plugins only when the manifest
+`pytest plugins/tests`. When upgrading the bundles to 0.12, update both launch
+checks to require 29 web tools (instead of 28) and include `export_test`.
+Hosts update installed plugins only when the manifest
 version changes, and the skills' `--doctor` step assumes the web checks added
 in 0.12.
 MCPRush's default listing should expose the 29-tool web profile, not the

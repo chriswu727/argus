@@ -41,11 +41,16 @@ def test_headless_shell_only_installs_pass(monkeypatch, tmp_path):
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as playwright:
-        browsers = Path(playwright.chromium.executable_path).parents[2]
-    shells = sorted(browsers.glob("chromium_headless_shell-*"))
-    if not shells:
-        pytest.skip("no headless shell installed")
-    for source in [shells[-1], *browsers.glob("ffmpeg-*")]:
+        browser = next(
+            parent
+            for parent in Path(playwright.chromium.executable_path).parents
+            if parent.name.startswith("chromium-")
+        )
+    browsers = browser.parent
+    shell = browsers / browser.name.replace("chromium-", "chromium_headless_shell-", 1)
+    if not shell.is_dir():
+        pytest.skip("matching Chromium headless shell is not installed")
+    for source in [shell, *browsers.glob("ffmpeg-*")]:
         (tmp_path / source.name).symlink_to(source)
     monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path))
     checks = doctor.check_browser()

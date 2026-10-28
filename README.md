@@ -248,6 +248,8 @@ assert _present("Walk dog", page), SYMPTOM_MARKER + ": 'Walk dog' is missing"
   position.
 - **No secrets in the file.** Passwords and tokens are read from environment
   variables.
+- **No pass from a broken page.** HTTP errors and login walls stop the check;
+  a missing symptom on those pages does not mean the bug is fixed.
 - **Nothing guessed.** Steps Argus cannot translate are marked `TODO(argus)` and
   listed.
 - **Optional run.** `run=true` runs the file once to show that it fails on the
