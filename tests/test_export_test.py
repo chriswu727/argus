@@ -576,16 +576,27 @@ def test_back_scroll_resize_and_upload_steps_are_exported():
 
 
 class _TwoPagesHandler(http.server.BaseHTTPRequestHandler):
+    # When set, counts down on each /a request; the request that reaches 0
+    # gets a 500 (a page that fails only when the replay goes back to it).
+    a_requests_until_error = None
+
     def log_message(self, *args):
         pass
 
     def do_GET(self):
+        status = 200
         if self.path.startswith("/b"):
             body = b"<html><body><h1>Page B</h1></body></html>"
         else:
             body = b'<html><body><h1>Page A</h1><a href="/b">Go to B</a></body></html>'
-        self.send_response(200)
+            countdown = type(self).a_requests_until_error
+            if countdown is not None:
+                type(self).a_requests_until_error = countdown - 1
+                if countdown == 1:
+                    status, body = 500, b"<html><body>Server error</body></html>"
+        self.send_response(status)
         self.send_header("Content-Type", "text/html")
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
 
@@ -711,5 +722,38 @@ async def test_a_back_step_whose_history_predates_the_replay_is_inconclusive(iso
         receipt = s.bugs[-1].reproduction_receipt
         assert receipt["reproduced"] is None and receipt.get("diverged"), receipt
     finally:
+        await _fn("end_session")()
+        server.shutdown()
+
+
+async def test_a_replayed_back_step_onto_an_error_page_is_inconclusive(isolated_runtime):
+    class _Server(socketserver.ThreadingTCPServer):
+        allow_reuse_address = True
+        daemon_threads = True
+
+    _TwoPagesHandler.a_requests_until_error = None
+    server = _Server(("127.0.0.1", 0), _TwoPagesHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        try:
+            await _fn("start_session")(base + "/b")
+        except Exception as exc:
+            pytest.skip(f"Chromium/session unavailable: {exc}")
+        await _fn("navigate")(base + "/a")
+        await _fn("navigate")(base + "/b")
+        await _fn("go_back")()
+        # In the replay, /a loads once by navigate, then fails when gone back to.
+        _TwoPagesHandler.a_requests_until_error = 2
+        await _fn("record_bug")(
+            "Going back loses the A heading",
+            "low",
+            {"expected": "x", "actual": "y"},
+            verify={"replay": True, "expect": "absent", "target_text": "Page A"},
+        )
+        receipt = m.runtime.session.bugs[-1].reproduction_receipt
+        assert receipt["reproduced"] is None and receipt.get("diverged"), receipt
+    finally:
+        _TwoPagesHandler.a_requests_until_error = None
         await _fn("end_session")()
         server.shutdown()

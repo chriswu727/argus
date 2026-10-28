@@ -1233,8 +1233,11 @@ class BrowserDriver:
                 if tool in ("go_back", "scroll_down", "resize", "upload_file"):
                     try:
                         if tool == "go_back":
-                            await page.go_back(wait_until="domcontentloaded", timeout=10_000)
+                            resp = await page.go_back(wait_until="domcontentloaded", timeout=10_000)
                             await self._settle_network(page)
+                            if resp is not None and resp.status >= 400:
+                                # An error page could fake an "absent" symptom.
+                                raise RuntimeError(f"HTTP {resp.status}")
                             # The replay's history can lack the page the session
                             # went back to (it predates the replayed slice).
                             if val and not _same_page(page.url, str(val)):
