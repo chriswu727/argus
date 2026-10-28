@@ -473,3 +473,17 @@ def test_an_explicit_switch_role_keeps_its_path():
     switch.css_path = "li:nth-of-type(1) > input"
     switch.parent_context = "Dark mode"
     assert locator_expr(switch, [switch]) == 'page.locator("li:nth-of-type(1) > input")'
+
+
+def test_roles_follow_the_explicit_role_not_the_tag():
+    tab = make_element(0, tag="button", text="Open", id="tab-open")
+    tab.role = "tab"
+    tab.parent_context = "Report Open Open"
+    button = make_element(1, tag="button", text="Open")
+    button.parent_context = "Report Open Open"
+    # The tab is not a button to Playwright, so it does not make "Open" ambiguous.
+    assert locator_expr(button, [tab, button]) == (
+        'page.get_by_role("button", name="Open", exact=True)'
+    )
+    tab.id = None
+    assert locator_expr(tab, [tab, button]) == 'page.get_by_role("tab", name="Open", exact=True)'

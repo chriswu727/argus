@@ -39,6 +39,26 @@ _ROLES = {
 }
 
 
+# Explicit roles Playwright's get_by_role can target for the extracted widgets.
+_KNOWN_ROLES = set(_ROLES.values()) | {
+    "textbox",
+    "slider",
+    "spinbutton",
+    "gridcell",
+    "menuitemcheckbox",
+    "menuitemradio",
+}
+
+
+def _effective_role(el: InteractiveElement) -> Optional[str]:
+    """The accessible role Playwright sees: an explicit role wins over the tag
+    (<button role="tab"> is a tab), and an unknown explicit role gets none."""
+    explicit = (el.role or "").strip().lower()
+    if explicit:
+        return explicit if explicit in _KNOWN_ROLES else None
+    return _ROLES.get(kind_of(el))
+
+
 def _q(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
@@ -61,12 +81,9 @@ def _single_locator(el: InteractiveElement) -> Optional[str]:
             return f"page.get_by_role({_q(kind)})"
         if el.css_path:
             return f"page.locator({_q(el.css_path)})"
-    role = _ROLES.get(kind_of(el))
-    name = (el.aria_label or el.text or "").strip()
-    if (el.type or "").lower() in ("submit", "button") and not name:
-        name = (el.value or "").strip()
+    role, name = _role_and_name(el)
     if role and name:
-        return f"page.get_by_role({_q(role)}, name={_q(' '.join(name.split()))}, exact=True)"
+        return f"page.get_by_role({_q(role)}, name={_q(name)}, exact=True)"
     if el.name:
         return f"page.locator({_q(f'{tag}[name={json.dumps(el.name)}]')})"
     if el.aria_label:
@@ -106,7 +123,7 @@ def _role_and_name(el: InteractiveElement) -> tuple:
     name = (el.aria_label or el.text or "").strip()
     if (el.type or "").lower() in ("submit", "button") and not name:
         name = (el.value or "").strip()
-    return _ROLES.get(kind_of(el)), " ".join(name.split())
+    return _effective_role(el), " ".join(name.split())
 
 
 def _overlaps(el: InteractiveElement, other: InteractiveElement, base: str) -> bool:
