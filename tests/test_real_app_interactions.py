@@ -129,6 +129,20 @@ async def test_replay_repeats_an_accepted_dialog():
         await _end()
 
 
+async def test_replay_does_not_carry_an_unused_acceptance_to_the_next_step():
+    await _session_on_page(_CONFIRM)
+    try:
+        s = m.runtime.session
+        await _fn("click_what")("Other button", accept_dialog=True)
+        live = await _fn("click_what")("Delete button")
+        assert "repeat it with accept_dialog=true" in live
+        result = await s.browser.replay(s.browser.current_url, list(s.action_trace[-2:]))
+        assert not result["diverged"]
+        assert "Hello world" in result["final_state"].page_text
+    finally:
+        await _end()
+
+
 async def test_double_click_text_ignores_a_hidden_duplicate():
     page = _TODOS.replace("<ul>", '<div style="display:none"><label>Walk dog</label></div><ul>', 1)
     await _session_on_page(page)

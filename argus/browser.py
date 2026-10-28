@@ -1178,8 +1178,21 @@ class BrowserDriver:
                         "final_state": None,
                     }
             baseline = await self.get_state(page)
+            # Accept a dialog only during the step that accepted it live; any
+            # other dialog is dismissed, as it was during the journey.
+            accept = {"pending": False}
+
+            async def _on_dialog(dialog):
+                if accept["pending"]:
+                    accept["pending"] = False
+                    await dialog.accept()
+                else:
+                    await dialog.dismiss()
+
+            page.on("dialog", _on_dialog)
             for act in actions:
                 tool = act.get("tool")
+                accept["pending"] = bool(act.get("accept_dialog"))
                 self.access_policy.check_url(page.url)
                 desc = act.get("description") or ""
                 val = act.get("value")
@@ -1205,13 +1218,6 @@ class BrowserDriver:
                         diverged = True
                         break
                     continue
-                if act.get("accept_dialog"):
-                    # Repeat the accepted confirmation; an unhandled dialog is
-                    # dismissed and the replay would follow a different path.
-                    async def _accept(dialog):
-                        await dialog.accept()
-
-                    page.once("dialog", _accept)
                 if tool == "double_click" and str(val or "").startswith("text:"):
                     try:
                         text_loc = page.get_by_text(str(val)[5:], exact=True)
