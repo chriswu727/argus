@@ -197,7 +197,10 @@ opposite of the symptom with the verifier's word-boundary text rule and bounded
 scrolling. `fails_on_symptom` means the test failed on that assertion, as it
 should while the bug is present. `passes` means it did not reproduce the
 symptom and must not be relied on as a regression test. `errored` means it
-stopped before the assertion (a step failed or timed out). A capsule restore
+stopped before the assertion (a step failed or timed out, the checked page
+returned HTTP 4xx/5xx, or a login wall prevented the check). Exported control
+locators preserve iframe chains and scope duplicate matching to the same frame;
+text checks include nested frame content. A capsule restore
 cannot be replayed and is reported as a manual step. Uploaded files are not
 attached, and an upload is likewise a manual step. Sensitive inputs are read
 from `ARGUS_INPUT_n` environment variables; `run=true` passes the session's values that way and never

@@ -3,23 +3,11 @@ from __future__ import annotations
 from argus.domain.models import (
     PageState,
 )
+from argus.domain.verification import LOGIN_WALL_PHRASES as _LOGOUT_PHRASES
 
 from .evidence import _auto_screenshot
 from .session import Session
 from .text import _present_with_scroll, _resolve_url, _visible_text_in_state
-
-_LOGOUT_PHRASES = (
-    "please log in",
-    "please sign in",
-    "log in to",
-    "sign in to",
-    "session expired",
-    "session has expired",
-    "you have been logged out",
-    "you are logged out",
-    "log in to continue",
-    "sign in to continue",
-)
 
 
 def _looks_logged_out(state: PageState) -> bool:

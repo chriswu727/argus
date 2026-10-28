@@ -3,6 +3,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping
 
+LOGIN_WALL_PHRASES = (
+    "please log in",
+    "please sign in",
+    "log in to",
+    "sign in to",
+    "session expired",
+    "session has expired",
+    "you have been logged out",
+    "you are logged out",
+    "log in to continue",
+    "sign in to continue",
+)
+
 
 @dataclass(frozen=True)
 class VerificationSpec:

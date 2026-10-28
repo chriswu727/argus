@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Exported regression tests reject HTTP error pages and login walls instead of
+  treating a missing symptom there as a passing check. Frame controls retain
+  their full iframe chain, duplicate controls are disambiguated within that
+  frame, and text checks include nested frame content.
+- Fix the headless-shell-only doctor test finding the browser cache on macOS,
+  and select the shell matching the installed Chromium revision.
 - New `export_test(finding_id, run=False)` turns a finding verified by a
   fresh-load text check into a standalone Playwright test. The test replays the
   journey recorded up to the finding, using locators captured from the elements

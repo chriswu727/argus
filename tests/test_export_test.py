@@ -332,7 +332,10 @@ def test_hash_routes_are_kept_and_the_check_is_a_fresh_load():
     )
     assert 'page.goto(_url("/#/home"))' in source
     assert 'page.goto(_url("/#/done"))' in source
-    assert 'page.goto("about:blank")\n            page.goto(_url("/app?a=1#/tasks"))' in source
+    assert (
+        'page.goto("about:blank")\n            response = page.goto(_url("/app?a=1#/tasks"))\n'
+        "            _check_page(page, response)"
+    ) in source
 
 
 class _LazyHandler(http.server.BaseHTTPRequestHandler):

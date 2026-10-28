@@ -20,6 +20,7 @@ from typing import List, Optional
 from urllib.parse import urlparse
 
 from argus.domain.models import InteractiveElement
+from argus.domain.verification import LOGIN_WALL_PHRASES
 from argus.resolver import kind_of
 from argus.security import _RE_SECRET_KEY
 
@@ -100,6 +101,19 @@ _UNNAMED_BASES = {f"page.locator({_q(css)})" for css in _UNNAMED_INPUT.values()}
 
 
 def locator_expr(el: InteractiveElement, elements: List[InteractiveElement]) -> Optional[str]:
+    elements = [other for other in elements if other.frame == el.frame]
+    expression = _locator_in_frame(el, elements)
+    if expression is None or not el.frame:
+        return expression
+    scope = "page"
+    for selector in el.frame.split(" >>> "):
+        scope += f".frame_locator({_q(selector)})"
+    if expression.startswith("_in_row(page,"):
+        return expression.replace("_in_row(page,", f"_in_row({scope},", 1)
+    return scope + expression[len("page") :]
+
+
+def _locator_in_frame(el: InteractiveElement, elements: List[InteractiveElement]) -> Optional[str]:
     """Locator expression for `el`, scoped to its row when the bare locator
     would also match another listed element (N identical Delete buttons)."""
     base = _single_locator(el)
@@ -209,6 +223,7 @@ from playwright.sync_api import sync_playwright
 
 BASE_URL = os.environ.get("ARGUS_BASE_URL", {origin})
 SYMPTOM_MARKER = "ARGUS_SYMPTOM_PRESENT"
+LOGIN_WALL_PHRASES = {login_wall_phrases}
 
 
 def _url(path):
@@ -224,15 +239,34 @@ def _url(path):
     return re.search(before + re.escape(needle) + after, haystack) is not None
 
 
+def _check_page(page, response):
+    if response is not None and response.status >= 400:
+        raise RuntimeError(f"fresh-load check returned HTTP {{response.status}}")
+    page.wait_for_load_state("networkidle")
+    text = page.inner_text("body").lower()
+    login_heading = page.get_by_role(
+        "heading", name=re.compile(r"^(sign in|log in|login)$", re.IGNORECASE)
+    )
+    password_login = page.locator('input[type="password"]:visible').count() and login_heading.count()
+    if password_login or any(phrase in text for phrase in LOGIN_WALL_PHRASES):
+        raise RuntimeError("fresh-load check hit a login wall")
+
+
 def _present(text, page, max_scrolls=20):
     """Text and field values, scrolling (bounded) like Argus's fresh-load check
     so a row a virtualized or lazy list renders further down is still found."""
     page.wait_for_load_state("networkidle")
     last_y = None
     for scrolls in range(max_scrolls + 1):
-        values = page.eval_on_selector_all("input, textarea", "els => els.map(e => e.value)")
-        if _matches(text, page.inner_text("body") + " " + " ".join(values)):
-            return True
+        for frame in page.frames:
+            if frame.is_detached():
+                continue
+            body = frame.locator("body")
+            if not body.count():
+                continue
+            values = frame.eval_on_selector_all("input, textarea", "els => els.map(e => e.value)")
+            if _matches(text, body.inner_text() + " " + " ".join(values)):
+                return True
         y, at_bottom = page.evaluate(
             "() => [window.scrollY, "
             "window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2]"
@@ -387,7 +421,8 @@ def generate_test(
     # Leave the page first so the check is a fresh load even when only the hash
     # route matches the current URL.
     lines.append('page.goto("about:blank")')
-    lines.append(f"page.goto(_url({_q(_path_or_url(at_url, origin))}))")
+    lines.append(f"response = page.goto(_url({_q(_path_or_url(at_url, origin))}))")
+    lines.append("_check_page(page, response)")
     if expect == "present":
         lines.append(
             f"assert not _present({_q(target)}, page), "
@@ -419,6 +454,7 @@ def generate_test(
         filename=filename,
         notes=_doc(note_text),
         origin=_q(origin),
+        login_wall_phrases=json.dumps(LOGIN_WALL_PHRASES),
         row_helper=(
             _ROW_HELPER.format(row_selector=_q(_ROW_SELECTOR))
             if any("_in_row(" in line for line in lines)
