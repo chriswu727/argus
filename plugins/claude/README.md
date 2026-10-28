@@ -7,6 +7,7 @@ verification, findings, reports, regression checks, and Playwright test export.
 
 This is a project-maintained plugin, not an Anthropic product. Providing this
 package does not mean it has been accepted into Anthropic's directory.
+Plugin 0.12.1 updates the launcher; its server remains Argus 0.12.0.
 
 ## Requirements and setup
 
@@ -14,10 +15,12 @@ Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and make
 `uv` available to the application that starts Claude. The launcher selects Python
 3.12 and runs the exact published `argus-testing==0.12.0` release from the bundled
 `uv.lock`, which pins dependency versions, sources, and hashes. It refuses to run
-if the project and lockfile disagree. The virtual environment lives in the
-plugin's persistent data directory (`${CLAUDE_PLUGIN_DATA}/venv`), selected by
-`VIRTUAL_ENV` and `uv run --active`, not in the installed plugin files. It is
-created when needed and kept in step with the lock on each start.
+if the project and lockfile disagree. `uv run --isolated` creates a temporary
+environment for each server process and removes it on normal exit. Downloads
+are reused from uv's cache, but each start assembles a fresh environment. The
+launcher does not set environment variables, change package indexes, or write
+a virtual environment into the installed plugin files. It does not reuse the
+host's active environment.
 
 Before starting Claude with the plugin for the first time, warm uv's cache and
 install the matching Chromium browser. This works from any directory:

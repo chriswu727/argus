@@ -84,6 +84,7 @@ claude mcp add argus -- uvx --from argus-testing argus-mcp
 也可以安装 [Claude 插件](https://github.com/chriswu727/argus/tree/main/plugins/claude)，它固定已发布的版本，
 并提供 `/argus-testing:test` 技能。先运行插件说明里的一次性预热命令，再用
 `/plugin install argus-testing --marketplace chriswu727/argus` 安装。插件和手动配置二选一。
+Claude 插件 0.12.1 更新了隔离启动方式，运行的 Argus 服务仍为 0.12.0。
 
 </details>
 

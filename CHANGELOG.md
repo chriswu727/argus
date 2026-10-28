@@ -1,5 +1,14 @@
 # Changelog
 
+## Claude plugin 0.12.1 - 2026-10-28
+
+- Use `uv run --isolated --locked` without launcher environment overrides.
+  Each server gets a temporary environment populated from the existing lock;
+  cached downloads are reused and normal exit removes the environment. The
+  launcher neither modifies the plugin directory nor uses the host environment.
+- Keep the server pinned to Argus 0.12.0 and preserve all dependency hashes.
+  This is a Claude plugin update, not a new Python package or Codex plugin release.
+
 ## 0.12.0 - 2026-10-28
 
 - Exported regression tests reject HTTP error pages and login walls instead of

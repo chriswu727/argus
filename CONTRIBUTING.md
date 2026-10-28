@@ -120,8 +120,10 @@ version in both plugin manifests, run `uv lock` in `plugins/claude` and copy its
 plugin READMEs and skills, including the locked Playwright version, and run
 `pytest plugins/tests`. Keep both launch checks aligned with the published
 runtime's web tool count and required capabilities, including `export_test`.
-Hosts update installed plugins only when the manifest
-version changes, and the skills' `--doctor` step assumes the web checks added
+For plugin-only fixes, raise only the affected plugin manifest version; keep
+the published runtime dependency and its lock unchanged. Plugin and runtime
+versions may therefore differ. Hosts update installed plugins only when the
+manifest version changes, and the skills' `--doctor` step assumes the web checks added
 in 0.12.
 MCPRush's default listing should expose the 29-tool web profile, not the
 `evaluation` baseline tools; preserve manually declared schemas when refreshing
