@@ -116,9 +116,13 @@ async def test_action(
     if after.url not in s.pages_visited:
         s.pages_visited.append(after.url)
     if text_target is not None:
-        _record_action(s, "double_click", target, f"text:{text_target}")
+        _record_action(
+            s, "double_click", target, f"text:{text_target}", accept_dialog=accept_dialog
+        )
     else:
-        _record_action(s, "double_click" if double_click else "click_what", target)
+        _record_action(
+            s, "double_click" if double_click else "click_what", target, accept_dialog=accept_dialog
+        )
 
     console_errs, network_errs = s.browser.drain_errors()
     new_bugs = await _capture_browser_events(s, after, console_errs, network_errs)

@@ -1205,9 +1205,17 @@ class BrowserDriver:
                         diverged = True
                         break
                     continue
+                if act.get("accept_dialog"):
+                    # Repeat the accepted confirmation; an unhandled dialog is
+                    # dismissed and the replay would follow a different path.
+                    async def _accept(dialog):
+                        await dialog.accept()
+
+                    page.once("dialog", _accept)
                 if tool == "double_click" and str(val or "").startswith("text:"):
                     try:
-                        await page.get_by_text(str(val)[5:], exact=True).dblclick(timeout=5_000)
+                        text_loc = page.get_by_text(str(val)[5:], exact=True)
+                        await text_loc.filter(visible=True).dblclick(timeout=5_000)
                         await self._settle_network(page)
                         steps.append({"act": f"{tool} {desc!r}", "ok": True})
                     except Exception as e:
@@ -1406,7 +1414,9 @@ class BrowserDriver:
         if not text.strip():
             return 0
         try:
-            return await self._page.get_by_text(text.strip(), exact=True).count()
+            return (
+                await self._page.get_by_text(text.strip(), exact=True).filter(visible=True).count()
+            )
         except Exception:
             return 0
 
@@ -1418,7 +1428,7 @@ class BrowserDriver:
         caller can fall back to resolving an interactive element."""
         if not text.strip():
             return None
-        loc = self._page.get_by_text(text.strip(), exact=True)
+        loc = self._page.get_by_text(text.strip(), exact=True).filter(visible=True)
         try:
             if await loc.count() != 1:
                 return None

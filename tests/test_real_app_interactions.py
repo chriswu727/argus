@@ -111,3 +111,29 @@ async def test_unlabeled_editor_field_can_be_typed_into_and_submitted():
         assert any(el.value == "Walk dogs" for el in state.elements)
     finally:
         await _end()
+
+
+async def test_replay_repeats_an_accepted_dialog():
+    # A replay that dismissed the confirmation would take a different path and
+    # report a confirmed-only bug as not reproduced.
+    await _session_on_page(_CONFIRM)
+    try:
+        s = m.runtime.session
+        await _fn("click_what")("Delete button", accept_dialog=True)
+        action = s.action_trace[-1]
+        assert action["accept_dialog"] is True
+        result = await s.browser.replay(s.browser.current_url, [action])
+        assert not result["diverged"]
+        assert "Hello world" not in result["final_state"].page_text
+    finally:
+        await _end()
+
+
+async def test_double_click_text_ignores_a_hidden_duplicate():
+    page = _TODOS.replace("<ul>", '<div style="display:none"><label>Walk dog</label></div><ul>', 1)
+    await _session_on_page(page)
+    try:
+        out = await _fn("click_what")("Walk dog", double_click=True)
+        assert "Double-clicked the text" in out
+    finally:
+        await _end()

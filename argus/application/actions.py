@@ -55,7 +55,9 @@ async def click_what(
                     ErrorCode.BACKEND,
                 )
             s.steps.append(f'double-click text "{query[:60]}"')
-            _record_action(s, "double_click", description, f"text:{query}")
+            _record_action(
+                s, "double_click", description, f"text:{query}", accept_dialog=accept_dialog
+            )
             result = await action_result(
                 s, f'Double-clicked the text "{query[:60]}".{_dialog_lines(dialogs)}', "click"
             )
@@ -89,7 +91,12 @@ async def click_what(
             "The element may be obscured, stale, or removed. Try observe() again.",
             ErrorCode.BACKEND,
         )
-    _record_action(s, "double_click" if double_click else "click_what", description)
+    _record_action(
+        s,
+        "double_click" if double_click else "click_what",
+        description,
+        accept_dialog=accept_dialog,
+    )
 
     new_state = await s.browser.get_state()
     s._last_elements = new_state.elements
