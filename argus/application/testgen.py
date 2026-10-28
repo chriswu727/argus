@@ -53,6 +53,11 @@ def _single_locator(el: InteractiveElement) -> Optional[str]:
             return f"page.get_by_placeholder({_q(el.placeholder)}, exact=True)"
         if el.name and (el.type or "").lower() not in ("checkbox", "radio"):
             return f"page.locator({_q(f'{tag}[name={json.dumps(el.name)}]')})"
+        kind = (el.type or "").lower()
+        if el.css_path and kind in ("checkbox", "radio") and el.parent_context:
+            # Unnamed: locate it by role inside its row (see locator_expr), not
+            # by a DOM path that breaks when the markup or the order changes.
+            return f"page.get_by_role({_q(kind)})"
         if el.css_path:
             return f"page.locator({_q(el.css_path)})"
     role = _ROLES.get(kind_of(el))
@@ -77,15 +82,29 @@ def locator_expr(el: InteractiveElement, elements: List[InteractiveElement]) -> 
     if base is None:
         return None
     twins = [other for other in elements if other is not el and _single_locator(other) == base]
-    if not twins:
+    unnamed = base in ('page.get_by_role("checkbox")', 'page.get_by_role("radio")')
+    if not twins and not unnamed:
         return base
-    row = " ".join((el.parent_context or "").split())
-    clash = [" ".join((o.parent_context or "").split()) for o in twins]
-    if row and all(row != other for other in clash):
+    key = _row_key(el.parent_context or "", [o.parent_context or "" for o in twins])
+    if key:
         inner = base[len("page.") :]
-        return f"_in_row(page, {_q(row[:60])}, lambda scope: scope.{inner})"
+        return f"_in_row(page, {_q(key)}, lambda scope: scope.{inner})"
+    if unnamed and el.css_path:
+        return f"page.locator({_q(el.css_path)})"
     position = sum(1 for o in elements[: elements.index(el)] if _single_locator(o) == base)
     return f"{base}.nth({position})"
+
+
+def _row_key(row: str, others: List[str]) -> Optional[str]:
+    """The fewest leading words of `row` (at least two when it has them) that
+    no other row contains. Rows usually start with their title and end with
+    changing details ("5 days ago"), so the key stays stable over time."""
+    words = row.split()
+    for count in range(min(2, len(words)), len(words) + 1):
+        key = " ".join(words[:count])[:60]
+        if not any(key.lower() in " ".join(o.split()).lower() for o in others):
+            return key
+    return None
 
 
 def is_sensitive(el: InteractiveElement, description: str) -> bool:
@@ -136,21 +155,13 @@ from playwright.sync_api import sync_playwright
 
 BASE_URL = os.environ.get("ARGUS_BASE_URL", {origin})
 SYMPTOM_MARKER = "ARGUS_SYMPTOM_PRESENT"
-ROW_SELECTOR = {row_selector}
 
 
 def _url(path):
     return urljoin(BASE_URL, path)
 
 
-def _in_row(page, text, find):
-    """`find(scope)` within the row showing `text`: the innermost row holding
-    the text and the control, not a list container that also matches."""
-    rows = page.locator(ROW_SELECTOR).filter(has_text=text).filter(has=find(page))
-    return find(rows.filter(has_not=rows)).first
-
-
-def _matches(text, haystack):
+{row_helper}def _matches(text, haystack):
     """Argus's word-boundary rule on whitespace-normalised text."""
     haystack = " ".join(haystack.lower().split())
     needle = " ".join(text.lower().split())
@@ -184,9 +195,24 @@ def {test_name}():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
-        # Accept a dialog only during a step that accepted it in the session;
+{dialog_setup}        try:
+'''
+
+_ROW_HELPER = '''ROW_SELECTOR = {row_selector}
+
+
+def _in_row(page, text, find):
+    """`find(scope)` within the row showing `text`: the innermost row holding
+    the text and the control, not a list container that also matches."""
+    rows = page.locator(ROW_SELECTOR).filter(has_text=text).filter(has=find(page))
+    return find(rows.filter(has_not=rows)).first
+
+
+'''
+
+_DIALOG_SETUP = """        # Accept a dialog only during a step that accepted it in the session;
         # any other dialog is dismissed, as it was there.
-        accept_dialog = {{"pending": False}}
+        accept_dialog = {"pending": False}
 
         def _on_dialog(dialog):
             if accept_dialog["pending"]:
@@ -196,8 +222,7 @@ def {test_name}():
                 dialog.dismiss()
 
         page.on("dialog", _on_dialog)
-        try:
-'''
+"""
 
 _FOOTER = """        finally:
             browser.close()
@@ -322,7 +347,12 @@ def generate_test(
         filename=filename,
         notes=_doc(note_text),
         origin=_q(origin),
-        row_selector=_q(_ROW_SELECTOR),
+        row_helper=(
+            _ROW_HELPER.format(row_selector=_q(_ROW_SELECTOR))
+            if any("_in_row(" in line for line in lines)
+            else ""
+        ),
+        dialog_setup=_DIALOG_SETUP if any("accept_dialog[" in line for line in lines) else "",
         test_name=test_name,
     )
     body = "".join(f"            {line}\n" for line in lines)

@@ -12,6 +12,11 @@
   steps it cannot translate are marked TODO and listed. `run=true` runs it once
   to show that it fails on the symptom. The `web` profile now has 29 tools
   (`advanced` 62, `full` 78).
+- Exported tests stay stable as the app changes, after Haiku runs on TodoMVC
+  and BuggyTasks: a repeated control is scoped by the fewest leading words of
+  its row (its title), not by changing details such as "5 days ago"; an unnamed
+  checkbox or radio is found by role inside its row instead of by a DOM path;
+  and helpers are written only when the test uses them.
 - Interactions that real apps need, found by running the test skill on TodoMVC
   and Flask's tutorial app:
   - `hover_what` returns the observation taken while hovering, so controls that

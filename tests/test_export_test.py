@@ -143,7 +143,7 @@ def test_duplicate_controls_are_scoped_to_their_row():
         delete.parent_context = f"{title} Delete"
         rows.append(delete)
     assert locator_expr(rows[1], rows) == (
-        '_in_row(page, "Walk dog Delete", '
+        '_in_row(page, "Walk dog", '
         'lambda scope: scope.get_by_role("button", name="Delete", exact=True))'
     )
     lone = make_element(0, tag="button", text="Save")
@@ -380,3 +380,67 @@ async def test_the_exported_check_scrolls_like_the_verifier(tmp_path):
         assert (await run_exported_test(script, 90))["outcome"] == "passes"
     finally:
         server.shutdown()
+
+
+def test_a_row_is_keyed_by_its_leading_words_not_changing_details():
+    def rows(*contexts):
+        out = []
+        for context in contexts:
+            delete = make_element(len(out), tag="button", text="Delete")
+            delete.parent_context = context
+            out.append(delete)
+        return out
+
+    listed = rows(
+        "Schedule team standup medium 5.0 days ago Edit Delete",
+        "Buy groceries high 1.0 days ago Edit Delete",
+    )
+    assert '_in_row(page, "Schedule team",' in locator_expr(listed[0], listed)
+    # A shorter key that another row contains is extended until it is unique.
+    listed = rows("Walk dog Delete", "Walk dog later Delete")
+    assert '_in_row(page, "Walk dog Delete",' in locator_expr(listed[0], listed)
+    # Rows that cannot be told apart fall back to position.
+    listed = rows("Same Delete", "Same Delete")
+    assert locator_expr(listed[1], listed).endswith(".nth(1)")
+
+
+def test_an_unnamed_checkbox_is_found_by_role_inside_its_row():
+    toggle = make_element(0, tag="input", type="checkbox")
+    toggle.css_path = "body > ul > li:nth-of-type(1) > input"
+    toggle.parent_context = "Buy milk"
+    assert locator_expr(toggle, [toggle]) == (
+        '_in_row(page, "Buy milk", lambda scope: scope.get_by_role("checkbox"))'
+    )
+    toggle.parent_context = None
+    assert locator_expr(toggle, [toggle]) == 'page.locator("body > ul > li:nth-of-type(1) > input")'
+
+
+def test_helpers_are_written_only_when_the_test_uses_them():
+    def source(journey):
+        return generate_test(
+            finding_id="run:1",
+            title="t",
+            expected="",
+            receipt={"expect": "present", "target_text": "x", "at_url": "http://h/"},
+            journey=journey,
+            start_url="http://h/",
+            resolve_input=lambda action: None,
+            filename="t.py",
+        )[0]
+
+    plain = source([{"tool": "click_what", "locator": 'page.locator("#go")'}])
+    assert "_in_row" not in plain and "ROW_SELECTOR" not in plain
+    assert "accept_dialog" not in plain and "page.on(" not in plain
+    scoped = source(
+        [
+            {
+                "tool": "click_what",
+                "locator": '_in_row(page, "A", lambda scope: scope.get_by_role("button"))',
+                "accept_dialog": True,
+            }
+        ]
+    )
+    assert "def _in_row(" in scoped and "ROW_SELECTOR = " in scoped
+    assert 'page.on("dialog", _on_dialog)' in scoped
+    compile(plain, "t.py", "exec")
+    compile(scoped, "t.py", "exec")
