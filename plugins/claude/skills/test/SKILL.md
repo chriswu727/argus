@@ -55,6 +55,13 @@ Never repeat a write or use `replay` only to obtain a receipt.
 
 ## 4. Deliver
 
+Before closing, if the tool list includes `export_test`, call it for each
+finding verified by a fresh-load text check. It writes a Playwright test that
+fails while the bug is present and passes once it is fixed; give the user its
+path so they can keep it in CI. Pass `run=true` only when the user authorized
+repeating the journey's writes (for example on throwaway data), and report the
+TODO steps it lists rather than guessing them.
+
 Close with `end_session`, passing the final `coverage_updates` for the goals you
 exercised or found blocked, with the evidence you observed. Then report:
 

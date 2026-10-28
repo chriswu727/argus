@@ -123,6 +123,7 @@ async def capsule_restore(name: str) -> str:
     state = await s.browser.get_state()
     s._last_elements = state.elements
     s.steps.append(f"capsule_restore({name!r})")
+    s.capsule_restores.append((len(s.action_trace), name))
     _record_coverage_action(s, "capsule_restore", name)
 
     warn = ""

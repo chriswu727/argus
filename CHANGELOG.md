@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- New `export_test(finding_id, run=False)` turns a finding verified by a
+  fresh-load text check into a standalone Playwright test. The test replays the
+  journey recorded up to the finding, using locators captured from the elements
+  Argus resolved (scoped to their row when a control repeats), then asserts the
+  opposite of the verified symptom: it fails while the bug is present and passes
+  once it is fixed. Sensitive inputs are read from environment variables (a
+  `run=true` from the session passes its values that way, never in the file), and
+  steps it cannot translate are marked TODO and listed. `run=true` runs it once
+  to show that it fails on the symptom. The `web` profile now has 29 tools
+  (`advanced` 62, `full` 78).
 - Interactions that real apps need, found by running the test skill on TodoMVC
   and Flask's tutorial app:
   - `hover_what` returns the observation taken while hovering, so controls that

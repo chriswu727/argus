@@ -26,8 +26,10 @@ def _record_action(
 ) -> None:
     """Append a structured, replayable action to the session trace.
 
-    `extra` carries replay details such as whether a dialog was accepted
-    (`accept_dialog`); false and empty values are left out."""
+    `extra` carries replay and test-export details: the Playwright `locator`
+    of the resolved element, whether the input is `sensitive`, a pressed `key`
+    and whether a dialog was accepted (`accept_dialog`); false and empty values
+    are left out."""
     action = {"tool": tool, "description": description, "value": value}
     if tool in {"type_into", "paste_into", "select_into"} and value is not None:
         action = {"tool": tool, "description": description, "value_ref": s.inputs.store(value)}

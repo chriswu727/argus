@@ -177,7 +177,7 @@ Argus does not infer semantic goal associations or completeness.
 
 ## Guidance and compact output
 
-The default `web` profile exposes 28 browser-testing tools with concise
+The default `web` profile exposes 29 browser-testing tools with concise
 descriptions, covering exploration, verification, findings, reports and
 regression rechecks. `advanced` adds network, state, tab, coordinate and crawl
 controls; `screen` and `full` keep full descriptions. Earlier `agent` and `core`

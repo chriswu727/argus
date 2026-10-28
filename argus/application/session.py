@@ -76,6 +76,9 @@ class Session:
         self.action_trace: List[dict] = []
         self.inputs = InputVault()
         self.coverage_action_trace: List[dict] = []
+        # (position in action_trace, name) of each restored capsule; replay and
+        # export_test cannot repeat a restore, so export_test marks it TODO.
+        self.capsule_restores: List[tuple] = []
         self._actions_since_last_bug: int = 0
         # Liveness marker of the most recently restored state capsule (or None).
         # record_bug re-checks it against the CURRENT page so a finding made

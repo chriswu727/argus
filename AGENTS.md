@@ -25,7 +25,7 @@ argus-mcp --list-tools    # show the selected profile and public tools
 argus-mcp --doctor        # Chromium, report dir; on macOS also screen grants
 ```
 
-The default `web` profile has 28 tools covering the complete testing loop,
+The default `web` profile has 29 tools covering the complete testing loop,
 including `regression_check`. For structured-result-aware hosts, add
 `--response-mode compact`. Earlier `agent` and `core` names select `web`.
 
@@ -86,6 +86,7 @@ result includes captured stages. See [the protocol](docs/agent-protocol.md).
 | `verify_persistence(expect, target_text, after_url)` | Forces a fresh GET; returns target presence and the page observation. Check persistence once, repeat only to resolve uncertainty. A matching symptom is not proof of a semantic defect. |
 | `capsule_save(name, liveness_marker)` / `capsule_restore(name)` | Snapshot cookies and page storage after establishing state through the UI. Restore replaces the captured client state and checks a saved liveness marker when provided; without one, validity remains unverified. It does not reset backend data or guarantee identical application state across journeys. |
 | `regression_check()` | Re-test the findings journaled in prior runs against the CURRENT build: STILL-PRESENT / NO-LONGER-REPRODUCES / INCONCLUSIVE. "Did my fix land, did anything come back?" |
+| `export_test(finding_id, run=False)` | Turn a finding verified by a fresh-load text check into a standalone Playwright test that fails while the bug is present and passes once fixed. Steps it cannot translate are marked TODO; sensitive inputs come from environment variables. `run=true` repeats the journey's writes, so use it only with the user's authority. |
 | `inspect_element(description)` | Computed styles + ARIA + outerHTML + truncation flag for interactive or visible non-interactive content. |
 | `check_layout()` | Bounded viewport signals for horizontal overflow, clipped text, small targets, and fixed/sticky overlays. |
 | `screenshot(name, element="", full_page=False)` | Full viewport, full page, or a tight crop; waits for finite CSS transitions, then returns the image plus its absolute evidence path. |

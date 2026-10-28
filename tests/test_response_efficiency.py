@@ -195,7 +195,7 @@ async def test_monitor_counts_only_and_discovery_accounting(isolated_runtime):
     assert totals["responses"] == 1
     assert all(isinstance(value, int) for value in totals.values())
     discovery = discovery_bytes(await server.list_tools(), server.instructions)
-    assert discovery["tools"] == 28 and discovery["output_schema_json_bytes"] > 0
+    assert discovery["tools"] == 29 and discovery["output_schema_json_bytes"] > 0
 
 
 async def test_fixed_encoding_benchmark_preserves_evidence_and_measures_tradeoffs():
@@ -207,7 +207,8 @@ async def test_fixed_encoding_benchmark_preserves_evidence_and_measures_tradeoff
     cases = {case["case"]: case for case in result["cases"]}
     assert all(case["lossless_roundtrip"] for case in cases.values())
     assert cases["navigation"]["delta_vs_compact_reduction_percent"] < 0
-    assert result["discovery"]["web"]["tools_json_bytes"] < 36_000
+    # 0.12 added export_test (about 1.2 KB, mostly the shared result envelope).
+    assert result["discovery"]["web"]["tools_json_bytes"] < 37_000
 
 
 def test_output_schema_retains_validation_without_repeated_display_titles():

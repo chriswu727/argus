@@ -110,12 +110,12 @@ uvx --from argus-testing python -m argus.install_check
 
 | 配置 | 工具数 | 用途 |
 |---|---:|---|
-| `web` | 28 | 默认配置：完整的浏览器测试闭环，使用简洁的工具描述。 |
-| `advanced` | 61 | 在 web 基础上加入网络 mock、cookie/存储、多标签、弹窗、等待、坐标操作、爬取和链接/性能探测。 |
+| `web` | 29 | 默认配置：完整的浏览器测试闭环，使用简洁的工具描述。 |
+| `advanced` | 62 | 在 web 基础上加入网络 mock、cookie/存储、多标签、弹窗、等待、坐标操作、爬取和链接/性能探测。 |
 | `screen` | 14 | 原生 macOS Accessibility 与截图测试，需单独启用。 |
-| `full` | 77 | 全部 web 与 screen 工具，包括屏幕坐标操作。 |
+| `full` | 78 | 全部 web 与 screen 工具，包括屏幕坐标操作。 |
 
-旧配置名仍可启动：`agent` 和 `core` 会加载 `web` 配置，因此工具集会变化（19 → 28、30 → 28 个工具）。
+旧配置名仍可启动：`agent` 和 `core` 会加载 `web` 配置，因此工具集会变化（19 → 29、30 → 29 个工具）。
 
 推荐支持 MCP `structuredContent` 的宿主使用：
 
@@ -138,7 +138,9 @@ uvx --from argus-testing argus-mcp --response-mode compact --monitor-port 8765
 4. 保存、删除等状态变更后调用 `verify_persistence`，检查 fresh load 后的真实状态。
 5. 发现问题时，用 `record_bug` 保存需求、预期、实际、复现步骤与适当的独立核验条件；
    定性建议用 `record_observation`，不要冒充已确认 bug。
-6. 在 `end_session` 中提交有实际证据的最终覆盖状态并导出报告，保留未测试或受阻目标。
+6. 对已在 fresh load 上核验的发现，可用 `export_test` 生成独立的 Playwright 回归测试：
+   它在 bug 存在时失败、修复后通过，可放入项目的 CI。
+7. 在 `end_session` 中提交有实际证据的最终覆盖状态并导出报告，保留未测试或受阻目标。
 
 例如，先确认保存后刷新丢失确实违反需求，再记录对应现象：
 
