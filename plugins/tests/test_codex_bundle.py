@@ -131,6 +131,18 @@ def test_both_skills_ask_for_a_visual_review_kept_as_observations():
         assert "use `record_bug` with `verify`\nonly when a text check" in text
 
 
+def test_both_skills_export_verified_findings_before_closing():
+    for skill in (
+        BUNDLE / "skills" / "argus-test" / "SKILL.md",
+        CLAUDE / "skills" / "test" / "SKILL.md",
+    ):
+        text = skill.read_text()
+        deliver = text[text.index("## 4. Deliver") :]
+        assert "if the tool list includes `export_test`" in deliver, skill
+        assert deliver.index("`export_test`") < deliver.index("`end_session`"), skill
+        assert "`run=true` only when the user authorized" in deliver, skill
+
+
 @pytest.mark.asyncio
 async def test_codex_launch_command_handshake_from_plugin_root():
     manifest = load(BUNDLE / "plugin.json")

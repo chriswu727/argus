@@ -141,12 +141,13 @@ async def test_web_profile_carries_the_full_loop_with_bounded_discovery(isolated
 
     web = await create_server(isolated_runtime, "web").list_tools()
     names = {tool.name for tool in web}
-    assert len(web) == 28 and all(tool.outputSchema for tool in web)
+    assert len(web) == 29 and all(tool.outputSchema for tool in web)
     assert {"verify_persistence", "record_bug", "get_errors", "regression_check"} <= names
     assert names < tool_names("advanced") <= tool_names("full")
     assert not any(name.startswith("screen_") for name in tool_names("advanced"))
     assert tool_names("agent") == tool_names("core") == names
-    assert sum(len(tool.model_dump_json()) for tool in web) < 37_000
+    # 0.12 added export_test (about 1.2 KB, mostly the shared result envelope).
+    assert sum(len(tool.model_dump_json()) for tool in web) < 38_000
 
 
 async def test_batched_coverage_is_atomic_and_preserves_shared_evidence(isolated_runtime):

@@ -18,6 +18,7 @@ from .observation import (
 )
 from .payloads import action_result
 from .session import _require_session, _require_web_session
+from .testgen import is_sensitive, locator_expr
 
 
 async def click_what(
@@ -77,6 +78,7 @@ async def click_what(
     _bc, _bn = s.browser.error_cursors()
     _bt = _tab_count(s)  # to detect a click that spawns a new tab
     mark = _begin_dialogs(s, accept_dialog)
+    locator = locator_expr(el, s._last_elements)
     # Route through browser.click so a duplicate-label target hits the RESOLVED
     # element (nth-aware), not the first DOM match.
     index = s._last_elements.index(el)
@@ -95,6 +97,7 @@ async def click_what(
         s,
         "double_click" if double_click else "click_what",
         description,
+        locator=locator,
         accept_dialog=accept_dialog,
     )
 
@@ -140,6 +143,7 @@ async def type_into(description: str, text: str) -> str:
     label = el.placeholder or el.name or el.aria_label or el.id or el.tag
     s.steps.append(f"type_into({description!r}, ...) -> {label[:60]}")
 
+    locator = locator_expr(el, s._last_elements)
     ok = await s.browser.type_text(s._last_elements.index(el), text, s._last_elements)
     if not ok:
         return Rejection(
@@ -147,7 +151,9 @@ async def type_into(description: str, text: str) -> str:
             f"The element may be disabled or the page may have re-rendered.",
             ErrorCode.BACKEND,
         )
-    _record_action(s, "type_into", description, text)
+    _record_action(
+        s, "type_into", description, text, locator=locator, sensitive=is_sensitive(el, description)
+    )
     return await action_result(
         s,
         f'Typed into "{label[:60]}" (via description {description!r}).{_edge_case_hint(s, el)}',
@@ -201,6 +207,7 @@ async def select_into(description: str, value: str) -> str:
     label = el.aria_label or el.name or el.id or el.tag
     s.steps.append(f"select_into({description!r}, ...) -> {label[:60]}")
 
+    locator = locator_expr(el, s._last_elements)
     ok = await s.browser.select_option(s._last_elements.index(el), value, s._last_elements)
     if not ok:
         return Rejection(
@@ -209,7 +216,7 @@ async def select_into(description: str, value: str) -> str:
             f"(call inspect_element to list the choices).",
             ErrorCode.BACKEND,
         )
-    _record_action(s, "select_into", description, value)
+    _record_action(s, "select_into", description, value, locator=locator)
     return await action_result(s, f'Selected "{value}" in "{label[:60]}".', "select")
 
 
@@ -232,10 +239,11 @@ async def hover_what(description: str) -> str:
     label = el.text or el.aria_label or el.placeholder or el.id or el.tag
     s.steps.append(f"hover_what({description!r}) -> {label[:60]}")
     idx = s._last_elements.index(el)
+    locator = locator_expr(el, s._last_elements)
     ok = await s.browser.hover(idx, s._last_elements)
     if not ok:
         return f"hover_what({description!r}) — failed (element may be off-screen or detached)."
-    _record_action(s, "hover_what", description)
+    _record_action(s, "hover_what", description, locator=locator)
     # The observation is taken while the pointer stays put, so controls the
     # hover revealed (a row's delete button) are listed and targetable next.
     return await action_result(
@@ -287,11 +295,13 @@ async def press_key(key: str, description: str = "") -> str:
     if err:
         return err
     target = ""
+    locator = None
     if description:
         el, err = _resolve_or_error(s, description)
         if err:
             return err
         idx = s._last_elements.index(el)
+        locator = locator_expr(el, s._last_elements)
         target = f' on "{(el.text or el.aria_label or el.placeholder or el.name or el.tag)[:50]}"'
         _bc, _bn = s.browser.error_cursors()
         ok = await s.browser.press_key(key, idx, s._last_elements)
@@ -304,7 +314,13 @@ async def press_key(key: str, description: str = "") -> str:
             ErrorCode.BACKEND,
         )
     s.steps.append(f"press_key({key!r}{(', ' + repr(description)) if description else ''})")
-    _record_action(s, "press_key", f"{key}{(' on ' + description) if description else ''}")
+    _record_action(
+        s,
+        "press_key",
+        f"{key}{(' on ' + description) if description else ''}",
+        key=key,
+        locator=locator,
+    )
     new_state = await s.browser.get_state()
     s._last_elements = new_state.elements
     return await action_result(

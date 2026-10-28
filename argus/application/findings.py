@@ -292,6 +292,7 @@ async def record_bug(
         coverage_goals=coverage_goals,
         claimed_evidence_calls=list(claimed_calls),
         evidence_warnings=warnings,
+        journey_end=len(s.action_trace),
     )
     s.bugs.append(bug)
     _refresh_finding_coverage(s, coverage_goals)

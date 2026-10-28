@@ -121,7 +121,7 @@ plugin READMEs and skills, including the locked Playwright version, and run
 `pytest plugins/tests`. Hosts update installed plugins only when the manifest
 version changes, and the skills' `--doctor` step assumes the web checks added
 in 0.12.
-MCPRush's default listing should expose the 28-tool web profile, not the
+MCPRush's default listing should expose the 29-tool web profile, not the
 `evaluation` baseline tools; preserve manually declared schemas when refreshing
 its source. Directory scans and version badges are not substitutes for these
 installation and handshake checks.

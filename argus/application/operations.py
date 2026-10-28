@@ -20,6 +20,7 @@ from argus.application.actions import (
 )
 from argus.application.capsules import capsule_restore, capsule_save
 from argus.application.events import get_downloads, get_errors
+from argus.application.exports import export_test
 from argus.application.findings import record_bug, record_observation
 from argus.application.finish import end_session
 from argus.application.inspection import check_layout, eval_js, inspect_element
@@ -154,5 +155,6 @@ OPERATIONS = {
     "test_action": test_action,
     "test_form": test_form,
     "regression_check": regression_check,
+    "export_test": export_test,
     "end_session": end_session,
 }

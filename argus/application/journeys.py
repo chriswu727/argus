@@ -20,6 +20,7 @@ from .inspection import _visual_inspection_query
 from .observation import _begin_dialogs, _dialog_lines, _finish_dialogs, _resolve_or_error
 from .payloads import observation_data
 from .session import _require_session
+from .testgen import is_sensitive, locator_expr
 
 
 async def test_action(
@@ -68,10 +69,12 @@ async def test_action(
         if await s.browser.count_exact_text(query) == 1:
             text_target = query
     el = None
+    target_locator = None
     if text_target is None:
         el, err = _resolve_or_error(s, target)
         if err:
             return err
+        target_locator = locator_expr(el, s._last_elements)
         label = el.text or el.aria_label or el.placeholder or el.name or el.tag
     else:
         label = text_target
@@ -121,7 +124,11 @@ async def test_action(
         )
     else:
         _record_action(
-            s, "double_click" if double_click else "click_what", target, accept_dialog=accept_dialog
+            s,
+            "double_click" if double_click else "click_what",
+            target,
+            locator=target_locator,
+            accept_dialog=accept_dialog,
         )
 
     console_errs, network_errs = s.browser.drain_errors()
@@ -297,7 +304,13 @@ async def test_form(
                 # Record the target state, not a click: a replay can start with
                 # the box already checked (persisted storage), and a click would
                 # then undo it.
-                _record_action(s, "set_checked", field_desc, "true" if wanted else "false")
+                _record_action(
+                    s,
+                    "set_checked",
+                    field_desc,
+                    "true" if wanted else "false",
+                    locator=locator_expr(el, state.elements),
+                )
                 field_results.append(
                     f"[OK] {field_desc!r} set to {'checked' if wanted else 'unchecked'}"
                 )
@@ -310,7 +323,12 @@ async def test_form(
             field_results.append(f"[OK] {field_desc!r} (value omitted)")
             s.steps.append(f"Fill {field_desc!r} (value omitted)")
             _record_action(
-                s, "select_into" if el.tag == "select" else "type_into", field_desc, str(value)
+                s,
+                "select_into" if el.tag == "select" else "type_into",
+                field_desc,
+                str(value),
+                locator=locator_expr(el, state.elements),
+                sensitive=is_sensitive(el, field_desc),
             )
         except Exception as exc:
             field_results.append(f"[FAIL] {field_desc!r} — {exc}")
@@ -329,7 +347,7 @@ async def test_form(
             await s.browser.settle()
             submit_label = "Enter key"
             s.steps.append("Press Enter to submit")
-            _record_action(s, "press_key", "Enter")
+            _record_action(s, "press_key", "Enter", key="Enter")
         except Exception as exc:
             await _auto_screenshot(s, "form_no_submit", "Enter-key submit failed")
             return Rejection(
@@ -392,7 +410,9 @@ async def test_form(
         try:
             await s.browser.click_selector(sel, timeout=5000)
             await s.browser.settle()
-            _record_action(s, "click_what", submit_label)
+            _record_action(
+                s, "click_what", submit_label, locator=locator_expr(target_el, state.elements)
+            )
         except Exception as exc:
             await _auto_screenshot(s, "form_submit_fail", "Submit click failed")
             return Rejection(

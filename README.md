@@ -47,7 +47,7 @@ the phase summary in the final result. See the [agent protocol](docs/agent-proto
   return the current page evidence, reducing the need for a separate observation.
 - **Conservative checks:** missing or malformed evidence stays unknown, not a
   guessed pass or a fabricated bug. Findings link to stable session references.
-- **Complete default loop:** the `web` profile exposes 28 testing tools with concise
+- **Complete default loop:** the `web` profile exposes 29 testing tools with concise
   discovery descriptions, from first observation to regression rechecks. Add
   `--response-mode compact` to preserve structured evidence without repeating it
   as prose. Compatible mode remains the default.
@@ -467,15 +467,15 @@ uvx --from argus-testing argus-mcp --tool-profile screen --list-tools
 
 | Profile | Public tools | Intended use |
 |---------|-------------:|--------------|
-| `web` | 28 | The complete browser testing loop with concise tool descriptions; the default. |
-| `advanced` | 61 | Everything in web, plus network mocks, cookies and storage, tabs, dialogs, waits, coordinate input, crawling, and link and performance probes. |
+| `web` | 29 | The complete browser testing loop with concise tool descriptions; the default. |
+| `advanced` | 62 | Everything in web, plus network mocks, cookies and storage, tabs, dialogs, waits, coordinate input, crawling, and link and performance probes. |
 | `screen` | 14 | Native macOS testing through Accessibility and screenshots; enabled separately. |
-| `full` | 77 | Every web and screen tool, including screen coordinate input. |
+| `full` | 78 | Every web and screen tool, including screen coordinate input. |
 
-Earlier profile names still start the server: `agent` and `core` load the `web` profile, so their tool sets change (19 → 28 and 30 → 28 tools).
+Earlier profile names still start the server: `agent` and `core` load the `web` profile, so their tool sets change (19 → 29 and 30 → 29 tools).
 
 <details>
-<summary><b>Web profile — 28 tools</b></summary>
+<summary><b>Web profile — 29 tools</b></summary>
 
 | Tools | Purpose |
 |-------|---------|
@@ -496,6 +496,7 @@ Earlier profile names still start the server: `agent` and `core` load the `web` 
 | `test_action` · `test_form` | Perform a description-keyed action or form submission and return the resulting state diff in one round trip. |
 | `regression_check` | Re-test journaled findings for the current origin without requiring another discovery pass. |
 | `record_bug` · `record_observation` | Record a finding with evidence and its recheck outcome, or keep a qualitative review note separate. Inspect the receipt rather than treating recording as confirmation. |
+| `export_test` | Write a standalone Playwright test from a finding verified on a fresh load: it replays the recorded journey and asserts the opposite of the symptom, so it fails while the bug is present and passes once it is fixed. |
 | `end_session` | Atomically apply optional final `coverage_updates`, close the active session, and emit HTML, JSON, JUnit, and SARIF reports. Invalid updates keep the session open. |
 
 </details>
@@ -522,7 +523,7 @@ Reports keep original screenshots as evidence and, by default, write compact Web
 </details>
 
 <details>
-<summary><b>Advanced profile — 61 tools</b></summary>
+<summary><b>Advanced profile — 62 tools</b></summary>
 
 The advanced profile includes every web tool above plus these 33 tools. Use it when a test genuinely needs low-level state, fault injection, multi-tab control, coordinates, or crawling.
 

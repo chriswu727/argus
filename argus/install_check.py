@@ -24,7 +24,7 @@ async def check() -> dict:
         )
     profiles = {}
     # "core" proves a legacy profile name still starts the web profile.
-    for profile, expected_count in (("web", 28), ("advanced", 61), ("core", 28)):
+    for profile, expected_count in (("web", 29), ("advanced", 62), ("core", 29)):
         parameters = StdioServerParameters(
             command=sys.executable, args=["-m", "argus.mcp_server", "--tool-profile", profile]
         )

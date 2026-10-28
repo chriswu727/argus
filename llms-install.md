@@ -61,7 +61,7 @@ uvx --from argus-testing argus-mcp --list-tools
 ```
 
 The first command should report the current `argus-testing` version. The second
-should report the default `web` profile with 28 tools, including
+should report the default `web` profile with 29 tools, including
 `start_session`, `observe`, `coverage_update`, `record_bug`, `regression_check`,
 and `end_session`.
 
@@ -71,15 +71,15 @@ Then restart or refresh the MCP client and ask:
 
 ## Optional profiles
 
-- `--tool-profile web` is the 28-tool default: the complete browser testing loop.
+- `--tool-profile web` is the 29-tool default: the complete browser testing loop.
   Add `--response-mode compact` for structured-result-aware hosts.
 - `--tool-profile advanced` adds network mocks, cookies and storage, tabs,
-  dialogs, waits, coordinate input, crawling, and link/performance probes (61 tools).
+  dialogs, waits, coordinate input, crawling, and link/performance probes (62 tools).
 - `--tool-profile screen` exposes 14 native macOS testing tools and requires
   Screen Recording and Accessibility permissions.
-- `--tool-profile full` exposes all 77 browser and screen tools.
+- `--tool-profile full` exposes all 78 browser and screen tools.
 - Earlier `agent` and `core` names still start the server but load `web`, so
-  their tool sets change (19 → 28 and 30 → 28 tools).
+  their tool sets change (19 → 29 and 30 → 29 tools).
 
 Do not add `--unsafe` unless arbitrary page-context JavaScript execution is
 explicitly required and the target is trusted.

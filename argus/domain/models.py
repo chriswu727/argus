@@ -141,6 +141,9 @@ class Bug:
     coverage_goals: List[str] = field(default_factory=list)
     claimed_evidence_calls: List[int] = field(default_factory=list)
     evidence_warnings: List[str] = field(default_factory=list)
+    # Length of the session's action trace when the finding was recorded: the
+    # journey export_test replays from the session start.
+    journey_end: int = 0
 
     def to_dict(self) -> Dict:
         """Machine-readable finding — for JSON/JUnit/SARIF export so Argus can be

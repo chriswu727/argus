@@ -23,7 +23,7 @@ async def test_real_stdio_handshake_and_local_page_journey(tmp_path):
             assert initialized.serverInfo.name == "argus"
             assert initialized.serverInfo.version == __version__
             tools = await client.list_tools()
-            assert len(tools.tools) == 28
+            assert len(tools.tools) == 29
             assert all(tool.outputSchema for tool in tools.tools)
             assert all("ctx" not in tool.inputSchema.get("properties", {}) for tool in tools.tools)
             finding_schema = next(
