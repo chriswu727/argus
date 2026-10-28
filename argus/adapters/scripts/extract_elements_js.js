@@ -5,6 +5,25 @@
     const out = [];
     const seen = new Set();
 
+    // Structural path for a form field with no identifying attribute. Its name
+    // may come from a nearby <label> that no attribute selector can express, so
+    // without this the field could be listed but never typed into.
+    function cssPath(el) {
+        const parts = [];
+        let node = el;
+        while (node && node.nodeType === 1 && node.tagName !== 'HTML') {
+            if (node.id) {
+                parts.unshift('[id="' + node.id.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"]');
+                break;
+            }
+            let i = 1, sib = node;
+            while ((sib = sib.previousElementSibling)) if (sib.tagName === node.tagName) i++;
+            parts.unshift(node.tagName.toLowerCase() + ':nth-of-type(' + i + ')');
+            node = node.parentElement;
+        }
+        return parts.join(' > ');
+    }
+
     function record(el, inShadow, frameSel) {
         if (seen.has(el)) return;
         seen.add(el);
@@ -128,6 +147,9 @@
             parent_context: (el.closest('li, tr, .card, .list-item, [class*="item"], [class*="row"]') || {}).textContent?.trim()?.slice(0, 200) || null,
             shadow: inShadow,
             frame: frameSel || null,
+            css_path: (!inShadow && ['input', 'select', 'textarea'].includes(el.tagName.toLowerCase()) &&
+                       !el.id && !el.name && !el.getAttribute('placeholder') && !el.getAttribute('aria-label'))
+                ? cssPath(el) : null,
         });
     }
 

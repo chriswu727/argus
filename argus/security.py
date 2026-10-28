@@ -23,6 +23,10 @@ def export_trace(actions: list[dict]) -> list[dict]:
         else:
             value = action.get("value")
             item["value"] = _redact(value) if isinstance(value, str) else value
+        if action.get("accept_dialog"):
+            # The journey accepted a confirmation here; replaying without it
+            # would follow a different path.
+            item["accept_dialog"] = True
         result.append(item)
     return result
 

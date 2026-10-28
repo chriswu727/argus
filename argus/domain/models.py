@@ -78,6 +78,9 @@ class InteractiveElement:
     parent_context: Optional[str] = None
     shadow: bool = False  # element lives inside an open shadow root
     frame: Optional[str] = None  # selector of the iframe this element lives in (None = main frame)
+    # Structural CSS path for a form field with no id/name/placeholder/aria-label
+    # attribute, whose aria_label may come from a nearby <label> instead.
+    css_path: Optional[str] = None
 
 
 @dataclass

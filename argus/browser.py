@@ -283,6 +283,22 @@ class BrowserDriver:
     def queue_dialog_response(self, action: str, text: str = "") -> None:
         self._dialog_queue.append({"action": action, "text": text})
 
+    def accept_next_dialog(self) -> Dict:
+        """Accept the next dialog ahead of any queued responses; returns the
+        token to pass to discard_dialog_response if no dialog fires."""
+        spec = {"action": "accept", "text": ""}
+        self._dialog_queue.insert(0, spec)
+        return spec
+
+    def discard_dialog_response(self, spec: Dict) -> None:
+        self._dialog_queue = [item for item in self._dialog_queue if item is not spec]
+
+    def dialog_cursor(self) -> int:
+        return self._dialog_log.cursor()
+
+    def dialogs_since(self, cursor: int) -> List[Dict]:
+        return self._dialog_log.since(cursor)
+
     def dialog_log_snapshot(self) -> List[Dict]:
         return list(self._dialog_log)
 
@@ -1076,14 +1092,18 @@ class BrowserDriver:
             if other.frame == el.frame and self._build_selector(other) == selector
         )
         base = page or self._page
+        # Extraction only lists visible elements, so count among visible DOM
+        # matches too: otherwise a hidden duplicate (a hover-only Delete in
+        # another row) takes the nth slot and the action lands on it.
+        visible = f"{selector} >> visible=true"
         if el.frame:
             # Element lives inside one (or more, ' >>> '-chained) iframes — reach
             # it through frame_locator so click/type/inspect land in the frame.
             fl = base
             for part in el.frame.split(" >>> "):
                 fl = fl.frame_locator(part)
-            return fl.locator(selector).nth(nth)
-        return base.locator(selector).nth(nth)
+            return fl.locator(visible).nth(nth)
+        return base.locator(visible).nth(nth)
 
     async def replay(self, start_url: str, actions: List[Dict]) -> Dict:
         """Re-drive a recorded action trace from a cold start and report what the
@@ -1158,8 +1178,21 @@ class BrowserDriver:
                         "final_state": None,
                     }
             baseline = await self.get_state(page)
+            # Accept a dialog only during the step that accepted it live; any
+            # other dialog is dismissed, as it was during the journey.
+            accept = {"pending": False}
+
+            async def _on_dialog(dialog):
+                if accept["pending"]:
+                    accept["pending"] = False
+                    await dialog.accept()
+                else:
+                    await dialog.dismiss()
+
+            page.on("dialog", _on_dialog)
             for act in actions:
                 tool = act.get("tool")
+                accept["pending"] = bool(act.get("accept_dialog"))
                 self.access_policy.check_url(page.url)
                 desc = act.get("description") or ""
                 val = act.get("value")
@@ -1185,6 +1218,23 @@ class BrowserDriver:
                         diverged = True
                         break
                     continue
+                if tool == "double_click" and str(val or "").startswith("text:"):
+                    try:
+                        text_loc = page.get_by_text(str(val)[5:], exact=True)
+                        await text_loc.filter(visible=True).dblclick(timeout=5_000)
+                        await self._settle_network(page)
+                        steps.append({"act": f"{tool} {desc!r}", "ok": True})
+                    except Exception as e:
+                        steps.append(
+                            {
+                                "act": f"{tool} {desc!r}",
+                                "ok": False,
+                                "reason": f"{type(e).__name__}: replay action failed",
+                            }
+                        )
+                        diverged = True
+                        break
+                    continue
                 kind = {"type_into": "input", "select_into": "select"}.get(tool)
                 elements = await self._extract_elements(page)
                 r = resolve_element(desc, elements, kind_filter=kind, strict_kind=bool(kind))
@@ -1203,6 +1253,11 @@ class BrowserDriver:
                         await loc.fill(val or "", timeout=5_000)
                     elif tool == "select_into":
                         await loc.select_option(val or "", timeout=5_000)
+                    elif tool == "double_click":
+                        await loc.dblclick(timeout=5_000)
+                        await self._settle_network(page)
+                    elif tool == "hover_what":
+                        await loc.hover(timeout=5_000)
                     elif tool == "set_checked":
                         await loc.set_checked(str(val).lower() == "true", timeout=5_000)
                         await self._settle_network(page)
@@ -1348,6 +1403,44 @@ class BrowserDriver:
     ) -> bool:
         try:
             await self._locator(element_index, elements).select_option(value, timeout=5_000)
+            return True
+        except Exception:
+            return False
+
+    async def double_click(self, element_index: int, elements: List[InteractiveElement]) -> bool:
+        try:
+            await self._locator(element_index, elements).dblclick(timeout=5_000)
+            await self._settle_network()
+            await self._settle_dom()
+            return True
+        except Exception:
+            return False
+
+    async def count_exact_text(self, text: str) -> int:
+        if not text.strip():
+            return 0
+        try:
+            return (
+                await self._page.get_by_text(text.strip(), exact=True).filter(visible=True).count()
+            )
+        except Exception:
+            return 0
+
+    async def double_click_text(self, text: str) -> Optional[bool]:
+        """Double-click the one element whose visible text is exactly `text`.
+
+        Inline editors (TodoMVC labels) listen for dblclick on plain text that
+        is not an interactive element. None means no unique exact match, so the
+        caller can fall back to resolving an interactive element."""
+        if not text.strip():
+            return None
+        loc = self._page.get_by_text(text.strip(), exact=True).filter(visible=True)
+        try:
+            if await loc.count() != 1:
+                return None
+            await loc.dblclick(timeout=5_000)
+            await self._settle_network()
+            await self._settle_dom()
             return True
         except Exception:
             return False
@@ -1758,6 +1851,10 @@ class BrowserDriver:
         if el.placeholder:
             ph_escaped = el.placeholder[:60].replace('"', '\\"')
             return f'{el.tag}[placeholder="{ph_escaped}"]'
+        if el.css_path:
+            # A label-derived aria_label is not an attribute; [aria-label=...]
+            # would match nothing.
+            return el.css_path
         if el.aria_label:
             al_escaped = el.aria_label[:60].replace('"', '\\"')
             return f'{el.tag}[aria-label="{al_escaped}"]'
