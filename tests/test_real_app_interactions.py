@@ -151,3 +151,16 @@ async def test_double_click_text_ignores_a_hidden_duplicate():
         assert "Double-clicked the text" in out
     finally:
         await _end()
+
+
+def test_saved_replay_steps_keep_an_accepted_dialog():
+    from argus.security import export_trace
+
+    steps = export_trace(
+        [
+            {"tool": "click_what", "description": "Delete", "accept_dialog": True},
+            {"tool": "click_what", "description": "Other"},
+        ]
+    )
+    assert steps[0]["accept_dialog"] is True
+    assert "accept_dialog" not in steps[1]
