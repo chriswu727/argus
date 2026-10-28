@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.12.0 - 2026-10-28
 
 - Exported regression tests reject HTTP error pages and login walls instead of
   treating a missing symptom there as a passing check. Frame controls retain
