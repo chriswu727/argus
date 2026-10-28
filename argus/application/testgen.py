@@ -82,9 +82,8 @@ def locator_expr(el: InteractiveElement, elements: List[InteractiveElement]) -> 
     row = " ".join((el.parent_context or "").split())
     clash = [" ".join((o.parent_context or "").split()) for o in twins]
     if row and all(row != other for other in clash):
-        snippet = row[:60]
         inner = base[len("page.") :]
-        return f"page.locator({_q(_ROW_SELECTOR)}).filter(has_text={_q(snippet)}).{inner}.first"
+        return f"_in_row(page, {_q(row[:60])}, lambda scope: scope.{inner})"
     position = sum(1 for o in elements[: elements.index(el)] if _single_locator(o) == base)
     return f"{base}.nth({position})"
 
@@ -137,10 +136,18 @@ from playwright.sync_api import sync_playwright
 
 BASE_URL = os.environ.get("ARGUS_BASE_URL", {origin})
 SYMPTOM_MARKER = "ARGUS_SYMPTOM_PRESENT"
+ROW_SELECTOR = {row_selector}
 
 
 def _url(path):
     return urljoin(BASE_URL, path)
+
+
+def _in_row(page, text, find):
+    """`find(scope)` within the row showing `text`: the innermost row holding
+    the text and the control, not a list container that also matches."""
+    rows = page.locator(ROW_SELECTOR).filter(has_text=text).filter(has=find(page))
+    return find(rows.filter(has_not=rows)).first
 
 
 def _matches(text, haystack):
@@ -315,6 +322,7 @@ def generate_test(
         filename=filename,
         notes=_doc(note_text),
         origin=_q(origin),
+        row_selector=_q(_ROW_SELECTOR),
         test_name=test_name,
     )
     body = "".join(f"            {line}\n" for line in lines)

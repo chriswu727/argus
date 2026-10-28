@@ -25,6 +25,7 @@ class _TasksHandler(http.server.BaseHTTPRequestHandler):
     tasks = ["Buy groceries", "Walk dog"]
     fixed = False
     confirm = False
+    list_class = ""
 
     def log_message(self, *args):
         pass
@@ -36,7 +37,8 @@ class _TasksHandler(http.server.BaseHTTPRequestHandler):
             f"{{method: 'POST'}}).then(() => this.parentElement.remove())\">Delete</button></li>"
             for task in type(self).tasks
         )
-        body = f"<html><body><h1>Tasks</h1><ul>{rows}</ul></body></html>".encode()
+        ul = f'<ul class="{type(self).list_class}">' if type(self).list_class else "<ul>"
+        body = f"<html><body><h1>Tasks</h1>{ul}{rows}</ul></body></html>".encode()
         self.send_response(200)
         self.send_header("Content-Type", "text/html")
         self.end_headers()
@@ -65,33 +67,40 @@ def _fn(name):
     return getattr(tool, "fn", tool)
 
 
-@pytest.mark.parametrize("confirm", [False, True], ids=["plain", "confirm-dialog"])
+@pytest.mark.parametrize(
+    "confirm, list_class, task",
+    [(False, "", "Buy groceries"), (True, "", "Buy groceries"), (False, "items", "Walk dog")],
+    ids=["plain", "confirm-dialog", "row-inside-matching-list"],
+)
 async def test_exported_test_fails_while_the_bug_exists_and_passes_once_fixed(
-    isolated_runtime, confirm
+    isolated_runtime, confirm, list_class, task
 ):
     # With a confirm dialog, the fixed app deletes only if the test accepts it.
     _TasksHandler.tasks = ["Buy groceries", "Walk dog"]
     _TasksHandler.fixed = False
     _TasksHandler.confirm = confirm
+    _TasksHandler.list_class = list_class
     server, base = _serve()
     try:
         try:
             await _fn("start_session")(base + "/tasks")
         except Exception as exc:
             pytest.skip(f"Chromium/session unavailable: {exc}")
-        await _fn("click_what")("Delete near Buy groceries", accept_dialog=confirm)
+        # A list container that also matches the row selector must not make
+        # the test click another row's Delete.
+        await _fn("click_what")(f"Delete near {task}", accept_dialog=confirm)
         recorded = await _fn("record_bug")(
             "Deleted task comes back after reload",
             "high",
             {"expected": "The task stays deleted", "actual": "It is listed again"},
-            verify={"expect": "present", "target_text": "Buy groceries", "at_url": base + "/tasks"},
+            verify={"expect": "present", "target_text": task, "at_url": base + "/tasks"},
         )
         finding_id = recorded.data["finding_id"]
 
         exported = await _fn("export_test")(finding_id, run=True)
         assert exported.data["run"]["outcome"] == "fails_on_symptom", exported
         source = open(exported.data["path"]).read()
-        assert 'filter(has_text="Buy groceries' in source
+        assert f'_in_row(page, "{task}' in source
         assert "assert not _present(" in source
 
         _TasksHandler.fixed = True
@@ -134,8 +143,8 @@ def test_duplicate_controls_are_scoped_to_their_row():
         delete.parent_context = f"{title} Delete"
         rows.append(delete)
     assert locator_expr(rows[1], rows) == (
-        'page.locator("li, tr, .card, .list-item, [class*=\\"item\\"], [class*=\\"row\\"]")'
-        '.filter(has_text="Walk dog Delete").get_by_role("button", name="Delete", exact=True).first'
+        '_in_row(page, "Walk dog Delete", '
+        'lambda scope: scope.get_by_role("button", name="Delete", exact=True))'
     )
     lone = make_element(0, tag="button", text="Save")
     assert locator_expr(lone, [lone]) == 'page.get_by_role("button", name="Save", exact=True)'
