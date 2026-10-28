@@ -54,7 +54,8 @@ def _single_locator(el: InteractiveElement) -> Optional[str]:
         if el.name and (el.type or "").lower() not in ("checkbox", "radio"):
             return f"page.locator({_q(f'{tag}[name={json.dumps(el.name)}]')})"
         kind = (el.type or "").lower()
-        if el.css_path and kind in ("checkbox", "radio") and el.parent_context:
+        explicit = (el.role or kind).lower()
+        if el.css_path and kind in ("checkbox", "radio") and explicit == kind and el.parent_context:
             # Unnamed: locate it by role inside its row (see locator_expr), not
             # by a DOM path that breaks when the markup or the order changes.
             return f"page.get_by_role({_q(kind)})"
@@ -81,11 +82,13 @@ def locator_expr(el: InteractiveElement, elements: List[InteractiveElement]) -> 
     base = _single_locator(el)
     if base is None:
         return None
-    twins = [other for other in elements if other is not el and _single_locator(other) == base]
     unnamed = base in ('page.get_by_role("checkbox")', 'page.get_by_role("radio")')
-    if unnamed and _shares_row_with_same_type(el, elements):
-        # The role alone would match another control in the row (an id-bearing
-        # checkbox listed under its own locator), so keep the precise path.
+    # Every listed control the emitted locator could also match, including
+    # ones Argus locates differently (an id-bearing "Delete" in another row).
+    twins = [other for other in elements if other is not el and _overlaps(el, other, base)]
+    row = " ".join((el.parent_context or "").split())
+    if unnamed and any(" ".join((o.parent_context or "").split()) == row for o in twins):
+        # The role alone would match another control in the same row.
         return f"page.locator({_q(el.css_path or '')})"
     if not twins and not unnamed:
         return base
@@ -95,19 +98,29 @@ def locator_expr(el: InteractiveElement, elements: List[InteractiveElement]) -> 
         return f"_in_row(page, {_q(key)}, lambda scope: scope.{inner})"
     if unnamed and el.css_path:
         return f"page.locator({_q(el.css_path)})"
-    position = sum(1 for o in elements[: elements.index(el)] if _single_locator(o) == base)
+    position = sum(1 for o in elements[: elements.index(el)] if _overlaps(el, o, base))
     return f"{base}.nth({position})"
 
 
-def _shares_row_with_same_type(el: InteractiveElement, elements: List[InteractiveElement]) -> bool:
-    row = " ".join((el.parent_context or "").split())
-    kind = (el.type or "").lower()
-    return any(
-        other is not el
-        and (other.type or "").lower() == kind
-        and " ".join((other.parent_context or "").split()) == row
-        for other in elements
-    )
+def _role_and_name(el: InteractiveElement) -> tuple:
+    name = (el.aria_label or el.text or "").strip()
+    if (el.type or "").lower() in ("submit", "button") and not name:
+        name = (el.value or "").strip()
+    return _ROLES.get(kind_of(el)), " ".join(name.split())
+
+
+def _overlaps(el: InteractiveElement, other: InteractiveElement, base: str) -> bool:
+    """Whether `base`, emitted for `el`, would also match `other` on the page."""
+    if _single_locator(other) == base:
+        return True
+    if not base.startswith("page.get_by_role("):
+        return False
+    role, name = _role_and_name(el)
+    other_role, other_name = _role_and_name(other)
+    if role is None or role != other_role:
+        return False
+    # A role without a name matches every control with that role.
+    return "name=" not in base or name == other_name
 
 
 def _row_key(row: str, others: List[str]) -> Optional[str]:

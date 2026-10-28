@@ -450,3 +450,26 @@ def test_helpers_are_written_only_when_the_test_uses_them():
     assert 'page.on("dialog", _on_dialog)' in scoped
     compile(plain, "t.py", "exec")
     compile(scoped, "t.py", "exec")
+
+
+def test_row_keys_account_for_controls_located_another_way():
+    later = make_element(0, tag="button", text="Delete", id="del-later")
+    later.parent_context = "Walk dog later Delete"
+    today = make_element(1, tag="button", text="Delete")
+    today.parent_context = "Walk dog today Delete"
+    milk = make_element(2, tag="button", text="Delete")
+    milk.parent_context = "Buy milk Delete"
+    listed = [later, today, milk]
+    # "Walk dog" would also match the row whose Delete has an id.
+    assert '_in_row(page, "Walk dog today",' in locator_expr(today, listed)
+    # A lone id-less Delete next to an id-bearing one is scoped too, since the
+    # role locator alone would match both.
+    assert '_in_row(page, "Buy milk",' in locator_expr(milk, [later, milk])
+
+
+def test_an_explicit_switch_role_keeps_its_path():
+    switch = make_element(0, tag="input", type="checkbox")
+    switch.role = "switch"
+    switch.css_path = "li:nth-of-type(1) > input"
+    switch.parent_context = "Dark mode"
+    assert locator_expr(switch, [switch]) == 'page.locator("li:nth-of-type(1) > input")'
