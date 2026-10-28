@@ -21,7 +21,11 @@ def export_app():
 
         def do_GET(self):
             status = 200
-            if self.path == "/wrong":
+            content_type = "text/html"
+            if self.path == "/diagram.svg":
+                content_type = "image/svg+xml"
+                body = '<svg xmlns="http://www.w3.org/2000/svg"><text>Decoration</text></svg>'
+            elif self.path == "/wrong":
                 Handler.wrong_clicks += 1
                 body = "ok"
             elif self.path == "/right":
@@ -48,6 +52,8 @@ def export_app():
                 body = "Please sign in to continue"
             elif Handler.mode == "login-form":
                 body = '<h1>Sign in</h1><input type="password"><button>Log in</button>'
+            elif Handler.mode == "svg":
+                body = '<p>The task stays deleted</p><iframe src="/diagram.svg"></iframe>'
             elif Handler.mode.startswith("frame"):
                 src = "/outer" if Handler.mode == "frame-nested" else "/frame"
                 body = (
@@ -64,7 +70,7 @@ def export_app():
             else:
                 body = "Deleted task comes back"
             self.send_response(status)
-            self.send_header("Content-Type", "text/html")
+            self.send_header("Content-Type", content_type)
             self.end_headers()
             self.wfile.write(body.encode())
 
@@ -154,3 +160,10 @@ async def test_exported_text_checks_include_frame_content(tmp_path, export_app):
     handler.mode = "frame-nested"
     path, _ = _export(tmp_path, base, target="Frame symptom")
     assert (await run_exported_test(path, 30))["outcome"] == "fails_on_symptom"
+
+
+async def test_exported_text_checks_ignore_bodyless_embeds(tmp_path, export_app):
+    handler, base = export_app
+    handler.mode = "svg"
+    path, _ = _export(tmp_path, base)
+    assert (await run_exported_test(path, 10))["outcome"] == "passes"

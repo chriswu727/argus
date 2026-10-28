@@ -261,8 +261,11 @@ def _present(text, page, max_scrolls=20):
         for frame in page.frames:
             if frame.is_detached():
                 continue
+            body = frame.locator("body")
+            if not body.count():
+                continue
             values = frame.eval_on_selector_all("input, textarea", "els => els.map(e => e.value)")
-            if _matches(text, frame.inner_text("body") + " " + " ".join(values)):
+            if _matches(text, body.inner_text() + " " + " ".join(values)):
                 return True
         y, at_bottom = page.evaluate(
             "() => [window.scrollY, "
