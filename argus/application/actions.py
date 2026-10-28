@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from argus.domain.contracts import ErrorCode, Rejection
 
-from .evidence import _record_action, _record_coverage_action
+from .evidence import _record_action
 from .inspection import _visual_inspection_query
 from .observation import (
     _begin_dialogs,
@@ -588,7 +588,9 @@ async def upload_file(description: str, paths: list) -> str:
     ok = await s.browser.upload_file(idx, paths, s._last_elements)
     if not ok:
         return f"upload_file({description!r}) — failed."
-    _record_coverage_action(s, "upload_file", f"{description}; {len(paths)} file(s)")
+    # Recorded so replay reports it cannot repeat the upload and export_test
+    # marks it TODO, instead of both skipping it silently. Paths stay out.
+    _record_action(s, "upload_file", f"{description}; {len(paths)} file(s)")
     return f"Attached {len(paths)} file(s) to {description!r}: {', '.join(paths)}"
 
 

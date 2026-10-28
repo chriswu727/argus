@@ -349,6 +349,20 @@ def generate_test(
             else:
                 notes.append(f"step {number}: press_key without a recorded key")
                 lines.append(f"# TODO(argus): step {number} press_key needs a key")
+        elif tool == "go_back":
+            lines.append("page.go_back()")
+        elif tool == "scroll_down":
+            lines.append('page.evaluate("() => window.scrollBy(0, 500)")')
+            lines.append("page.wait_for_timeout(500)")
+        elif tool == "resize" and re.fullmatch(r"\d+x\d+", str(action.get("description"))):
+            width, height = str(action["description"]).split("x")
+            lines.append(f'page.set_viewport_size({{"width": {width}, "height": {height}}})')
+        elif tool == "upload_file":
+            what = action.get("description", "")
+            notes.append(
+                f"step {number}: upload_file {what!r} (attach the files with set_input_files)"
+            )
+            lines.append(f"# TODO(argus): step {number}: upload_file {what!r}")
         elif tool == "capsule_restore":
             name = action.get("description", "")
             notes.append(
@@ -361,7 +375,7 @@ def generate_test(
             lines.append(
                 f"# TODO(argus): replay step {number} by hand: {tool} {action.get('description', '')!r}"
             )
-        if tool in ("click_what", "double_click", "press_key", "set_checked"):
+        if tool in ("click_what", "double_click", "press_key", "set_checked", "go_back"):
             lines.append('page.wait_for_load_state("networkidle")')
         if action.get("accept_dialog"):
             lines.append('accept_dialog["pending"] = False')

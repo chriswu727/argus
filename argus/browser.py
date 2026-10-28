@@ -1218,6 +1218,27 @@ class BrowserDriver:
                         diverged = True
                         break
                     continue
+                if tool in ("go_back", "scroll_down", "resize", "upload_file"):
+                    try:
+                        if tool == "go_back":
+                            await page.go_back(wait_until="domcontentloaded", timeout=10_000)
+                            await self._settle_network(page)
+                        elif tool == "scroll_down":
+                            await page.evaluate("window.scrollBy(0, 500)")
+                            await asyncio.sleep(0.5)
+                        elif tool == "resize":
+                            width, height = (int(n) for n in desc.lower().split("x"))
+                            await page.set_viewport_size({"width": width, "height": height})
+                        else:
+                            raise RuntimeError("file uploads are not replayed")
+                        steps.append({"act": f"{tool} {desc!r}", "ok": True})
+                    except Exception as e:
+                        steps.append(
+                            {"act": f"{tool} {desc!r}", "ok": False, "reason": str(e)[:80]}
+                        )
+                        diverged = True
+                        break
+                    continue
                 if tool == "double_click" and str(val or "").startswith("text:"):
                     try:
                         text_loc = page.get_by_text(str(val)[5:], exact=True)

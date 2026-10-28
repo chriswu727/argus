@@ -12,6 +12,12 @@
   steps it cannot translate are marked TODO and listed. `run=true` runs it once
   to show that it fails on the symptom. The `web` profile now has 29 tools
   (`advanced` 62, `full` 78).
+- `go_back`, `scroll_down` and `upload_file` are now recorded in the journey.
+  Before, replay (`record_bug` with `replay`, `regression_check`) and
+  `export_test` skipped them silently and could follow a different path. Replay
+  now repeats going back, scrolling and `resize`, and reports an upload as not
+  replayable instead of passing over it. Exported tests go back, scroll and set
+  the viewport size, and mark an upload TODO.
 - Exported tests stay stable as the app changes, after Haiku runs on TodoMVC
   and BuggyTasks: a repeated control is scoped by the fewest leading words of
   its row (its title), not by changing details such as "5 days ago"; an unnamed

@@ -548,3 +548,85 @@ async def test_unnamed_hidden_or_switch_inputs_replay_in_a_browser(tmp_path, row
         assert (await run_exported_test(script, 90))["outcome"] == "passes"
     finally:
         server.shutdown()
+
+
+def test_back_scroll_resize_and_upload_steps_are_exported():
+    journey = [
+        {"tool": "go_back", "description": "/list"},
+        {"tool": "scroll_down", "description": ""},
+        {"tool": "resize", "description": "375x812"},
+        {"tool": "upload_file", "description": "Avatar; 1 file(s)"},
+    ]
+    source, notes = generate_test(
+        finding_id="run:1",
+        title="t",
+        expected="",
+        receipt={"expect": "present", "target_text": "x", "at_url": "http://h/"},
+        journey=journey,
+        start_url="http://h/",
+        resolve_input=lambda action: None,
+        filename="t.py",
+    )
+    assert "page.go_back()" in source
+    assert 'page.evaluate("() => window.scrollBy(0, 500)")' in source
+    assert 'page.set_viewport_size({"width": 375, "height": 812})' in source
+    assert "TODO(argus): step 4: upload_file 'Avatar; 1 file(s)'" in source
+    assert len(notes) == 1 and "set_input_files" in notes[0]
+    compile(source, "t.py", "exec")
+
+
+class _TwoPagesHandler(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
+
+    def do_GET(self):
+        if self.path.startswith("/b"):
+            body = b"<html><body><h1>Page B</h1></body></html>"
+        else:
+            body = b'<html><body><h1>Page A</h1><a href="/b">Go to B</a></body></html>'
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html")
+        self.end_headers()
+        self.wfile.write(body)
+
+
+async def test_going_back_is_recorded_replayed_and_exported(isolated_runtime):
+    class _Server(socketserver.ThreadingTCPServer):
+        allow_reuse_address = True
+        daemon_threads = True
+
+    server = _Server(("127.0.0.1", 0), _TwoPagesHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        try:
+            await _fn("start_session")(base + "/a")
+        except Exception as exc:
+            pytest.skip(f"Chromium/session unavailable: {exc}")
+        s = m.runtime.session
+        await _fn("click_what")("Go to B")
+        await _fn("go_back")()
+        assert [a["tool"] for a in s.action_trace] == ["click_what", "go_back"]
+        replayed = await s.browser.replay(base + "/a", list(s.action_trace))
+        assert not replayed["diverged"] and "Page A" in replayed["final_state"].page_text
+        resized = await s.browser.replay(
+            base + "/a", [{"tool": "resize", "description": "375x812"}]
+        )
+        assert not resized["diverged"]
+        # An upload cannot be repeated from the trace, so replay says so.
+        uploaded = await s.browser.replay(
+            base + "/a", [{"tool": "upload_file", "description": "Avatar; 1 file(s)"}]
+        )
+        assert uploaded["diverged"] and "not replayed" in uploaded["steps"][-1]["reason"]
+        recorded = await _fn("record_bug")(
+            "Back lands on the first page",
+            "low",
+            {"expected": "Stays on B", "actual": "Shows A"},
+            verify={"expect": "present", "target_text": "Page A", "at_url": base + "/a"},
+        )
+        exported = await _fn("export_test")(recorded.data["finding_id"], run=True)
+        assert "page.go_back()" in open(exported.data["path"]).read()
+        assert exported.data["run"]["outcome"] == "fails_on_symptom", exported
+    finally:
+        await _fn("end_session")()
+        server.shutdown()
