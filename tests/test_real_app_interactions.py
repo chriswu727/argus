@@ -56,6 +56,40 @@ async def test_hover_reveals_a_control_that_can_then_be_clicked():
         await _end()
 
 
+async def test_a_row_is_hovered_by_its_text_to_reveal_its_controls():
+    from argus.application.testgen import generate_test
+
+    await _session_on_page(_TODOS)
+    try:
+        s = m.runtime.session
+        missing = await _fn("click_what")("Delete button near Buy milk")
+        assert "appears only on hover is listed after hover_what" in missing
+        hovered = await _fn("hover_what")("Buy milk")
+        assert 'Hovered the text "Buy milk"' in hovered
+        targets = [t["description"] for t in hovered.data["targets"]]
+        delete = next(t for t in targets if t.startswith('button "Delete"') and "Buy milk" in t)
+        await _fn("click_what")(delete)
+        state = await s.browser.get_state()
+        assert "Buy milk" not in state.page_text and "Walk dog" in state.page_text
+        hover, click = s.action_trace[-2:]
+        assert hover["tool"] == "hover_what" and hover["value"] == "text:Buy milk"
+        replayed = await s.browser.replay(s.url, [hover, click])
+        assert not replayed["diverged"] and "Buy milk" not in replayed["final_state"].page_text
+        source, _ = generate_test(
+            finding_id="run:1",
+            title="t",
+            expected="",
+            receipt={"expect": "present", "target_text": "Buy milk", "at_url": s.url},
+            journey=[hover, click],
+            start_url=s.url,
+            resolve_input=lambda action: None,
+            filename="t.py",
+        )
+        assert 'page.get_by_text("Buy milk", exact=True).hover()' in source
+    finally:
+        await _end()
+
+
 async def test_double_click_reaches_a_plain_text_inline_editor():
     await _session_on_page(_TODOS)
     try:

@@ -12,6 +12,11 @@
   steps it cannot translate are marked TODO and listed. `run=true` runs it once
   to show that it fails on the symptom. The `web` profile now has 29 tools
   (`advanced` 62, `full` 78).
+- `hover_what` hovers the exact visible text when no interactive element
+  matches, so a list row can be hovered by its title to reveal hover-only
+  controls; replays and exported tests repeat it. The "no element matches"
+  message notes that such controls appear after hovering their row. Found when
+  a Sonnet run on TodoMVC could not hover a row by its text.
 - `go_back`, `scroll_down` and `upload_file` are now recorded in the journey.
   Before, replay (`record_bug` with `replay`, `regression_check`) and
   `export_test` skipped them silently and could follow a different path. Replay

@@ -217,7 +217,7 @@ _CONCISE_TOOL_DESCRIPTIONS = {
     "check_layout": "Read bounded overflow, clipping, target-size and overlay signals. These are leads, not automatic bugs.",
     "resize": "Resize the viewport to width and height for responsive checks.",
     "screenshot": "Capture viewport, full page or a described element. Returns image and evidence path. Screenshots may contain application data.",
-    "hover_what": "Hover a uniquely matching element with a real pointer to reveal tooltips, hover menus or hover-only controls. Returns the observation taken while hovering, so revealed controls are targetable.",
+    "hover_what": "Hover a uniquely matching element, or a list row by its exact text, with a real pointer to reveal tooltips, hover menus or hover-only controls. Returns the observation taken while hovering, so revealed controls are targetable.",
     "upload_file": "Attach local files to a matching file input, including hidden inputs. Paths must be inside approved file roots.",
     "emulate_device": "Reopen the current page as a named mobile device (touch, user agent, pixel ratio, viewport). Session cookies carry over; use resize for plain breakpoints.",
     "scroll_down": "Scroll down to reveal more content, then read the returned observation.",

@@ -1263,10 +1263,13 @@ class BrowserDriver:
                         diverged = True
                         break
                     continue
-                if tool == "double_click" and str(val or "").startswith("text:"):
+                if tool in ("double_click", "hover_what") and str(val or "").startswith("text:"):
                     try:
-                        text_loc = page.get_by_text(str(val)[5:], exact=True)
-                        await text_loc.filter(visible=True).dblclick(timeout=5_000)
+                        text_loc = page.get_by_text(str(val)[5:], exact=True).filter(visible=True)
+                        if tool == "double_click":
+                            await text_loc.dblclick(timeout=5_000)
+                        else:
+                            await text_loc.hover(timeout=5_000)
                         await self._settle_network(page)
                         steps.append({"act": f"{tool} {desc!r}", "ok": True})
                     except Exception as e:
@@ -1485,6 +1488,21 @@ class BrowserDriver:
                 return None
             await loc.dblclick(timeout=5_000)
             await self._settle_network()
+            await self._settle_dom()
+            return True
+        except Exception:
+            return False
+
+    async def hover_text(self, text: str) -> Optional[bool]:
+        """Hover the one element whose visible text is exactly `text` (a list
+        row whose controls appear on hover). None means no unique match."""
+        if not text.strip():
+            return None
+        loc = self._page.get_by_text(text.strip(), exact=True).filter(visible=True)
+        try:
+            if await loc.count() != 1:
+                return None
+            await loc.hover(timeout=5_000)
             await self._settle_dom()
             return True
         except Exception:

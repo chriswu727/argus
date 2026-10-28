@@ -322,8 +322,9 @@ def generate_test(
             lines.append('accept_dialog["pending"] = True')
         if tool == "navigate" and value:
             lines.append(f"page.goto(_url({_q(_path_or_url(str(value), origin))}))")
-        elif tool == "double_click" and str(value or "").startswith("text:"):
-            lines.append(f"page.get_by_text({_q(str(value)[5:])}, exact=True).dblclick()")
+        elif tool in ("double_click", "hover_what") and str(value or "").startswith("text:"):
+            method = "dblclick" if tool == "double_click" else "hover"
+            lines.append(f"page.get_by_text({_q(str(value)[5:])}, exact=True).{method}()")
         elif tool in ("click_what", "double_click", "hover_what") and locator:
             method = {"click_what": "click", "double_click": "dblclick", "hover_what": "hover"}
             lines.append(f"{locator}.{method[tool]}()")
