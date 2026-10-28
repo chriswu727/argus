@@ -176,10 +176,9 @@ def test_launcher_rejects_a_stale_lock_without_running_the_command(tmp_path):
     bundle = tmp_path / "plugin"
     shutil.copytree(BUNDLE, bundle)
     project = bundle / "pyproject.toml"
+    dependency = tomllib.loads(project.read_text())["project"]["dependencies"][0]
     project.write_text(
-        project.read_text().replace(
-            'name = "argus-testing-plugin-runtime"', 'name = "changed-plugin-runtime"'
-        )
+        project.read_text().replace(f'dependencies = ["{dependency}"]', "dependencies = []")
     )
     lock_before = (bundle / "uv.lock").read_bytes()
     server = json.loads((bundle / ".mcp.json").read_text())["mcpServers"]["argus"]
@@ -195,6 +194,7 @@ def test_launcher_rejects_a_stale_lock_without_running_the_command(tmp_path):
             "-c",
             f"open({str(marker)!r}, 'w').close()",
         ],
+        env={**os.environ, "UV_CACHE_DIR": str(tmp_path / "empty-cache")},
         capture_output=True,
         text=True,
         timeout=30,
