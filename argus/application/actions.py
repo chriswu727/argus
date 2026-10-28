@@ -224,10 +224,9 @@ async def hover_what(description: str) -> str:
     """Hover the mouse over the element best matching `description`.
 
     Real `:hover` (not synthetic): triggers tooltips, dropdown-on-hover
-    menus, hover-only action buttons. Use after the element shows up
-    in observe — for divs that observe filters out (figures, plain
-    `<div>`s with `:hover` rules), introspect via inspect_element or
-    fall back to eval_js.
+    menus, hover-only action buttons. When no interactive element matches,
+    the exact visible text is hovered instead, so a list row can be hovered
+    by its title to reveal its controls.
     """
     s = _require_session()
     err = _require_web_session(s, "hover_what")
@@ -235,7 +234,19 @@ async def hover_what(description: str) -> str:
         return err
     el, err = _resolve_or_error(s, description)
     if err:
-        return err
+        # A list row is usually plain text, not an interactive element, yet
+        # hovering it is how its hover-only controls appear.
+        query, _ = _visual_inspection_query(description)
+        done = await s.browser.hover_text(query)
+        if not done:
+            return err
+        s.steps.append(f'hover text "{query[:60]}"')
+        _record_action(s, "hover_what", description, f"text:{query}")
+        return await action_result(
+            s,
+            f'Hovered the text "{query[:60]}". Targets revealed by the hover are listed below.',
+            "hover",
+        )
     label = el.text or el.aria_label or el.placeholder or el.id or el.tag
     s.steps.append(f"hover_what({description!r}) -> {label[:60]}")
     idx = s._last_elements.index(el)

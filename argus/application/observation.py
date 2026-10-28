@@ -442,7 +442,8 @@ def _resolve_or_error(
         hint = ("\nClosest on the page:\n" + "\n".join(f"  {d}" for d in near)) if near else ""
         return None, Rejection(
             f"No element matches {description!r}. Pass a target description from "
-            f"observe() as-is, or describe the element differently.{hint}"
+            f"observe() as-is, or describe the element differently. A control that "
+            f"appears only on hover is listed after hover_what on its row.{hint}"
         )
 
     # ambiguous
