@@ -143,7 +143,7 @@ def test_duplicate_controls_are_scoped_to_their_row():
         delete.parent_context = f"{title} Delete"
         rows.append(delete)
     assert locator_expr(rows[1], rows) == (
-        '_in_row(page, "Walk dog Delete", '
+        '_in_row(page, "Walk dog", '
         'lambda scope: scope.get_by_role("button", name="Delete", exact=True))'
     )
     lone = make_element(0, tag="button", text="Save")
@@ -377,6 +377,174 @@ async def test_the_exported_check_scrolls_like_the_verifier(tmp_path):
         script = tmp_path / "t.py"
         script.write_text(source)
         # The row exists further down, so the "missing" symptom is not present.
+        assert (await run_exported_test(script, 90))["outcome"] == "passes"
+    finally:
+        server.shutdown()
+
+
+def test_a_row_is_keyed_by_its_leading_words_not_changing_details():
+    def rows(*contexts):
+        out = []
+        for context in contexts:
+            delete = make_element(len(out), tag="button", text="Delete")
+            delete.parent_context = context
+            out.append(delete)
+        return out
+
+    listed = rows(
+        "Schedule team standup medium 5.0 days ago Edit Delete",
+        "Buy groceries high 1.0 days ago Edit Delete",
+    )
+    assert '_in_row(page, "Schedule team",' in locator_expr(listed[0], listed)
+    # A shorter key that another row contains is extended until it is unique.
+    listed = rows("Walk dog Delete", "Walk dog later Delete")
+    assert '_in_row(page, "Walk dog Delete",' in locator_expr(listed[0], listed)
+    # Rows that cannot be told apart fall back to position.
+    listed = rows("Same Delete", "Same Delete")
+    assert locator_expr(listed[1], listed).endswith(".nth(1)")
+
+
+def test_an_unnamed_checkbox_is_found_by_role_inside_its_row():
+    toggle = make_element(0, tag="input", type="checkbox")
+    toggle.css_path = "body > ul > li:nth-of-type(1) > input"
+    toggle.parent_context = "Buy milk"
+    assert locator_expr(toggle, [toggle]) == (
+        '_in_row(page, "Buy milk", lambda scope: scope.locator("input[type=\\"checkbox\\"]"))'
+    )
+    # Another checkbox in the same row makes the role ambiguous: keep the path.
+    starred = make_element(1, tag="input", type="checkbox", id="star-1")
+    starred.parent_context = "Buy milk"
+    assert locator_expr(toggle, [starred, toggle]) == (
+        'page.locator("body > ul > li:nth-of-type(1) > input")'
+    )
+    toggle.parent_context = None
+    assert locator_expr(toggle, [toggle]) == 'page.locator("body > ul > li:nth-of-type(1) > input")'
+
+
+def test_helpers_are_written_only_when_the_test_uses_them():
+    def source(journey):
+        return generate_test(
+            finding_id="run:1",
+            title="t",
+            expected="",
+            receipt={"expect": "present", "target_text": "x", "at_url": "http://h/"},
+            journey=journey,
+            start_url="http://h/",
+            resolve_input=lambda action: None,
+            filename="t.py",
+        )[0]
+
+    plain = source([{"tool": "click_what", "locator": 'page.locator("#go")'}])
+    assert "_in_row" not in plain and "ROW_SELECTOR" not in plain
+    assert "accept_dialog" not in plain and "page.on(" not in plain
+    scoped = source(
+        [
+            {
+                "tool": "click_what",
+                "locator": '_in_row(page, "A", lambda scope: scope.get_by_role("button"))',
+                "accept_dialog": True,
+            }
+        ]
+    )
+    assert "def _in_row(" in scoped and "ROW_SELECTOR = " in scoped
+    assert 'page.on("dialog", _on_dialog)' in scoped
+    compile(plain, "t.py", "exec")
+    compile(scoped, "t.py", "exec")
+
+
+def test_row_keys_account_for_controls_located_another_way():
+    later = make_element(0, tag="button", text="Delete", id="del-later")
+    later.parent_context = "Walk dog later Delete"
+    today = make_element(1, tag="button", text="Delete")
+    today.parent_context = "Walk dog today Delete"
+    milk = make_element(2, tag="button", text="Delete")
+    milk.parent_context = "Buy milk Delete"
+    listed = [later, today, milk]
+    # "Walk dog" would also match the row whose Delete has an id.
+    assert '_in_row(page, "Walk dog today",' in locator_expr(today, listed)
+    # A lone id-less Delete next to an id-bearing one is scoped too, since the
+    # role locator alone would match both.
+    assert '_in_row(page, "Buy milk",' in locator_expr(milk, [later, milk])
+
+
+def test_an_unnamed_input_is_found_by_type_whatever_its_role_or_aria():
+    # get_by_role would miss role="switch" and aria-hidden inputs; the type does not.
+    switch = make_element(0, tag="input", type="checkbox")
+    switch.role = "switch"
+    switch.css_path = "li:nth-of-type(1) > input"
+    switch.parent_context = "Dark mode"
+    assert locator_expr(switch, [switch]) == (
+        '_in_row(page, "Dark mode", lambda scope: scope.locator("input[type=\\"checkbox\\"]"))'
+    )
+
+
+def test_roles_follow_the_explicit_role_not_the_tag():
+    tab = make_element(0, tag="button", text="Open", id="tab-open")
+    tab.role = "tab"
+    tab.parent_context = "Report Open Open"
+    button = make_element(1, tag="button", text="Open")
+    button.parent_context = "Report Open Open"
+    # The tab is not a button to Playwright, so it does not make "Open" ambiguous.
+    assert locator_expr(button, [tab, button]) == (
+        'page.get_by_role("button", name="Open", exact=True)'
+    )
+    tab.id = None
+    assert locator_expr(tab, [tab, button]) == 'page.get_by_role("tab", name="Open", exact=True)'
+
+
+class _TogglesHandler(http.server.BaseHTTPRequestHandler):
+    """Rows whose checkboxes are aria-hidden or role=switch; a tick is kept in
+    localStorage and shown after a reload."""
+
+    def log_message(self, *args):
+        pass
+
+    def do_GET(self):
+        body = b"""<html><body><ul>
+<li>Buy milk <input type="checkbox" aria-hidden="true" onchange="localStorage.done='Buy milk'"></li>
+<li>Walk dog <input type="checkbox" role="switch" onchange="localStorage.done='Walk dog'"></li>
+</ul><p id="done"></p>
+<script>document.getElementById('done').textContent = 'done: ' + (localStorage.done || '-');</script>
+</body></html>"""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html")
+        self.end_headers()
+        self.wfile.write(body)
+
+
+@pytest.mark.parametrize("row", ["Buy milk", "Walk dog"])
+async def test_unnamed_hidden_or_switch_inputs_replay_in_a_browser(tmp_path, row):
+    from argus.application.testgen import run_exported_test
+
+    class _Server(socketserver.ThreadingTCPServer):
+        allow_reuse_address = True
+        daemon_threads = True
+
+    server = _Server(("127.0.0.1", 0), _TogglesHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        rows = []
+        for index, (context, role) in enumerate([("Buy milk", None), ("Walk dog", "switch")]):
+            toggle = make_element(index, tag="input", type="checkbox")
+            toggle.role = role
+            toggle.css_path = f"li:nth-of-type({index + 1}) > input"
+            toggle.parent_context = context
+            rows.append(toggle)
+        target = next(el for el in rows if el.parent_context == row)
+        source, _ = generate_test(
+            finding_id="run:1",
+            title="Tick is not kept",
+            expected="The tick is kept",
+            receipt={"expect": "absent", "target_text": f"done: {row}", "at_url": base + "/"},
+            journey=[{"tool": "click_what", "locator": locator_expr(target, rows)}],
+            start_url=base + "/",
+            resolve_input=lambda action: None,
+            filename="t.py",
+        )
+        script = tmp_path / "t.py"
+        script.write_text(source)
+        # The click reaches the right input, so the "not kept" symptom is gone.
         assert (await run_exported_test(script, 90))["outcome"] == "passes"
     finally:
         server.shutdown()
