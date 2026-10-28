@@ -4,7 +4,9 @@
     "name": "Yichen Wu",
     "url": "https://yichenwu.dev"
   },
-  "description": "Argus — testing for coding agents, maintained by the Argus project.",
+  "metadata": {
+    "description": "Argus — testing for coding agents, maintained by the Argus project."
+  },
   "plugins": [
     {
       "name": "argus-testing",

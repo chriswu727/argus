@@ -21,10 +21,10 @@ browser-launch error, tell the user and offer to install the matching browser.
 Run it only after they agree, because it downloads software:
 
 ```bash
-uvx --python 3.12 --from argus-testing==0.11.0 --with playwright==1.64.1 python -m playwright install chromium
+uvx --python 3.12 --from argus-testing==0.12.0 --with playwright==1.64.1 python -m playwright install chromium
 ```
 
-For other setup problems, run `uvx --python 3.12 --from argus-testing==0.11.0 argus-mcp --doctor`;
+For other setup problems, run `uvx --python 3.12 --from argus-testing==0.12.0 argus-mcp --doctor`;
 it prints the fix for each failed check. Then call `start_session` again.
 
 ## 3. Test

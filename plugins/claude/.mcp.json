@@ -4,6 +4,7 @@
       "command": "uv",
       "args": [
         "run",
+        "--active",
         "--project", "${CLAUDE_PLUGIN_ROOT}",
         "--locked",
         "--python", "3.12",
@@ -11,7 +12,7 @@
         "--tool-profile", "web"
       ],
       "env": {
-        "UV_PROJECT_ENVIRONMENT": "${CLAUDE_PLUGIN_DATA}/venv"
+        "VIRTUAL_ENV": "${CLAUDE_PLUGIN_DATA}/venv"
       }
     }
   }

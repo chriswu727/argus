@@ -2,8 +2,9 @@
 
 Argus helps coding agents test the apps they build: exercise real user journeys,
 find bugs, and verify them with evidence. This plugin connects Codex to the local
-Argus MCP server with its 28-tool web profile, which covers exploration,
-interaction, verification, findings, reports, and regression checks.
+Argus MCP server with its 29-tool web profile, which covers exploration,
+interaction, verification, findings, reports, regression checks, and Playwright
+test export.
 
 This is a project-maintained plugin, not an OpenAI product, and it is not listed
 in OpenAI's plugin directory.
@@ -12,7 +13,7 @@ in OpenAI's plugin directory.
 
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and make
 `uv` available to Codex. The launcher selects Python 3.12 and runs the exact
-published `argus-testing==0.11.0` release from the bundled `uv.lock`, which pins
+published `argus-testing==0.12.0` release from the bundled `uv.lock`, which pins
 dependency versions, sources, and hashes, in a virtual environment under the
 installed plugin directory.
 
@@ -20,7 +21,7 @@ Before the first session, warm uv's cache and install the matching Chromium
 browser. This works from any directory:
 
 ```bash
-uvx --python 3.12 --from argus-testing==0.11.0 --with playwright==1.64.1 python -m playwright install chromium
+uvx --python 3.12 --from argus-testing==0.12.0 --with playwright==1.64.1 python -m playwright install chromium
 ```
 
 The warm-up pins Argus and Playwright; uv resolves the other dependencies afresh
