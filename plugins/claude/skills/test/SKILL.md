@@ -21,7 +21,7 @@ browser-launch error, tell the user and offer to install the matching browser.
 Run it only after they agree, because it downloads software:
 
 ```bash
-VIRTUAL_ENV="${CLAUDE_PLUGIN_DATA}/venv" uv run --active --project "${CLAUDE_PLUGIN_ROOT}" --locked --python 3.12 python -m playwright install chromium
+uv run --isolated --project "${CLAUDE_PLUGIN_ROOT}" --locked --python 3.12 python -m playwright install chromium
 ```
 
 For other setup problems, run the same command with `argus-mcp --doctor` in

@@ -4,16 +4,13 @@
       "command": "uv",
       "args": [
         "run",
-        "--active",
+        "--isolated",
         "--project", "${CLAUDE_PLUGIN_ROOT}",
         "--locked",
         "--python", "3.12",
         "argus-mcp",
         "--tool-profile", "web"
-      ],
-      "env": {
-        "VIRTUAL_ENV": "${CLAUDE_PLUGIN_DATA}/venv"
-      }
+      ]
     }
   }
 }

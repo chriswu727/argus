@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
+import shutil
+import subprocess
 import tomllib
 from pathlib import Path
 
@@ -37,7 +38,7 @@ def test_plugin_pins_the_published_runtime_and_safe_profile():
                 "command": "uv",
                 "args": [
                     "run",
-                    "--active",
+                    "--isolated",
                     "--project",
                     "${CLAUDE_PLUGIN_ROOT}",
                     "--locked",
@@ -47,13 +48,12 @@ def test_plugin_pins_the_published_runtime_and_safe_profile():
                     "--tool-profile",
                     "web",
                 ],
-                "env": {"VIRTUAL_ENV": "${CLAUDE_PLUGIN_DATA}/venv"},
             }
         }
     }
-    assert project["dependencies"] == [f"argus-testing=={manifest['version']}"]
     runtime = next(package for package in lock["package"] if package["name"] == "argus-testing")
-    assert runtime["version"] == manifest["version"]
+    assert project["dependencies"] == [f"argus-testing=={runtime['version']}"]
+    assert project["version"] == runtime["version"]
     assert runtime["source"] == {"registry": "https://pypi.org/simple"}
     assert all(wheel["hash"].startswith("sha256:") for wheel in runtime["wheels"])
     assert not {"hooks", "settings", "userConfig", "skills"}.intersection(manifest)
@@ -79,11 +79,11 @@ def test_marketplace_lists_this_bundle():
 
 
 def test_warm_up_command_matches_the_lock():
-    manifest = json.loads((BUNDLE / ".claude-plugin" / "plugin.json").read_text())
     lock = tomllib.loads((BUNDLE / "uv.lock").read_text())
+    runtime = next(package for package in lock["package"] if package["name"] == "argus-testing")
     playwright = next(package for package in lock["package"] if package["name"] == "playwright")
     command = (
-        f"uvx --python 3.12 --from argus-testing=={manifest['version']} "
+        f"uvx --python 3.12 --from argus-testing=={runtime['version']} "
         f"--with playwright=={playwright['version']} python -m playwright install chromium"
     )
     assert command in (BUNDLE / "README.md").read_text()
@@ -93,10 +93,9 @@ def test_skill_installs_the_browser_into_the_servers_locked_environment():
     skill = (BUNDLE / "skills" / "test" / "SKILL.md").read_text()
     server = json.loads((BUNDLE / ".mcp.json").read_text())["mcpServers"]["argus"]
     assert skill.startswith("---\ndescription: ")
-    environment = server["env"]["VIRTUAL_ENV"]
     launcher = " ".join(server["args"][: server["args"].index("argus-mcp")])
     command = (
-        f'VIRTUAL_ENV="{environment}" uv '
+        "uv "
         + launcher.replace("${CLAUDE_PLUGIN_ROOT}", '"${CLAUDE_PLUGIN_ROOT}"')
         + " python -m playwright install chromium"
     )
@@ -113,13 +112,13 @@ def test_plugin_documents_local_execution_and_privacy():
 
 
 @pytest.mark.asyncio
-async def test_plugin_launch_command_handshake():
-    manifest = json.loads((BUNDLE / ".claude-plugin" / "plugin.json").read_text())
+async def test_plugin_launch_command_handshake(tmp_path):
+    project = tomllib.loads((BUNDLE / "pyproject.toml").read_text())["project"]
     config = json.loads((BUNDLE / ".mcp.json").read_text())["mcpServers"]["argus"]
     config["args"] = [
         argument.replace("${CLAUDE_PLUGIN_ROOT}", str(BUNDLE)) for argument in config["args"]
     ]
-    with tempfile.TemporaryDirectory(prefix="argus-plugin-check-") as temporary:
+    for _ in range(2):
         # stdio clients pass a minimal environment; keep proxy and certificate
         # settings so uv can still reach package indexes behind a proxy.
         network = {
@@ -127,12 +126,13 @@ async def test_plugin_launch_command_handshake():
             for key, value in os.environ.items()
             if key.upper() in _NETWORK_ENV or key.startswith("UV_")
         }
-        config["env"] = {**network, "VIRTUAL_ENV": str(Path(temporary) / "venv")}
+        config["env"] = {**network, "VIRTUAL_ENV": str(tmp_path / "host-venv")}
+        config["cwd"] = str(tmp_path)
         async with stdio_client(StdioServerParameters(**config)) as (read, write):
             async with ClientSession(read, write) as client:
                 initialized = await client.initialize()
                 assert initialized.serverInfo.name == "argus"
-                assert initialized.serverInfo.version == manifest["version"]
+                assert initialized.serverInfo.version == project["version"]
                 tools = (await client.list_tools()).tools
                 assert len(tools) == 29
                 assert {"start_session", "regression_check", "get_errors", "export_test"} <= {
@@ -142,5 +142,65 @@ async def test_plugin_launch_command_handshake():
                 result = await client.call_tool("observe", {})
                 assert result.isError
                 assert result.structuredContent["error_code"] == "no_session"
-        assert (Path(temporary) / "venv" / "pyvenv.cfg").is_file()
+        assert not (tmp_path / "host-venv").exists()
         assert not (BUNDLE / ".venv").exists()
+
+
+def test_launcher_is_isolated_and_cleans_up(tmp_path):
+    server = json.loads((BUNDLE / ".mcp.json").read_text())["mcpServers"]["argus"]
+    args = server["args"][: server["args"].index("argus-mcp")]
+    args = [arg.replace("${CLAUDE_PLUGIN_ROOT}", str(BUNDLE)) for arg in args]
+    probe = "import json, sys; print(json.dumps({'prefix': sys.prefix}))"
+    result = subprocess.run(
+        [server["command"], *args, "python", "-c", probe],
+        env={
+            **os.environ,
+            "VIRTUAL_ENV": str(tmp_path / "host-venv"),
+            "UV_PROJECT_ENVIRONMENT": str(tmp_path / "project-venv"),
+        },
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=True,
+    )
+    prefix = Path(json.loads(result.stdout)["prefix"])
+    assert prefix not in {tmp_path / "host-venv", tmp_path / "project-venv", BUNDLE / ".venv"}
+    assert not prefix.exists()
+    assert not (tmp_path / "host-venv").exists()
+    assert not (tmp_path / "project-venv").exists()
+    assert not (BUNDLE / ".venv").exists()
+
+
+def test_launcher_rejects_a_stale_lock_without_running_the_command(tmp_path):
+    bundle = tmp_path / "plugin"
+    shutil.copytree(BUNDLE, bundle)
+    project = bundle / "pyproject.toml"
+    dependency = tomllib.loads(project.read_text())["project"]["dependencies"][0]
+    project.write_text(
+        project.read_text().replace(f'dependencies = ["{dependency}"]', "dependencies = []")
+    )
+    lock_before = (bundle / "uv.lock").read_bytes()
+    server = json.loads((bundle / ".mcp.json").read_text())["mcpServers"]["argus"]
+    args = server["args"][: server["args"].index("argus-mcp")]
+    args = [arg.replace("${CLAUDE_PLUGIN_ROOT}", str(bundle)) for arg in args]
+    marker = tmp_path / "command-ran"
+    result = subprocess.run(
+        [
+            server["command"],
+            *args,
+            "--offline",
+            "python",
+            "-c",
+            f"open({str(marker)!r}, 'w').close()",
+        ],
+        env={**os.environ, "UV_CACHE_DIR": str(tmp_path / "empty-cache")},
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode != 0
+    assert "--locked" in result.stderr and "lockfile" in result.stderr
+    assert not marker.exists()
+    assert (bundle / "uv.lock").read_bytes() == lock_before
+    assert not (bundle / ".venv").exists()
