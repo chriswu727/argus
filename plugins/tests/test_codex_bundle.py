@@ -168,6 +168,7 @@ async def test_codex_launch_command_handshake_from_plugin_root():
                 initialized = await client.initialize()
                 assert initialized.serverInfo.version == manifest["version"]
                 tools = {tool.name for tool in (await client.list_tools()).tools}
-                assert len(tools) == 28 and "regression_check" in tools
+                assert len(tools) == 29
+                assert {"regression_check", "export_test"} <= tools
                 result = await client.call_tool("observe", {})
                 assert result.structuredContent["error_code"] == "no_session"

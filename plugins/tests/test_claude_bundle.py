@@ -37,6 +37,7 @@ def test_plugin_pins_the_published_runtime_and_safe_profile():
                 "command": "uv",
                 "args": [
                     "run",
+                    "--active",
                     "--project",
                     "${CLAUDE_PLUGIN_ROOT}",
                     "--locked",
@@ -46,7 +47,7 @@ def test_plugin_pins_the_published_runtime_and_safe_profile():
                     "--tool-profile",
                     "web",
                 ],
-                "env": {"UV_PROJECT_ENVIRONMENT": "${CLAUDE_PLUGIN_DATA}/venv"},
+                "env": {"VIRTUAL_ENV": "${CLAUDE_PLUGIN_DATA}/venv"},
             }
         }
     }
@@ -92,10 +93,10 @@ def test_skill_installs_the_browser_into_the_servers_locked_environment():
     skill = (BUNDLE / "skills" / "test" / "SKILL.md").read_text()
     server = json.loads((BUNDLE / ".mcp.json").read_text())["mcpServers"]["argus"]
     assert skill.startswith("---\ndescription: ")
-    environment = server["env"]["UV_PROJECT_ENVIRONMENT"]
+    environment = server["env"]["VIRTUAL_ENV"]
     launcher = " ".join(server["args"][: server["args"].index("argus-mcp")])
     command = (
-        f'UV_PROJECT_ENVIRONMENT="{environment}" uv '
+        f'VIRTUAL_ENV="{environment}" uv '
         + launcher.replace("${CLAUDE_PLUGIN_ROOT}", '"${CLAUDE_PLUGIN_ROOT}"')
         + " python -m playwright install chromium"
     )
@@ -126,18 +127,20 @@ async def test_plugin_launch_command_handshake():
             for key, value in os.environ.items()
             if key.upper() in _NETWORK_ENV or key.startswith("UV_")
         }
-        config["env"] = {**network, "UV_PROJECT_ENVIRONMENT": str(Path(temporary) / "venv")}
+        config["env"] = {**network, "VIRTUAL_ENV": str(Path(temporary) / "venv")}
         async with stdio_client(StdioServerParameters(**config)) as (read, write):
             async with ClientSession(read, write) as client:
                 initialized = await client.initialize()
                 assert initialized.serverInfo.name == "argus"
                 assert initialized.serverInfo.version == manifest["version"]
                 tools = (await client.list_tools()).tools
-                assert len(tools) == 28
-                assert {"start_session", "regression_check", "get_errors"} <= {
+                assert len(tools) == 29
+                assert {"start_session", "regression_check", "get_errors", "export_test"} <= {
                     tool.name for tool in tools
                 }
                 assert not any(tool.name.startswith("screen_") for tool in tools)
                 result = await client.call_tool("observe", {})
                 assert result.isError
                 assert result.structuredContent["error_code"] == "no_session"
+        assert (Path(temporary) / "venv" / "pyvenv.cfg").is_file()
+        assert not (BUNDLE / ".venv").exists()

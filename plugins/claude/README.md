@@ -2,8 +2,8 @@
 
 Argus helps coding agents test the apps they build: exercise real user journeys,
 find bugs, and verify them with evidence. This plugin connects Claude to the local
-Argus MCP server. Its 28-tool web profile covers exploration, interaction,
-verification, findings, reports, and regression checks.
+Argus MCP server. Its 29-tool web profile covers exploration, interaction,
+verification, findings, reports, regression checks, and Playwright test export.
 
 This is a project-maintained plugin, not an Anthropic product. Providing this
 package does not mean it has been accepted into Anthropic's directory.
@@ -12,17 +12,18 @@ package does not mean it has been accepted into Anthropic's directory.
 
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and make
 `uv` available to the application that starts Claude. The launcher selects Python
-3.12 and runs the exact published `argus-testing==0.11.0` release from the bundled
+3.12 and runs the exact published `argus-testing==0.12.0` release from the bundled
 `uv.lock`, which pins dependency versions, sources, and hashes. It refuses to run
 if the project and lockfile disagree. The virtual environment lives in the
-plugin's persistent data directory (`${CLAUDE_PLUGIN_DATA}/venv`), not in the
-installed plugin files, and is kept in step with the lock on each start.
+plugin's persistent data directory (`${CLAUDE_PLUGIN_DATA}/venv`), selected by
+`VIRTUAL_ENV` and `uv run --active`, not in the installed plugin files. It is
+created when needed and kept in step with the lock on each start.
 
 Before starting Claude with the plugin for the first time, warm uv's cache and
 install the matching Chromium browser. This works from any directory:
 
 ```bash
-uvx --python 3.12 --from argus-testing==0.11.0 --with playwright==1.64.1 python -m playwright install chromium
+uvx --python 3.12 --from argus-testing==0.12.0 --with playwright==1.64.1 python -m playwright install chromium
 ```
 
 The first plugin start otherwise downloads Python 3.12 and the locked
