@@ -22,7 +22,7 @@ from urllib.parse import urlparse
 from argus.domain.models import InteractiveElement
 from argus.domain.verification import LOGIN_WALL_PHRASES
 from argus.resolver import kind_of
-from argus.security import _RE_SECRET_KEY
+from argus.security import _RE_SECRET_KEY, _redact
 
 # Same containers extraction uses for an element's row (parent_context).
 _ROW_SELECTOR = 'li, tr, .card, .list-item, [class*="item"], [class*="row"]'
@@ -217,16 +217,22 @@ test another origin.{notes}
 
 import os
 import re
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 from playwright.sync_api import sync_playwright
 
-BASE_URL = os.environ.get("ARGUS_BASE_URL", {origin})
+ORIGIN = {origin}
+BASE_URL = os.environ.get("ARGUS_BASE_URL", ORIGIN)
 SYMPTOM_MARKER = "ARGUS_SYMPTOM_PRESENT"
 LOGIN_WALL_PHRASES = {login_wall_phrases}
 
 
 def _url(path):
+    if os.environ.get("ARGUS_BASE_URL"):
+        parsed = urlparse(path)
+        origin = parsed.scheme + "://" + parsed.netloc.rsplit("@", 1)[-1]
+        if origin == ORIGIN:
+            path = parsed._replace(scheme="", netloc="", path=parsed.path or "/").geturl()
     return urljoin(BASE_URL, path)
 
 
@@ -280,7 +286,7 @@ def _present(text, page, max_scrolls=20):
 
 
 def {test_name}():
-    with sync_playwright() as playwright:
+{preflight}    with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
 {dialog_setup}        try:
@@ -343,10 +349,23 @@ def generate_test(
     expect = receipt["expect"]
     at_url = receipt.get("at_url") or start_url
     parsed = urlparse(start_url)
-    origin = f"{parsed.scheme}://{parsed.netloc}"
+    origin = f"{parsed.scheme}://{parsed.netloc.rsplit('@', 1)[-1]}"
     notes: List[str] = []
     env_inputs: List[str] = []
-    lines = [f"page.goto(_url({_q(_path_or_url(start_url, origin))}))"]
+    url_inputs: dict[str, str] = {}
+
+    def url_expr(url: str) -> str:
+        value = _path_or_url(url, origin)
+        if _redact(url) == url:
+            return _q(value)
+        if value not in url_inputs:
+            name = f"ARGUS_URL_{len(url_inputs) + 1}"
+            url_inputs[value] = name
+            if secrets is not None:
+                secrets[name] = value
+        return f"os.environ[{_q(url_inputs[value])}]"
+
+    lines = [f"page.goto(_url({url_expr(start_url)}))"]
 
     for number, action in enumerate(journey, 1):
         tool = action.get("tool")
@@ -355,7 +374,7 @@ def generate_test(
         if action.get("accept_dialog"):
             lines.append('accept_dialog["pending"] = True')
         if tool == "navigate" and value:
-            lines.append(f"page.goto(_url({_q(_path_or_url(str(value), origin))}))")
+            lines.append(f"page.goto(_url({url_expr(str(value))}))")
         elif tool in ("double_click", "hover_what") and str(value or "").startswith("text:"):
             method = "dblclick" if tool == "double_click" else "hover"
             # Visible matches only, as when recorded: a hidden copy of the same
@@ -368,7 +387,7 @@ def generate_test(
         elif tool in ("type_into", "select_into") and locator:
             if action.get("sensitive"):
                 name = f"ARGUS_INPUT_{len(env_inputs) + 1}"
-                env_inputs.append(f"{name}: {action.get('description', '')}")
+                env_inputs.append(f"{name}: {_redact(action.get('description', ''))}")
                 if secrets is not None:
                     secrets[name] = resolve_input(action) or ""
                 text = f"os.environ[{_q(name)}]"
@@ -421,7 +440,7 @@ def generate_test(
     # Leave the page first so the check is a fresh load even when only the hash
     # route matches the current URL.
     lines.append('page.goto("about:blank")')
-    lines.append(f"response = page.goto(_url({_q(_path_or_url(at_url, origin))}))")
+    lines.append(f"response = page.goto(_url({url_expr(at_url)}))")
     lines.append("_check_page(page, response)")
     if expect == "present":
         lines.append(
@@ -437,6 +456,13 @@ def generate_test(
         symptom = f"{target!r} is absent at {at_url}"
 
     note_text = ""
+    if url_inputs:
+        note_text += (
+            "\n\nSet these URL environment variables (credential-bearing URLs are not stored):\n"
+        )
+        note_text += "\n".join(
+            f"  {name}: navigation URL or same-origin path" for name in url_inputs.values()
+        )
     if env_inputs:
         note_text += "\n\nSet these environment variables (sensitive inputs are not stored):\n"
         note_text += "\n".join(f"  {item}" for item in env_inputs)
@@ -444,15 +470,24 @@ def generate_test(
         note_text += "\n\nSteps that need manual translation:\n" + "\n".join(
             f"  {note}" for note in notes
         )
-    test_name = f"test_{_slug(title)}"
+    notes = [_redact(note) for note in notes]
+    preflight = ""
+    if notes:
+        preflight = '    raise RuntimeError("ARGUS_INCOMPLETE_TEST: translate every TODO step, then remove this guard before running")\n'
+    required_inputs = list(url_inputs.values()) + [item.split(":", 1)[0] for item in env_inputs]
+    if required_inputs:
+        preflight += f"    for name in {required_inputs!r}:\n"
+        preflight += '        if name not in os.environ:\n            raise RuntimeError(f"Missing required environment variable: {name}")\n'
+    test_name = f"test_{_slug(_redact(title))}"
     header = _HEADER.format(
         finding_id=finding_id,
-        title=_doc(title),
+        title=_doc(_redact(title)),
         runs=receipt.get("runs", "verified"),
-        symptom=_doc(symptom),
-        expected=_doc(expected or "the symptom does not occur"),
+        symptom=_doc(_redact(symptom)),
+        expected=_doc(_redact(expected) or "the symptom does not occur"),
         filename=filename,
-        notes=_doc(note_text),
+        preflight=preflight,
+        notes=_doc(_redact(note_text)),
         origin=_q(origin),
         login_wall_phrases=json.dumps(LOGIN_WALL_PHRASES),
         row_helper=(
@@ -463,7 +498,10 @@ def generate_test(
         dialog_setup=_DIALOG_SETUP if any("accept_dialog[" in line for line in lines) else "",
         test_name=test_name,
     )
-    body = "".join(f"            {line}\n" for line in lines)
+    body = "".join(
+        f"            {_redact(line) if line.startswith('# TODO(argus)') else line}\n"
+        for line in lines
+    )
     return header + body + _FOOTER.format(test_name=test_name), notes
 
 
@@ -510,6 +548,8 @@ async def run_exported_test(path: Path, timeout: float, secrets: Optional[dict] 
     last = tail[-1][:300] if tail else ""
     if proc.returncode == 0:
         return {"outcome": "passes", "detail": "the symptom did not appear"}
+    if "RuntimeError: ARGUS_INCOMPLETE_TEST:" in stderr:
+        return {"outcome": "incomplete", "detail": last}
     if "ARGUS_SYMPTOM_PRESENT" in stderr:
         return {"outcome": "fails_on_symptom", "detail": last}
     return {"outcome": "errored", "detail": last}

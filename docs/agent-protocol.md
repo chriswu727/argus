@@ -188,8 +188,8 @@ and returns `data`:
 |---|---|
 | `finding_id` | The exported finding. |
 | `path` | Absolute path of the written test file. |
-| `manual_steps` | Steps that could not be translated; each is also a `TODO(argus)` line in the file. An empty list means every recorded step was exported. |
-| `run` | `null` unless `run=true`; otherwise `{"outcome", "detail"}` with outcome `fails_on_symptom`, `passes` or `errored`. |
+| `manual_steps` | Steps that could not be translated; each is also a `TODO(argus)` line in the file. Current source exports with manual steps stop before browser actions until completed. An empty list means every recorded step was exported. |
+| `run` | `null` unless `run=true`; otherwise `{"outcome", "detail"}` with outcome `fails_on_symptom`, `passes`, `errored` or `incomplete`. |
 
 The file replays the actions recorded up to the finding with locators captured
 from the resolved elements, then loads the checked URL afresh and asserts the
@@ -204,7 +204,11 @@ text checks include nested frame content. A capsule restore
 cannot be replayed and is reported as a manual step. Uploaded files are not
 attached, and an upload is likewise a manual step. Sensitive inputs are read
 from `ARGUS_INPUT_n` environment variables; `run=true` passes the session's values that way and never
-writes them to the file. A run repeats the journey's writes, executes in its own
+writes them to the file. Current source also moves recognized credential-bearing
+navigation URLs to `ARGUS_URL_n`, checks required variables before browser actions,
+and reports `incomplete` without executing a journey with manual steps. These
+URL and incomplete-journey guards are pending a package release after 0.12.0.
+A run repeats the journey's writes, executes in its own
 process group inside the operation deadline, and is killed with its browser on
 timeout or cancellation.
 

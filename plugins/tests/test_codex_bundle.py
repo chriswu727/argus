@@ -88,7 +88,8 @@ def test_codex_marketplace_lists_this_bundle_and_docs_show_install():
         "category": "Developer Tools",
     }
     install = f"codex plugin add {entry['name']}@{marketplace['name']}"
-    for readme in (BUNDLE / "README.md", ROOT / "README.md"):
+    assert "[Codex plugin](plugins/codex)" in (ROOT / "README.md").read_text()
+    for readme in (BUNDLE / "README.md", ROOT / "docs/usage.md"):
         text = readme.read_text()
         assert "codex plugin marketplace add chriswu727/argus" in text and install in text
 

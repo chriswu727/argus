@@ -46,11 +46,11 @@ def test_release_metadata_stays_in_sync():
     )
 
 
-def test_readme_covers_every_public_tool_profile():
+def test_usage_reference_covers_every_public_tool_profile():
     from argus.entrypoints.mcp.server import tool_names
     from argus.mcp_server import mcp
 
-    readme = (ROOT / "README.md").read_text()
+    readme = (ROOT / "docs/usage.md").read_text()
     documented_tools = set(re.findall(r"`([a-z][a-z0-9_]*)`", readme))
     full_tools = set(mcp._tool_manager._tools)
 
@@ -60,42 +60,23 @@ def test_readme_covers_every_public_tool_profile():
     assert "uvx --from argus-testing argus-mcp" in readme
 
 
-def test_release_documentation_and_translation_are_current():
-    version = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
+def test_release_documentation_is_current_and_english():
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    version = project["project"]["version"]
     readme = (ROOT / "README.md").read_text()
-    translation = (ROOT / "README.zh-CN.md").read_text()
-    assert f"What's new in {version}" in readme
-    assert f"**{version}**" in translation
+    usage = (ROOT / "docs/usage.md").read_text()
+    assert f"**{version}**" in readme
     assert f"## {version} - " in (ROOT / "CHANGELOG.md").read_text()
     overhead = json.loads((ROOT / "examples/response-overhead.json").read_text())
     assert overhead["argus_version"] == version
-    measured_reduction = f"{overhead['aggregate']['reduction_percent']:.2f}%"
-    assert measured_reduction in readme and measured_reduction in translation
-    project = tomllib.loads((ROOT / "pyproject.toml").read_text())
-    assert (
-        "README.zh-CN.md" in project["tool"]["hatch"]["build"]["targets"]["sdist"]["only-include"]
-    )
-    assert "README.zh-CN.md" in readme and "README.md" in translation
-    assert "uvx --from argus-testing argus-mcp" in translation
-    assert re.search(r"[\u3400-\u9fff]", translation)
-    for path in (
-        "README.md",
-        "AGENTS.md",
-        "CHANGELOG.md",
-        "CONTRIBUTING.md",
-        "PRIVACY.md",
-        "SECURITY.md",
-        "llms-install.md",
-        "docs/architecture.md",
-        "docs/agent-protocol.md",
-        "docs/decisions.md",
-        "docs/evaluation.md",
-    ):
-        content = (ROOT / path).read_text()
-        assert not re.search(r"[\u3400-\u9fff]", content), path
-    for path in ("README.md", "AGENTS.md", "docs/agent-protocol.md"):
-        content = (ROOT / path).read_text().lower()
-        assert "development main" not in content and "unreleased" not in content
+    assert f"{overhead['aggregate']['reduction_percent']:.2f}%" in usage
+    included = project["tool"]["hatch"]["build"]["targets"]["sdist"]["only-include"]
+    assert "docs/usage.md" in included
+    assert "README.zh-CN.md" not in included
+    assert not (ROOT / "README.zh-CN.md").exists()
+    assert "docs/usage.md" in readme
+    for path in [*ROOT.glob("*.md"), *ROOT.glob("docs/*.md")]:
+        assert not re.search(r"[\u3400-\u9fff]", path.read_text()), path.name
 
 
 def test_client_install_examples_start_the_published_stdio_server():
@@ -111,7 +92,8 @@ def test_client_install_examples_start_the_published_stdio_server():
     assert "codex mcp add argus -- uvx --from argus-testing argus-mcp" in agent_install
     assert "web` profile with 29 tools" in agent_install
 
-    cursor_url = re.search(r"https://cursor\.com/install-mcp\?name=argus&config=[^)]+", readme)
+    usage = (ROOT / "docs/usage.md").read_text()
+    cursor_url = re.search(r"https://cursor\.com/install-mcp\?name=argus&config=[^)]+", usage)
     assert cursor_url is not None
     encoded = parse_qs(urlparse(cursor_url.group()).query)["config"][0]
     assert json.loads(base64.b64decode(encoded)) == expected

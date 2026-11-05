@@ -75,7 +75,8 @@ def test_marketplace_lists_this_bundle():
     assert entry["source"] == "./plugins/claude"
     install = f"/plugin install {manifest['name']} --marketplace chriswu727/argus"
     assert install in (BUNDLE / "README.md").read_text()
-    assert install in (ROOT / "README.md").read_text()
+    assert install in (ROOT / "docs/usage.md").read_text()
+    assert "[Claude plugin](plugins/claude)" in (ROOT / "README.md").read_text()
 
 
 def test_warm_up_command_matches_the_lock():
