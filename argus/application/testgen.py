@@ -9,20 +9,21 @@ natural-language resolver.
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import json
 import os
 import re
 import signal
 import sys
+import uuid
 from pathlib import Path
 from typing import List, Optional
-from urllib.parse import urlparse
 
 from argus.domain.models import InteractiveElement
 from argus.domain.verification import LOGIN_WALL_PHRASES
 from argus.resolver import kind_of
-from argus.security import _RE_SECRET_KEY, _redact
+from argus.security import _RE_SECRET_KEY
 
 # Same containers extraction uses for an element's row (parent_context).
 _ROW_SELECTOR = 'li, tr, .card, .list-item, [class*="item"], [class*="row"]'
@@ -187,21 +188,7 @@ def _doc(text: str) -> str:
     return text.replace("\\", "\\\\").replace('"""', "'''")
 
 
-def _slug(title: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "_", title.lower()).strip("_")
-    return (slug or "finding")[:60]
-
-
-def _path_or_url(url: str, origin: str) -> str:
-    parsed = urlparse(url)
-    if f"{parsed.scheme}://{parsed.netloc}" == origin:
-        relative = (parsed.path or "/") + (f"?{parsed.query}" if parsed.query else "")
-        # Keep the fragment: a hash-routed app (#/tasks) shows another screen.
-        return relative + (f"#{parsed.fragment}" if parsed.fragment else "")
-    return url
-
-
-_HEADER = '''"""Regression test exported by Argus from finding {finding_id}.
+_HEADER = '''"""Regression test exported by Argus.
 
 {title}
 
@@ -210,30 +197,65 @@ Expected behavior: {expected}
 
 The test replays the recorded journey and asserts the opposite of the symptom,
 so it fails while the bug is present and passes once the bug is fixed.
-Run it with `python {filename}` or pytest, using a Python that has Playwright
-and Chromium (the interpreter that runs Argus has both). Set ARGUS_BASE_URL to
-test another origin.{notes}
+Run this file with Python or pytest, with Playwright and Chromium installed
+(the interpreter that runs Argus has both). Set ARGUS_BASE_URL to
+test another origin. Supply values through environment variables or a private
+JSON file selected with ARGUS_VALUES_FILE; environment variables take precedence.
+Never commit or publish the values file.{notes}
 """
 
+import json
 import os
 import re
 from urllib.parse import urljoin, urlparse
 
 from playwright.sync_api import sync_playwright
 
-ORIGIN = {origin}
-BASE_URL = os.environ.get("ARGUS_BASE_URL", ORIGIN)
-SYMPTOM_MARKER = "ARGUS_SYMPTOM_PRESENT"
 LOGIN_WALL_PHRASES = {login_wall_phrases}
+REQUIRED_ENV = {required_env}
+EXPORT_ID = {export_id}
 
 
-def _url(path):
+def _values():
+    values = {{}}
+    if os.environ.get("ARGUS_VALUES_FILE"):
+        try:
+            with open(os.environ["ARGUS_VALUES_FILE"], encoding="utf-8") as stream:
+                saved = json.load(stream)
+        except Exception:
+            raise _ExportFailure("ARGUS_VALUES_FILE could not be read as a values object") from None
+        if not isinstance(saved, dict) or not isinstance(saved.get("values"), dict):
+            raise _ExportFailure("ARGUS_VALUES_FILE could not be read as a values object")
+        if saved.get("export_id") != EXPORT_ID:
+            raise _ExportFailure("ARGUS_VALUES_FILE belongs to another export")
+        values = {{name: saved["values"][name] for name in REQUIRED_ENV if name in saved["values"]}}
+    overrides = {{name: os.environ[name] for name in REQUIRED_ENV if name in os.environ}}
+    if overrides and os.environ.get("ARGUS_EXPORT_ID") != EXPORT_ID:
+        raise _ExportFailure("ARGUS_EXPORT_ID must match this exported test")
+    values.update(overrides)
+    if any(not isinstance(value, str) for value in values.values()):
+        raise _ExportFailure("ARGUS_VALUES_FILE values must be strings")
+    for name in REQUIRED_ENV:
+        if name not in values:
+            raise _ExportFailure(f"Missing required environment variable: {{name}}")
+    parsed = urlparse(values["ARGUS_URL_1"])
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise _ExportFailure("ARGUS_URL_1 must be an absolute http(s) URL")
+    return values
+
+
+def _origin(values):
+    parsed = urlparse(values["ARGUS_URL_1"])
+    return parsed.scheme + "://" + parsed.netloc.rsplit("@", 1)[-1]
+
+
+def _url(path, values):
     if os.environ.get("ARGUS_BASE_URL"):
         parsed = urlparse(path)
         origin = parsed.scheme + "://" + parsed.netloc.rsplit("@", 1)[-1]
-        if origin == ORIGIN:
+        if origin == _origin(values):
             path = parsed._replace(scheme="", netloc="", path=parsed.path or "/").geturl()
-    return urljoin(BASE_URL, path)
+    return urljoin(os.environ.get("ARGUS_BASE_URL", _origin(values)), path)
 
 
 {row_helper}def _matches(text, haystack):
@@ -247,7 +269,7 @@ def _url(path):
 
 def _check_page(page, response):
     if response is not None and response.status >= 400:
-        raise RuntimeError(f"fresh-load check returned HTTP {{response.status}}")
+        raise _ExportFailure("fresh-load check returned an HTTP error")
     page.wait_for_load_state("networkidle")
     text = page.inner_text("body").lower()
     login_heading = page.get_by_role(
@@ -255,7 +277,7 @@ def _check_page(page, response):
     )
     password_login = page.locator('input[type="password"]:visible').count() and login_heading.count()
     if password_login or any(phrase in text for phrase in LOGIN_WALL_PHRASES):
-        raise RuntimeError("fresh-load check hit a login wall")
+        raise _ExportFailure("fresh-load check hit a login wall")
 
 
 def _present(text, page, max_scrolls=20):
@@ -285,7 +307,7 @@ def _present(text, page, max_scrolls=20):
     return False
 
 
-def {test_name}():
+def _replay():
 {preflight}    with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
@@ -322,6 +344,25 @@ _FOOTER = """        finally:
             browser.close()
 
 
+class _ExportFailure(RuntimeError):
+    pass
+
+
+class _ExportSymptom(AssertionError):
+    pass
+
+
+def {test_name}():
+    try:
+        _replay()
+    except _ExportSymptom:
+        raise AssertionError("ARGUS_SYMPTOM_PRESENT") from None
+    except _ExportFailure as exc:
+        raise RuntimeError(str(exc)) from None
+    except Exception:
+        raise RuntimeError("ARGUS_EXECUTION_ERROR: replay or fresh-load check failed; raw browser details withheld") from None
+
+
 if __name__ == "__main__":
     {test_name}()
     print("PASS: the symptom is gone")
@@ -339,70 +380,90 @@ def generate_test(
     resolve_input,
     filename: str,
     secrets: Optional[dict] = None,
+    required_env: Optional[dict] = None,
+    export_id: Optional[str] = None,
 ) -> tuple[str, List[str]]:
-    """Return (source, notes). `resolve_input(action)` yields a typed value.
+    """Return source and manual steps without embedding application strings.
 
-    Sensitive values are never written to the file. When `secrets` is given it
-    is filled with each environment variable name and its value, so a run from
-    this session can pass them to the test without storing them."""
+    Values stay in the session and are passed through the child environment for
+    an immediate run. Only fixed purpose labels are exposed in required_env.
+    """
+    export_id = export_id or uuid.uuid4().hex
+    if not re.fullmatch(r"[0-9a-f]{32}", export_id):
+        raise ValueError("export_id must be a UUID hex string")
+    if secrets is not None:
+        secrets["ARGUS_EXPORT_ID"] = export_id
     target = receipt["target_text"]
     expect = receipt["expect"]
     at_url = receipt.get("at_url") or start_url
-    parsed = urlparse(start_url)
-    origin = f"{parsed.scheme}://{parsed.netloc.rsplit('@', 1)[-1]}"
     notes: List[str] = []
-    env_inputs: List[str] = []
-    url_inputs: dict[str, str] = {}
+    bindings: dict[str, dict[str, str]] = {}
+    purposes: dict[str, str] = {}
 
-    def url_expr(url: str) -> str:
-        value = _path_or_url(url, origin)
-        if _redact(url) == url:
-            return _q(value)
-        if value not in url_inputs:
-            name = f"ARGUS_URL_{len(url_inputs) + 1}"
-            url_inputs[value] = name
+    def binding(value: str, category: str, purpose: str) -> str:
+        values = bindings.setdefault(category, {})
+        if value not in values:
+            name = f"ARGUS_{category}_{len(values) + 1}"
+            values[value] = name
+            purposes[name] = purpose
             if secrets is not None:
                 secrets[name] = value
-        return f"os.environ[{_q(url_inputs[value])}]"
+        else:
+            name = values[value]
+            if purpose not in purposes[name].split("; "):
+                purposes[name] += "; " + purpose
+        return f"values[{_q(name)}]"
 
-    lines = [f"page.goto(_url({url_expr(start_url)}))"]
+    def private_locator(expression: str, step: int) -> str:
+        class Parameters(ast.NodeTransformer):
+            def visit_Constant(self, node):
+                if isinstance(node.value, str):
+                    return ast.parse(
+                        binding(node.value, "LOCATOR", f"step {step} locator text"), mode="eval"
+                    ).body
+                return node
+
+        return ast.unparse(Parameters().visit(ast.parse(expression, mode="eval")))
+
+    initial = binding(start_url, "URL", "initial navigation URL")
+    lines = [f"page.goto(_url({initial}, values))"]
 
     for number, action in enumerate(journey, 1):
         tool = action.get("tool")
         locator = action.get("locator")
+        if locator:
+            locator = private_locator(locator, number)
         value = action.get("value")
         if action.get("accept_dialog"):
             lines.append('accept_dialog["pending"] = True')
         if tool == "navigate" and value:
-            lines.append(f"page.goto(_url({url_expr(str(value))}))")
+            url = binding(str(value), "URL", f"step {number} navigation URL")
+            lines.append(f"page.goto(_url({url}, values))")
         elif tool in ("double_click", "hover_what") and str(value or "").startswith("text:"):
             method = "dblclick" if tool == "double_click" else "hover"
             # Visible matches only, as when recorded: a hidden copy of the same
             # text (another layout) would otherwise make the locator ambiguous.
-            text = _q(str(value)[5:])
+            text = binding(str(value)[5:], "TEXT", f"step {number} visible text")
             lines.append(f"page.get_by_text({text}, exact=True).filter(visible=True).{method}()")
         elif tool in ("click_what", "double_click", "hover_what") and locator:
             method = {"click_what": "click", "double_click": "dblclick", "hover_what": "hover"}
             lines.append(f"{locator}.{method[tool]}()")
         elif tool in ("type_into", "select_into") and locator:
-            if action.get("sensitive"):
-                name = f"ARGUS_INPUT_{len(env_inputs) + 1}"
-                env_inputs.append(f"{name}: {_redact(action.get('description', ''))}")
-                if secrets is not None:
-                    secrets[name] = resolve_input(action) or ""
-                text = f"os.environ[{_q(name)}]"
-            else:
-                text = _q(resolve_input(action) or "")
+            resolved = resolve_input(action)
+            if resolved is None:
+                notes.append(f"step {number}: input value unavailable; supply it before running")
+            text = binding(resolved or "", "INPUT", f"step {number} input value")
             method = "fill" if tool == "type_into" else "select_option"
             lines.append(f"{locator}.{method}({text})")
         elif tool == "set_checked" and locator:
             lines.append(f"{locator}.set_checked({str(value).lower() == 'true'})")
         elif tool == "press_key":
             key = str(action.get("key") or "").strip()
+            key_expr = binding(key, "KEY", f"step {number} key") if key else ""
             if key and locator:
-                lines.append(f"{locator}.press({_q(key)})")
+                lines.append(f"{locator}.press({key_expr})")
             elif key:
-                lines.append(f"page.keyboard.press({_q(key)})")
+                lines.append(f"page.keyboard.press({key_expr})")
             else:
                 notes.append(f"step {number}: press_key without a recorded key")
                 lines.append(f"# TODO(argus): step {number} press_key needs a key")
@@ -415,23 +476,14 @@ def generate_test(
             width, height = str(action["description"]).split("x")
             lines.append(f'page.set_viewport_size({{"width": {width}, "height": {height}}})')
         elif tool == "upload_file":
-            what = action.get("description", "")
-            notes.append(
-                f"step {number}: upload_file {what!r} (attach the files with set_input_files)"
-            )
-            lines.append(f"# TODO(argus): step {number}: upload_file {what!r}")
+            notes.append(f"step {number}: upload_file (attach the files with set_input_files)")
+            lines.append(f"# TODO(argus): step {number}: upload_file")
         elif tool == "capsule_restore":
-            name = action.get("description", "")
-            notes.append(
-                f"step {number}: the session restored capsule {name!r} (cookies and storage); "
-                "establish that state here, for example by logging in"
-            )
-            lines.append(f"# TODO(argus): step {number}: establish the state of capsule {name!r}")
+            notes.append(f"step {number}: establish restored session state before continuing")
+            lines.append(f"# TODO(argus): step {number}: establish restored session state")
         else:
-            notes.append(f"step {number}: {tool} {action.get('description', '')!r} not exported")
-            lines.append(
-                f"# TODO(argus): replay step {number} by hand: {tool} {action.get('description', '')!r}"
-            )
+            notes.append(f"step {number}: unsupported action; translate it before running")
+            lines.append(f"# TODO(argus): replay step {number} by hand")
         if tool in ("click_what", "double_click", "press_key", "set_checked", "go_back"):
             lines.append('page.wait_for_load_state("networkidle")')
         if action.get("accept_dialog"):
@@ -440,56 +492,37 @@ def generate_test(
     # Leave the page first so the check is a fresh load even when only the hash
     # route matches the current URL.
     lines.append('page.goto("about:blank")')
-    lines.append(f"response = page.goto(_url({url_expr(at_url)}))")
+    final_url = binding(at_url, "URL", "fresh-load verification URL")
+    lines.append(f"response = page.goto(_url({final_url}, values))")
     lines.append("_check_page(page, response)")
-    if expect == "present":
-        lines.append(
-            f"assert not _present({_q(target)}, page), "
-            f"SYMPTOM_MARKER + {_q(f': {target!r} is still shown')}"
-        )
-        symptom = f"{target!r} is present at {at_url}"
-    else:
-        lines.append(
-            f"assert _present({_q(target)}, page), "
-            f"SYMPTOM_MARKER + {_q(f': {target!r} is missing')}"
-        )
-        symptom = f"{target!r} is absent at {at_url}"
+    target_expr = binding(target, "TEXT", "fresh-load assertion text")
+    condition = "" if expect == "present" else "not "
+    lines.append(f"if {condition}_present({target_expr}, page):")
+    lines.append("    raise _ExportSymptom()")
 
-    note_text = ""
-    if url_inputs:
-        note_text += (
-            "\n\nSet these URL environment variables (credential-bearing URLs are not stored):\n"
-        )
-        note_text += "\n".join(
-            f"  {name}: navigation URL or same-origin path" for name in url_inputs.values()
-        )
-    if env_inputs:
-        note_text += "\n\nSet these environment variables (sensitive inputs are not stored):\n"
-        note_text += "\n".join(f"  {item}" for item in env_inputs)
+    note_text = "\n\nRequired environment variables (values are not stored):\n"
+    note_text += "\n".join(f"  {name}: {purpose}" for name, purpose in purposes.items())
+    note_text += "\n  ARGUS_EXPORT_ID: " + export_id + " (required for environment overrides)"
+    if required_env is not None:
+        required_env.update(purposes)
+        required_env["ARGUS_EXPORT_ID"] = "export identity: " + export_id
     if notes:
-        note_text += "\n\nSteps that need manual translation:\n" + "\n".join(
-            f"  {note}" for note in notes
-        )
-    notes = [_redact(note) for note in notes]
+        note_text += "\n\nSteps that need manual translation:\n" + "\n".join(notes)
     preflight = ""
     if notes:
-        preflight = '    raise RuntimeError("ARGUS_INCOMPLETE_TEST: translate every TODO step, then remove this guard before running")\n'
-    required_inputs = list(url_inputs.values()) + [item.split(":", 1)[0] for item in env_inputs]
-    if required_inputs:
-        preflight += f"    for name in {required_inputs!r}:\n"
-        preflight += '        if name not in os.environ:\n            raise RuntimeError(f"Missing required environment variable: {name}")\n'
-    test_name = f"test_{_slug(_redact(title))}"
+        preflight = '    raise _ExportFailure("ARGUS_INCOMPLETE_TEST: translate every manual step, then remove this guard before running")\n'
+    preflight += "    values = _values()\n"
+    test_name = "test_argus_finding"
     header = _HEADER.format(
-        finding_id=finding_id,
-        title=_doc(_redact(title)),
-        runs=receipt.get("runs", "verified"),
-        symptom=_doc(_redact(symptom)),
-        expected=_doc(_redact(expected) or "the symptom does not occur"),
-        filename=filename,
+        title="Application details are supplied through environment variables.",
+        runs="verified",
+        symptom="the recorded text-presence symptom",
+        expected="the symptom does not occur",
         preflight=preflight,
-        notes=_doc(_redact(note_text)),
-        origin=_q(origin),
+        notes=_doc(note_text),
         login_wall_phrases=json.dumps(LOGIN_WALL_PHRASES),
+        required_env=repr(list(purposes)),
+        export_id=_q(export_id),
         row_helper=(
             _ROW_HELPER.format(row_selector=_q(_ROW_SELECTOR))
             if any("_in_row(" in line for line in lines)
@@ -498,10 +531,7 @@ def generate_test(
         dialog_setup=_DIALOG_SETUP if any("accept_dialog[" in line for line in lines) else "",
         test_name=test_name,
     )
-    body = "".join(
-        f"            {_redact(line) if line.startswith('# TODO(argus)') else line}\n"
-        for line in lines
-    )
+    body = "".join(f"            {line}\n" for line in lines)
     return header + body + _FOOTER.format(test_name=test_name), notes
 
 
@@ -524,14 +554,20 @@ async def run_exported_test(path: Path, timeout: float, secrets: Optional[dict] 
     The test runs in its own process group. On timeout or cancellation the
     whole group is killed before returning, so its browser cannot keep
     repeating the journey's writes after the operation ends."""
-    proc = await asyncio.create_subprocess_exec(
-        sys.executable,
-        str(path),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        env={**os.environ, **(secrets or {})},
-        start_new_session=os.name == "posix",
-    )
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable,
+            str(path),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env={**os.environ, **(secrets or {})},
+            start_new_session=os.name == "posix",
+        )
+    except (OSError, ValueError):
+        return {
+            "outcome": "errored",
+            "detail": "could not start the exported test; check runtime and environment values",
+        }
     try:
         out, err = await asyncio.wait_for(proc.communicate(), timeout)
     except asyncio.TimeoutError:
@@ -542,14 +578,30 @@ async def run_exported_test(path: Path, timeout: float, secrets: Optional[dict] 
         _kill_tree(proc)
         await asyncio.shield(proc.wait())
         raise
-    stdout = out.decode(errors="replace")
     stderr = err.decode(errors="replace")
-    tail = (stderr or stdout).strip().splitlines()
-    last = tail[-1][:300] if tail else ""
     if proc.returncode == 0:
         return {"outcome": "passes", "detail": "the symptom did not appear"}
-    if "RuntimeError: ARGUS_INCOMPLETE_TEST:" in stderr:
-        return {"outcome": "incomplete", "detail": last}
-    if "ARGUS_SYMPTOM_PRESENT" in stderr:
-        return {"outcome": "fails_on_symptom", "detail": last}
-    return {"outcome": "errored", "detail": last}
+    last = stderr.strip().splitlines()[-1] if stderr.strip() else ""
+    if last.startswith("RuntimeError: ARGUS_INCOMPLETE_TEST:"):
+        return {"outcome": "incomplete", "detail": "Translate every manual step before running."}
+    if last == "AssertionError: ARGUS_SYMPTOM_PRESENT":
+        return {"outcome": "fails_on_symptom", "detail": "the verified symptom is still present"}
+    if re.fullmatch(
+        r"RuntimeError: Missing required environment variable: ARGUS_[A-Z]+_[0-9]+", last
+    ):
+        return {"outcome": "errored", "detail": last.removeprefix("RuntimeError: ")}
+    for diagnostic in (
+        "fresh-load check returned an HTTP error",
+        "fresh-load check hit a login wall",
+        "ARGUS_URL_1 must be an absolute http(s) URL",
+        "ARGUS_VALUES_FILE could not be read as a values object",
+        "ARGUS_VALUES_FILE values must be strings",
+        "ARGUS_VALUES_FILE belongs to another export",
+        "ARGUS_EXPORT_ID must match this exported test",
+    ):
+        if last == "RuntimeError: " + diagnostic:
+            return {"outcome": "errored", "detail": diagnostic}
+    return {
+        "outcome": "errored",
+        "detail": "replay or fresh-load check failed; raw subprocess output withheld",
+    }

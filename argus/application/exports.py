@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import json
+import shutil
+import tempfile
+import uuid
+from pathlib import Path
+
 from argus.domain.contracts import ErrorCode, Rejection, ToolText
-from argus.security import _redact
+from argus.storage import StorageError, atomic_write_text
 
 from .context import current_runtime
 from .session import _require_session, _require_web_session
-from .testgen import _slug, generate_test, run_exported_test
+from .testgen import generate_test, run_exported_test
 
 
 def _journey(s, end: int) -> list:
@@ -19,7 +25,7 @@ def _journey(s, end: int) -> list:
     return journey
 
 
-async def export_test(finding_id: str, run: bool = False) -> str:
+async def export_test(finding_id: str, run: bool = False, save_private_values: bool = False) -> str:
     """Write a regression test for a verified finding of this session.
 
     The test replays the journey recorded up to the finding and asserts the
@@ -30,11 +36,14 @@ async def export_test(finding_id: str, run: bool = False) -> str:
 
     Only findings verified on a fresh load with a text check can be exported.
     Steps Argus cannot translate are marked TODO and block the test before any writes.
-    Sensitive inputs and credential-bearing URLs are read from environment variables;
+    Application URLs, inputs and locator/assertion text are read from environment variables;
     run=true passes this session's values to the test that way, never in the file.
 
     Args:
         finding_id: The finding_id that record_bug returned.
+        save_private_values: Only when the user explicitly wants to retain local
+            replay values, write a private JSON file (may contain credentials).
+            Default false. Never publish it; use ARGUS_VALUES_FILE for later runs.
         run: Run the test once now to show that it fails on the symptom. This
             repeats the journey's writes against the app, so use it only when
             the user authorized repeating them (for example throwaway data).
@@ -66,7 +75,7 @@ async def export_test(finding_id: str, run: bool = False) -> str:
 
     directory = current_runtime().settings.output_dir / "tests"
     directory.mkdir(parents=True, exist_ok=True)
-    path = directory / f"test_argus_{s.run_id}_{index}_{_slug(_redact(bug.title))[:40]}.py"
+    path = directory / f"test_argus_{s.run_id}_{index}.py"
 
     def resolve_input(action: dict):
         try:
@@ -74,7 +83,9 @@ async def export_test(finding_id: str, run: bool = False) -> str:
         except ValueError:
             return None
 
+    export_id = uuid.uuid4().hex
     secrets: dict = {}
+    required_env: dict = {}
     source, notes = generate_test(
         finding_id=finding_id,
         title=bug.title,
@@ -85,11 +96,42 @@ async def export_test(finding_id: str, run: bool = False) -> str:
         resolve_input=resolve_input,
         filename=path.name,
         secrets=secrets,
+        required_env=required_env,
+        export_id=export_id,
     )
-    path.write_text(source, encoding="utf-8")
+    values_file = None
+    private_dir = None
+    try:
+        if save_private_values:
+            private_dir = Path(tempfile.mkdtemp(prefix=".argus-values-", dir=directory))
+            atomic_write_text(private_dir / ".gitignore", "*\n")
+            values_file = private_dir / "values.json"
+            payload = {
+                "export_id": export_id,
+                "values": {
+                    name: value for name, value in secrets.items() if name != "ARGUS_EXPORT_ID"
+                },
+            }
+            atomic_write_text(values_file, json.dumps(payload, ensure_ascii=True, indent=2))
+        atomic_write_text(path, source)
+    except (OSError, StorageError):
+        if private_dir is not None:
+            shutil.rmtree(private_dir, ignore_errors=True)
+        return Rejection(
+            "export_test: could not save the export; check output directory permissions."
+        )
     s.steps.append(f"export_test({finding_id!r}) -> {path.name}")
 
     lines = [f"Exported regression test for {finding_id}: {path}"]
+    lines.extend(f"  {name}: {purpose}" for name, purpose in required_env.items())
+    if values_file:
+        lines.append(
+            f"  Private values saved: {values_file}. Set ARGUS_VALUES_FILE to this path; never publish this file."
+        )
+    else:
+        lines.append(
+            "  Values were not saved. Configure them privately, or explicitly request save_private_values=true before closing the session."
+        )
     if notes:
         lines.append(f"  {len(notes)} step(s) need manual translation (marked TODO in the file):")
         lines.extend(f"    {note}" for note in notes)
@@ -125,8 +167,11 @@ async def export_test(finding_id: str, run: bool = False) -> str:
         "\n".join(lines),
         {
             "finding_id": finding_id,
+            "export_id": export_id,
             "path": str(path),
             "manual_steps": notes,
+            "required_env": required_env,
+            "private_values_path": str(values_file) if values_file else None,
             "run": result,
         },
     )

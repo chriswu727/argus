@@ -75,7 +75,9 @@ async def test_a_row_is_hovered_by_its_text_to_reveal_its_controls():
         assert hover["tool"] == "hover_what" and hover["value"] == "text:Buy milk"
         replayed = await s.browser.replay(s.url, [hover, click])
         assert not replayed["diverged"] and "Buy milk" not in replayed["final_state"].page_text
+        values = {}
         source, _ = generate_test(
+            secrets=values,
             finding_id="run:1",
             title="t",
             expected="",
@@ -85,7 +87,12 @@ async def test_a_row_is_hovered_by_its_text_to_reveal_its_controls():
             resolve_input=lambda action: None,
             filename="t.py",
         )
-        assert 'page.get_by_text("Buy milk", exact=True).filter(visible=True).hover()' in source
+        assert (
+            'page.get_by_text(values["ARGUS_TEXT_1"], exact=True).filter(visible=True).hover()'
+            in source
+        )
+        assert values["ARGUS_TEXT_1"] == "Buy milk"
+        assert "Buy milk" not in source
     finally:
         await _end()
 

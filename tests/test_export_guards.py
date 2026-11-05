@@ -88,7 +88,9 @@ def export_app():
 
 def _export(tmp_path, base, *, journey=None, target="Deleted task comes back", expect="present"):
     path = tmp_path / "regression.py"
+    secrets = {}
     source, notes = generate_test(
+        secrets=secrets,
         finding_id="run:1",
         title="Deleted task comes back",
         expected="The task stays deleted",
@@ -99,7 +101,7 @@ def _export(tmp_path, base, *, journey=None, target="Deleted task comes back", e
         filename=path.name,
     )
     path.write_text(source)
-    return path, notes
+    return path, notes, secrets
 
 
 @pytest.mark.parametrize("mode", ["404", "500", "login", "login-form", "redirect"])
@@ -109,8 +111,8 @@ async def test_exported_checks_reject_error_pages_and_login_walls(
 ):
     handler, base = export_app
     handler.mode = mode
-    path, _ = _export(tmp_path, base, expect=expect)
-    result = await run_exported_test(path, 30)
+    path, _, secrets = _export(tmp_path, base, expect=expect)
+    result = await run_exported_test(path, 30, secrets=secrets)
     assert result["outcome"] == "errored", result
     assert "fresh-load check" in result["detail"]
 
@@ -121,8 +123,8 @@ async def test_exported_checks_reject_error_pages_and_login_walls(
 async def test_exported_checks_keep_valid_page_verdicts(tmp_path, export_app, mode, outcome):
     handler, base = export_app
     handler.mode = mode
-    path, _ = _export(tmp_path, base)
-    assert (await run_exported_test(path, 30))["outcome"] == outcome
+    path, _, secrets = _export(tmp_path, base)
+    assert (await run_exported_test(path, 30, secrets=secrets))["outcome"] == outcome
 
 
 @pytest.mark.parametrize("nested", [False, True])
@@ -144,14 +146,14 @@ async def test_exported_actions_keep_frame_scope_and_row_identity(
         target.parent_context = outside.parent_context = "Target task"
         other.parent_context = "Other task"
     locator = locator_expr(target, [outside, other, target])
-    path, notes = _export(
+    path, notes, secrets = _export(
         tmp_path,
         base,
         journey=[{"tool": "click_what", "locator": locator}],
         target="Wrong control was used",
     )
     assert notes == []
-    result = await run_exported_test(path, 30)
+    result = await run_exported_test(path, 30, secrets=secrets)
     assert result["outcome"] == "passes", result
     assert handler.right_clicks == 1 and handler.wrong_clicks == 0
 
@@ -159,15 +161,15 @@ async def test_exported_actions_keep_frame_scope_and_row_identity(
 async def test_exported_text_checks_include_frame_content(tmp_path, export_app):
     handler, base = export_app
     handler.mode = "frame-nested"
-    path, _ = _export(tmp_path, base, target="Frame symptom")
-    assert (await run_exported_test(path, 30))["outcome"] == "fails_on_symptom"
+    path, _, secrets = _export(tmp_path, base, target="Frame symptom")
+    assert (await run_exported_test(path, 30, secrets=secrets))["outcome"] == "fails_on_symptom"
 
 
 async def test_exported_text_checks_ignore_bodyless_embeds(tmp_path, export_app):
     handler, base = export_app
     handler.mode = "svg"
-    path, _ = _export(tmp_path, base)
-    assert (await run_exported_test(path, 10))["outcome"] == "passes"
+    path, _, secrets = _export(tmp_path, base)
+    assert (await run_exported_test(path, 10, secrets=secrets))["outcome"] == "passes"
 
 
 @pytest.mark.parametrize(
@@ -194,20 +196,21 @@ def test_export_parameterizes_credential_urls_without_changing_them(url, monkeyp
     )
     assert "synthetic-secret" not in source
     assert notes == []
-    assert len(secrets) == 1
+    assert sum(name.startswith("ARGUS_URL_") for name in secrets) == 1
+    monkeypatch.setenv("ARGUS_URL_1", secrets["ARGUS_URL_1"])
     namespace = {"__name__": "export_test"}
     exec(compile(source, "regression.py", "exec"), namespace)
-    assert namespace["_url"](secrets["ARGUS_URL_1"]) == url
+    assert namespace["_url"](secrets["ARGUS_URL_1"], secrets) == url
     monkeypatch.setenv("ARGUS_BASE_URL", "https://staging.test")
     exec(compile(source, "regression.py", "exec"), namespace)
-    target = urlparse(namespace["_url"](secrets["ARGUS_URL_1"]))
+    target = urlparse(namespace["_url"](secrets["ARGUS_URL_1"], secrets))
     original = urlparse(url)
     assert target.netloc == "staging.test"
     assert target.path == original.path
     assert target.query == original.query
     assert target.fragment == original.fragment
     external = "https://user:synthetic-external@other.test/app"
-    assert namespace["_url"](external) == external
+    assert namespace["_url"](external, secrets) == external
 
 
 @pytest.mark.parametrize("userinfo", ["", "user:synthetic-auth@"])
@@ -257,7 +260,9 @@ async def test_url_environment_replays_navigation_and_fresh_check(
 
 
 def test_ordinary_query_and_fragment_are_preserved():
+    secrets = {}
     source, notes = generate_test(
+        secrets=secrets,
         finding_id="run:1",
         title="Example",
         expected="Saved",
@@ -268,15 +273,15 @@ def test_ordinary_query_and_fragment_are_preserved():
         filename="regression.py",
     )
     assert notes == []
-    assert 'page.goto(_url("/app?sort=name#details"))' in source
-    assert "ARGUS_URL_1" not in source
+    assert secrets["ARGUS_URL_1"] == "https://example.test/app?sort=name#details"
+    assert "sort=name" not in source
 
 
 @pytest.mark.parametrize("tool", ["upload_file", "capsule_restore", "unknown_action", "press_key"])
 async def test_incomplete_exports_stop_before_any_navigation(tmp_path, export_app, tool):
     handler, base = export_app
     handler.mode = "fixed"
-    path, notes = _export(
+    path, notes, secrets = _export(
         tmp_path,
         base,
         journey=[
@@ -285,7 +290,7 @@ async def test_incomplete_exports_stop_before_any_navigation(tmp_path, export_ap
         ],
     )
     assert notes
-    result = await run_exported_test(path, 30)
+    result = await run_exported_test(path, 30, secrets=secrets)
     assert result["outcome"] == "incomplete", result
     assert handler.right_clicks == 0
 
@@ -295,7 +300,7 @@ async def test_missing_url_environment_stops_before_any_navigation(
 ):
     handler, base = export_app
     monkeypatch.delenv("ARGUS_URL_1", raising=False)
-    path, notes = _export(
+    path, notes, secrets = _export(
         tmp_path,
         base,
         journey=[
@@ -307,4 +312,34 @@ async def test_missing_url_environment_stops_before_any_navigation(
     result = await run_exported_test(path, 30)
     assert result["outcome"] == "errored", result
     assert "Missing required environment variable: ARGUS_URL_1" in result["detail"]
+    assert handler.right_clicks == 0
+
+
+@pytest.mark.parametrize("channel", ["environment", "file"])
+async def test_values_from_another_export_stop_before_writes(
+    tmp_path, export_app, monkeypatch, channel
+):
+    import json
+
+    handler, base = export_app
+    handler.mode = "fixed"
+    a, _, a_values = _export(
+        tmp_path, base, journey=[{"tool": "navigate", "value": base + "/right"}]
+    )
+    b, _, b_values = _export(
+        tmp_path, base, journey=[{"tool": "navigate", "value": base + "/right"}]
+    )
+    assert a_values["ARGUS_EXPORT_ID"] != b_values["ARGUS_EXPORT_ID"]
+    if channel == "file":
+        values_file = tmp_path / "private.json"
+        values_file.write_text(
+            json.dumps({"export_id": a_values["ARGUS_EXPORT_ID"], "values": a_values})
+        )
+        monkeypatch.setenv("ARGUS_VALUES_FILE", str(values_file))
+        result = await run_exported_test(b, 30)
+        assert "belongs to another export" in result["detail"]
+    else:
+        result = await run_exported_test(b, 30, secrets=a_values)
+        assert "must match this exported test" in result["detail"]
+    assert result["outcome"] == "errored"
     assert handler.right_clicks == 0

@@ -40,11 +40,30 @@ Cookie and storage inspection hides values unless the operator enables
 capture/restore, which intentionally preserves raw browser state. Local file
 inputs require approved directories in `ARGUS_FILE_ROOTS`; see [Security](SECURITY.md).
 
-Generated regression tests use environment variables for recognized sensitive
-inputs. Current source also parameterizes recognized credential-bearing
-navigation URLs and redacts descriptive metadata; the URL guard is pending a
-package release after 0.12.0. Application-specific values and locators still
-require review before sharing a generated test.
+Current source keeps application URLs, typed/selected values, locator strings and
+assertion text out of generated regression test source. Finding descriptions are
+omitted, and filenames use the run ID and finding index. All application strings
+are supplied through environment variables. The tool returns variable names with
+fixed step/purpose labels, not values; an immediate run passes the values in the
+child environment without writing a values file by default. Only explicit
+`save_private_values=true` retains a raw JSON file in a new local directory;
+POSIX permissions are 0700 for the directory and 0600 for the file. A `.gitignore`
+ignores the directory's contents. This is not encryption and does not protect
+against forced Git adds, archive uploads, backups or access by the local account.
+The file persists until the user deletes it. Never publish it. `ARGUS_VALUES_FILE`
+lets its matching generated test load it without changing the runner's process
+environment. File and environment values require a matching export identity to
+prevent accidentally replaying another test's values.
+Generated exceptions suppress raw
+browser errors; tool results never forward raw subprocess output. These safeguards
+are pending a package release after 0.12.0, which parameterizes only recognized
+sensitive inputs.
+
+Environment variables are not encrypted or isolated from the local account, child
+processes, debuggers, process dumps or CI administrators. Do not enable runner
+options that dump environments/locals or publish CI secrets, reports or screenshots.
+Review any manual edits to generated tests before sharing them. Export protection
+does not sanitize the separate application evidence described above.
 
 ## Where data can go
 
