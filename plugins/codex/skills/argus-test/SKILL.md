@@ -21,10 +21,10 @@ browser-launch error, tell the user and offer to install the matching browser.
 Run it only after they agree, because it downloads software:
 
 ```bash
-uvx --python 3.12 --from argus-testing==0.12.0 --with playwright==1.64.1 python -m playwright install chromium
+uvx --python 3.12 --from argus-testing==0.12.1 --with playwright==1.64.1 python -m playwright install chromium
 ```
 
-For other setup problems, run `uvx --python 3.12 --from argus-testing==0.12.0 argus-mcp --doctor`;
+For other setup problems, run `uvx --python 3.12 --from argus-testing==0.12.1 argus-mcp --doctor`;
 it prints the fix for each failed check. Then call `start_session` again.
 
 ## 3. Test
@@ -59,7 +59,13 @@ finding verified by a fresh-load text check. It writes a Playwright test that
 fails while the bug is present and passes once it is fixed; give the user its
 path so they can keep it in CI. Pass `run=true` only when the user authorized
 repeating the journey's writes (for example on throwaway data), and report the
-TODO steps it lists rather than guessing them.
+TODO steps it lists rather than guessing them. Application values are private
+parameters: the script alone does not contain the values needed to replay it.
+Only set `save_private_values=true` when the user explicitly wants to retain local
+replay values. Its returned JSON file may contain credentials; never publish it.
+For later runs, set `ARGUS_VALUES_FILE` to the matching private file, or configure
+the required environment values and matching `ARGUS_EXPORT_ID` privately. Run each
+export separately with its own configuration.
 
 Close with `end_session`, passing the final `coverage_updates` for the goals you
 exercised or found blocked, with the evidence you observed. Then report:

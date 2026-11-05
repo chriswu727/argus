@@ -1,5 +1,11 @@
 # Changelog
 
+## Plugin updates - 2026-11-05
+
+- Claude plugin 0.12.2 and Codex plugin 0.12.1 pin the published Argus 0.12.1
+  runtime, refresh their dependency locks and document private replay values.
+- Keep raw replay values out of shared artifacts; retention remains opt-in.
+
 ## 0.12.1 - 2026-11-05
 
 - Keep all application URLs, inputs, locator strings and assertion text out of
