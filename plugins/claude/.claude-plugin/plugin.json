@@ -1,6 +1,6 @@
 {
   "name": "argus-testing",
-  "version": "0.12.1",
+  "version": "0.12.2",
   "description": "Testing for coding agents: exercise real user journeys, find bugs, and verify them with evidence.",
   "author": {
     "name": "Yichen Wu",
