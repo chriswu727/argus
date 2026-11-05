@@ -217,16 +217,22 @@ test another origin.{notes}
 
 import os
 import re
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 from playwright.sync_api import sync_playwright
 
-BASE_URL = os.environ.get("ARGUS_BASE_URL", {origin})
+ORIGIN = {origin}
+BASE_URL = os.environ.get("ARGUS_BASE_URL", ORIGIN)
 SYMPTOM_MARKER = "ARGUS_SYMPTOM_PRESENT"
 LOGIN_WALL_PHRASES = {login_wall_phrases}
 
 
 def _url(path):
+    if os.environ.get("ARGUS_BASE_URL"):
+        parsed = urlparse(path)
+        origin = parsed.scheme + "://" + parsed.netloc.rsplit("@", 1)[-1]
+        if origin == ORIGIN:
+            path = parsed._replace(scheme="", netloc="", path=parsed.path or "/").geturl()
     return urljoin(BASE_URL, path)
 
 

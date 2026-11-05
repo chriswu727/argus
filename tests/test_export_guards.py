@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import http.server
 import threading
+from urllib.parse import urlparse
 
 import pytest
 
@@ -178,7 +179,7 @@ async def test_exported_text_checks_ignore_bodyless_embeds(tmp_path, export_app)
         "https://user:synthetic-secret@example.test/app",
     ],
 )
-def test_export_parameterizes_credential_urls_without_changing_them(url):
+def test_export_parameterizes_credential_urls_without_changing_them(url, monkeypatch):
     secrets = {}
     source, notes = generate_test(
         finding_id="run:1",
@@ -197,10 +198,21 @@ def test_export_parameterizes_credential_urls_without_changing_them(url):
     namespace = {"__name__": "export_test"}
     exec(compile(source, "regression.py", "exec"), namespace)
     assert namespace["_url"](secrets["ARGUS_URL_1"]) == url
+    monkeypatch.setenv("ARGUS_BASE_URL", "https://staging.test")
+    exec(compile(source, "regression.py", "exec"), namespace)
+    target = urlparse(namespace["_url"](secrets["ARGUS_URL_1"]))
+    original = urlparse(url)
+    assert target.netloc == "staging.test"
+    assert target.path == original.path
+    assert target.query == original.query
+    assert target.fragment == original.fragment
+    external = "https://user:synthetic-external@other.test/app"
+    assert namespace["_url"](external) == external
 
 
+@pytest.mark.parametrize("userinfo", ["", "user:synthetic-auth@"])
 async def test_url_environment_replays_navigation_and_fresh_check(
-    tmp_path, export_app, monkeypatch
+    tmp_path, export_app, monkeypatch, userinfo
 ):
     handler, base = export_app
     requests = []
@@ -219,17 +231,20 @@ async def test_url_environment_replays_navigation_and_fresh_check(
         receipt={
             "expect": "present",
             "target_text": "Deleted task comes back",
-            "at_url": "http://old.test/check?token=synthetic-check",
+            "at_url": f"http://{userinfo}old.test/check?token=synthetic-check",
         },
-        journey=[{"tool": "navigate", "value": "http://old.test/app?api_key=synthetic-nav"}],
-        start_url="http://old.test/start?token=synthetic-start",
+        journey=[
+            {"tool": "navigate", "value": f"http://{userinfo}old.test/app?api_key=synthetic-nav"}
+        ],
+        start_url=f"http://{userinfo}old.test/start?token=synthetic-start",
         resolve_input=lambda action: None,
         filename="regression.py",
         secrets=secrets,
     )
     assert notes == []
     assert all(
-        value not in source for value in ("synthetic-check", "synthetic-nav", "synthetic-start")
+        value not in source
+        for value in ("synthetic-check", "synthetic-nav", "synthetic-start", "synthetic-auth")
     )
     path = tmp_path / "regression.py"
     path.write_text(source)

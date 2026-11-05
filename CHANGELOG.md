@@ -3,7 +3,8 @@
 ## Unreleased
 
 - Keep recognized credential-bearing navigation URLs out of generated regression
-  tests by reading them from environment variables. Redact descriptive metadata.
+  tests by reading them from environment variables. Preserve base-URL overrides
+  for URLs with HTTP credentials and redact descriptive metadata.
 - Stop incomplete exports before browser actions instead of silently skipping
   unsupported steps. `export_test(run=True)` reports `incomplete` without running.
 - Shorten the project overview, move detailed usage and tool profiles to
