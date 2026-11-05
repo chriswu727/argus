@@ -343,3 +343,12 @@ async def test_values_from_another_export_stop_before_writes(
         assert "must match this exported test" in result["detail"]
     assert result["outcome"] == "errored"
     assert handler.right_clicks == 0
+
+
+async def test_immediate_run_ignores_unrelated_values_file(tmp_path, export_app, monkeypatch):
+    handler, base = export_app
+    handler.mode = "fixed"
+    path, _, secrets = _export(tmp_path, base)
+    monkeypatch.setenv("ARGUS_VALUES_FILE", str(tmp_path / "unrelated.json"))
+    result = await run_exported_test(path, 30, secrets=secrets)
+    assert result["outcome"] == "passes", result

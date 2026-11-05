@@ -1,6 +1,6 @@
 # Agent result and progress protocol
 
-Available in 0.8.0 and newer; updated for 0.12.0. The result envelope remains version 1.
+Available in 0.8.0 and newer; updated for 0.12.1. The result envelope remains version 1.
 
 Existing tool names and scalar arguments remain compatible; `coverage_update.goal`
 also accepts a list of related goals. MCP responses retain text and
@@ -189,9 +189,9 @@ and returns `data`:
 | `finding_id` | The exported finding. |
 | `export_id` | Random identifier binding this generated file to its private values. |
 | `path` | Absolute path of the written test file. |
-| `required_env` | Current source: environment variable names mapped to fixed step/purpose descriptions, never values. Configure these privately for standalone or CI runs. |
-| `private_values_path` | Current source: `null` by default; path to a local raw-values JSON file only when `save_private_values=true`. Never publish this file. |
-| `manual_steps` | Steps that could not be translated; each is also a `TODO(argus)` line in the file. Current source exports with manual steps stop before browser actions until completed. An empty list means every recorded step was exported. |
+| `required_env` | Since 0.12.1: environment variable names mapped to fixed step/purpose descriptions, never values. Configure these privately for standalone or CI runs. |
+| `private_values_path` | Since 0.12.1: `null` by default; path to a local raw-values JSON file only when `save_private_values=true`. Never publish this file. |
+| `manual_steps` | Steps that could not be translated; each is also a `TODO(argus)` line in the file. Since 0.12.1, exports with manual steps stop before browser actions until completed. An empty list means every recorded step was exported. |
 | `run` | `null` unless `run=true`; otherwise `{"outcome", "detail"}` with outcome `fails_on_symptom`, `passes`, `errored` or `incomplete`. |
 
 The file replays the actions recorded up to the finding with locators captured
@@ -205,7 +205,7 @@ returned HTTP 4xx/5xx, or a login wall prevented the check). Exported control
 locators preserve iframe chains and scope duplicate matching to the same frame;
 text checks include nested frame content. A capsule restore
 cannot be replayed and is reported as a manual step. Uploaded files are not
-attached, and an upload is likewise a manual step. Current source reads all
+attached, and an upload is likewise a manual step. Since 0.12.1, Argus reads all
 application URLs, typed/selected inputs, locator strings, key values and assertion
 text from environment variables (`ARGUS_URL_n`, `ARGUS_INPUT_n`, `ARGUS_LOCATOR_n`,
 `ARGUS_KEY_n`, `ARGUS_TEXT_n`). `run=true` passes the session's values only in the
@@ -233,8 +233,8 @@ Finding titles and descriptive evidence are omitted from the generated file and
 filename. Unsupported actions and unavailable inputs block execution before any
 browser actions; `run=true` returns `incomplete`. Generated Python exceptions
 suppress raw browser messages, and the tool returns only fixed diagnostics rather
-than subprocess output. These protections are pending a package release after
-0.12.0. They apply to generated tests, not screenshots, reports, session capsules
+than subprocess output. These protections are available in 0.12.1. Regenerate older exported tests after
+upgrading. They apply to generated tests, not screenshots, reports, session capsules
 or logs from external runners; see [Privacy](../PRIVACY.md).
 
 A run repeats the journey's writes, executes in its own

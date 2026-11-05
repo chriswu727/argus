@@ -83,9 +83,10 @@ replaying a journey can repeat its writes.
 [Cursor, other MCP clients and troubleshooting](docs/usage.md#quick-start) ·
 [Claude plugin](plugins/claude) · [Codex plugin](plugins/codex)
 
-**Package status:** the latest published runtime is **0.12.0**. The current source
-keeps application values out of generated tests and blocks incomplete exports; these fixes
-are not yet in that package. See the [changelog](CHANGELOG.md#unreleased).
+**Version 0.12.1:** generated tests keep application values in private parameters
+and stop before execution when steps or configuration are incomplete. Upgrade
+from 0.12.0 for these protections. See the [releases](https://github.com/chriswu727/argus/releases)
+and [changelog](CHANGELOG.md#0121---2026-11-05).
 
 ## Engineering
 

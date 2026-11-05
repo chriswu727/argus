@@ -40,7 +40,7 @@ Cookie and storage inspection hides values unless the operator enables
 capture/restore, which intentionally preserves raw browser state. Local file
 inputs require approved directories in `ARGUS_FILE_ROOTS`; see [Security](SECURITY.md).
 
-Current source keeps application URLs, typed/selected values, locator strings and
+Since 0.12.1, Argus keeps application URLs, typed/selected values, locator strings and
 assertion text out of generated regression test source. Finding descriptions are
 omitted, and filenames use the run ID and finding index. All application strings
 are supplied through environment variables. The tool returns variable names with
@@ -56,8 +56,8 @@ environment. File and environment values require a matching export identity to
 prevent accidentally replaying another test's values.
 Generated exceptions suppress raw
 browser errors; tool results never forward raw subprocess output. These safeguards
-are pending a package release after 0.12.0, which parameterizes only recognized
-sensitive inputs.
+are available in 0.12.1. Earlier 0.12.0 exports parameterize only recognized
+sensitive inputs; regenerate old tests after upgrading.
 
 Environment variables are not encrypted or isolated from the local account, child
 processes, debuggers, process dumps or CI administrators. Do not enable runner

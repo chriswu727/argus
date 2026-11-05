@@ -554,13 +554,16 @@ async def run_exported_test(path: Path, timeout: float, secrets: Optional[dict] 
     The test runs in its own process group. On timeout or cancellation the
     whole group is killed before returning, so its browser cannot keep
     repeating the journey's writes after the operation ends."""
+    environment = {**os.environ, **(secrets or {})}
+    if secrets and "ARGUS_EXPORT_ID" in secrets:
+        environment.pop("ARGUS_VALUES_FILE", None)
     try:
         proc = await asyncio.create_subprocess_exec(
             sys.executable,
             str(path),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env={**os.environ, **(secrets or {})},
+            env=environment,
             start_new_session=os.name == "posix",
         )
     except (OSError, ValueError):

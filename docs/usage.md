@@ -116,7 +116,7 @@ An export that already passes is not a useful regression check.
 
 - **Stable locators.** They are captured from the elements Argus actually
   resolved. A repeated control is scoped to its row, and iframe scope is preserved.
-- **Private values.** Current source reads all application URLs, inputs, locator
+- **Private values.** Since 0.12.1, exports read all application URLs, inputs, locator
   strings and assertion text from environment variables. `required_env` lists
   each name and its step/purpose without values. `run=true` supplies the session's
   values in memory. If the user explicitly wants to retain values for later runs,
@@ -126,8 +126,8 @@ An export that already passes is not a useful regression check.
   values through the runner's secret store, including the matching `ARGUS_EXPORT_ID`.
   Run each export separately with its own values configuration. A wrong values
   file or identity stops the test before browser actions. Finding prose
-  is omitted from filenames and source. These protections are not yet in PyPI
-  0.12.0, which parameterizes only recognized sensitive inputs.
+  is omitted from filenames and source. These protections require
+  0.12.1. Earlier exports from 0.12.0 parameterize only recognized sensitive inputs.
 - **Bounded diagnostics.** Generated failures and tool results withhold raw
   browser/subprocess messages. They report fixed error categories and the outcome
   of the symptom check. The [export protocol](agent-protocol.md#exporting-a-regression-test)
@@ -135,7 +135,7 @@ An export that already passes is not a useful regression check.
 - **No pass from a broken page.** HTTP errors and login walls stop the check;
   a missing symptom on those pages does not mean the bug is fixed.
 - **Manual steps.** Uploads, capsule restores and unsupported actions are listed
-  as `TODO(argus)`. Current source exports stop before any browser actions until
+  as `TODO(argus)`. Since 0.12.1, exports stop before any browser actions until
   you translate those steps and remove the guard; `run=true` returns `incomplete`.
   PyPI 0.12.0 only adds TODO comments, so review its exports before running them.
 - **Optional run.** `run=true` runs the file once to show that it fails on the
@@ -185,7 +185,7 @@ synthetic sample does not establish general superiority.
 
 The no-model [response encoding benchmark](evaluation.md#response-overhead)
 compares identical synthetic evidence. Delta mode reduces aggregate result JSON
-by 48.25% versus compact mode across those 24 responses, reproduced with 0.12.0.
+by 48.25% versus compact mode across those 24 responses, reproduced with 0.12.1.
 This measures bytes, **not agent token usage or testing quality**.
 
 <details>

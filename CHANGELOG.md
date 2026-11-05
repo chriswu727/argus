@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.12.1 - 2026-11-05
 
 - Keep all application URLs, inputs, locator strings and assertion text out of
   generated regression tests, including unknown query keys and path tokens. Read
