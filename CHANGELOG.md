@@ -1,10 +1,19 @@
 # Changelog
 
-## Unreleased
+## 0.12.1 - 2026-11-05
 
-- Keep recognized credential-bearing navigation URLs out of generated regression
-  tests by reading them from environment variables. Preserve base-URL overrides
-  for URLs with HTTP credentials and redact descriptive metadata.
+- Keep all application URLs, inputs, locator strings and assertion text out of
+  generated regression tests, including unknown query keys and path tokens. Read
+  them from environment variables; expose names and step purposes in `required_env`.
+  Omit finding prose from file contents and filenames. Preserve base-URL overrides.
+- Add opt-in `save_private_values` for retaining a local, Git-ignored JSON values
+  file with owner-only POSIX permissions. Standalone tests can load it through
+  `ARGUS_VALUES_FILE`; explicit environment values take precedence. No values file
+  is written by default, and values are never included in tool results. Export
+  identities reject another test's file or environment before any browser actions.
+- Withhold raw browser and subprocess error output from generated test failures
+  and `export_test` results. Keep explicit symptom, incomplete, login-wall and
+  missing-variable diagnostics. Missing input values block execution.
 - Stop incomplete exports before browser actions instead of silently skipping
   unsupported steps. `export_test(run=True)` reports `incomplete` without running.
 - Shorten the project overview, move detailed usage and tool profiles to

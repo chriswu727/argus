@@ -83,13 +83,14 @@ replaying a journey can repeat its writes.
 [Cursor, other MCP clients and troubleshooting](docs/usage.md#quick-start) ·
 [Claude plugin](plugins/claude) · [Codex plugin](plugins/codex)
 
-**Package status:** the latest published runtime is **0.12.0**. The current source
-adds credential-URL protection and blocks incomplete test exports; these fixes
-are not yet in that package. See the [changelog](CHANGELOG.md#unreleased).
+**0.12.1**: generated tests keep application values in private parameters
+and stop before execution when steps or configuration are incomplete. Upgrade
+from 0.12.0 for these protections. See the [releases](https://github.com/chriswu727/argus/releases)
+and [changelog](CHANGELOG.md#0121---2026-11-05).
 
 ## Engineering
 
-Three parts of the implementation are useful starting points for a code review:
+Where to start reading the code:
 
 - **Verification with explicit outcomes.** A completed tool call is not a passed
   application test. Checks return evidence and a reproduced, not reproduced or
@@ -99,7 +100,7 @@ Three parts of the implementation are useful starting points for a code review:
   during the session, preserve iframe and row scope, and check the symptom on a
   fresh load. The [export tests](tests/test_export_test.py) exercise both buggy
   and fixed versions of local fixtures.
-- **An explicit runtime and adapter boundaries.** Session lifecycle, browser
+- **Separated runtime and adapters.** Session lifecycle, browser
   operations, verification and reporting are separated. The host agent supplies
   the model; Argus does not run its own model loop or require another API key.
   See the [architecture](docs/architecture.md) and [design decisions](docs/decisions.md).
@@ -114,10 +115,10 @@ application data. [Privacy details](PRIVACY.md).
 
 The deterministic fixtures cover **34 seeded scenarios**. That measures what
 the tools can exercise with scripted steps, not an agent's bug-discovery rate.
-In a [small paired Codex evaluation](docs/evaluation-0.8.md), Argus found 6/6
-defect opportunities versus 5/6 for the browser baseline, including a post-hoc
-fixture defect. Argus also used more time and tokens. These results do not
-establish general superiority.
+In a [small paired Codex evaluation](docs/evaluation-0.8.md), both Argus and the
+browser baseline found all 5 predeclared defects. Argus also found one fixture
+defect identified after the run and used more time and tokens. These results
+do not establish general superiority.
 
 The [evaluation guide](docs/evaluation.md) documents the method, limits and
 reproduction commands. Browser and unit tests run locally without model calls;

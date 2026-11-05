@@ -97,22 +97,27 @@ async def test_exported_test_fails_while_the_bug_exists_and_passes_once_fixed(
         )
         finding_id = recorded.data["finding_id"]
 
-        exported = await _fn("export_test")(finding_id, run=True)
+        exported = await _fn("export_test")(finding_id, run=True, save_private_values=True)
         assert exported.data["run"]["outcome"] == "fails_on_symptom", exported
         source = open(exported.data["path"]).read()
-        assert f'_in_row(page, "{task}' in source
-        assert "assert not _present(" in source
+        assert "_in_row(page, values[" in source
+        assert task not in source
+        assert "_present(values[" in source
 
         _TasksHandler.fixed = True
         _TasksHandler.tasks = ["Buy groceries", "Walk dog"]
         after_fix = subprocess.run(
             [sys.executable, exported.data["path"]],
+            env={
+                **os.environ,
+                "ARGUS_VALUES_FILE": exported.data["private_values_path"],
+                "ARGUS_BASE_URL": base,
+            },
             capture_output=True,
             text=True,
             timeout=180,
-            env={**os.environ, "ARGUS_BASE_URL": base},
         )
-        assert after_fix.returncode == 0, after_fix.stderr[-500:]
+        assert after_fix.returncode == 0, after_fix.stderr
     finally:
         await _fn("end_session")()
         server.shutdown()
@@ -179,11 +184,12 @@ def test_sensitive_inputs_and_unsupported_steps_are_not_guessed():
         secrets=secrets,
     )
     assert "secret-value" not in source
-    assert secrets == {"ARGUS_INPUT_1": "secret-value"}
-    assert 'os.environ["ARGUS_INPUT_1"]' in source
+    assert secrets["ARGUS_INPUT_1"] == "secret-value"
+    assert 'values["ARGUS_INPUT_1"]' in source
     assert "TODO(argus): replay step 2" in source and len(notes) == 1
     assert "page.once(" not in source
-    assert 'assert _present("Log out", page)' in source
+    assert secrets["ARGUS_TEXT_1"] == "Log out"
+    assert "Log out" not in source
     compile(source, "t.py", "exec")
 
 
@@ -207,8 +213,8 @@ def test_an_accepted_dialog_is_accepted_only_during_its_step():
         resolve_input=lambda action: None,
         filename="t.py",
     )
-    body = source[source.index('page.goto(_url("/"))') :]
-    other, delete = body.index('"#o"'), body.index('"#d"')
+    body = source[source.index('page.goto(_url(values["ARGUS_URL_1"], values))') :]
+    other, delete = body.index("ARGUS_LOCATOR_1"), body.index("ARGUS_LOCATOR_2")
     on, off = (
         body.index('accept_dialog["pending"] = True'),
         body.index('accept_dialog["pending"] = False'),
@@ -241,8 +247,8 @@ def test_a_restored_capsule_is_a_todo_at_its_position():
         resolve_input=lambda action: None,
         filename="t.py",
     )
-    assert len(notes) == 1 and "capsule 'logged-in'" in notes[0]
-    assert "TODO(argus): step 2: establish the state of capsule 'logged-in'" in source
+    assert len(notes) == 1 and "restored session state" in notes[0]
+    assert "TODO(argus): step 2: establish restored session state" in source
 
 
 def test_backslashes_and_quotes_in_finding_text_keep_the_file_valid():
@@ -260,7 +266,7 @@ def test_backslashes_and_quotes_in_finding_text_keep_the_file_valid():
         filename="t.py",
     )
     doc = ast.get_docstring(ast.parse(source))
-    assert "C:\\new\\x01 shows \\N" in doc and "Shows \\d+ items" in doc
+    assert title not in doc and "Application details are supplied" in doc
 
 
 async def test_a_run_passes_sensitive_inputs_only_through_the_environment(tmp_path):
@@ -268,8 +274,7 @@ async def test_a_run_passes_sensitive_inputs_only_through_the_environment(tmp_pa
 
     script = tmp_path / "t.py"
     script.write_text(
-        "import os\n"
-        "assert os.environ.get('ARGUS_INPUT_1') == 'pw', 'ARGUS_SYMPTOM_PRESENT: no input'\n"
+        "import os\nassert os.environ.get('ARGUS_INPUT_1') == 'pw', 'ARGUS_SYMPTOM_PRESENT'\n"
     )
     assert (await run_exported_test(script, 30))["outcome"] == "fails_on_symptom"
     secrets = {"ARGUS_INPUT_1": "pw"}
@@ -320,6 +325,7 @@ async def test_a_stopped_run_kills_the_test_and_what_it_started(tmp_path, how):
 
 
 def test_hash_routes_are_kept_and_the_check_is_a_fresh_load():
+    secrets = {}
     source, _ = generate_test(
         finding_id="run:1",
         title="t",
@@ -329,11 +335,15 @@ def test_hash_routes_are_kept_and_the_check_is_a_fresh_load():
         start_url="http://h/#/home",
         resolve_input=lambda action: None,
         filename="t.py",
+        secrets=secrets,
     )
-    assert 'page.goto(_url("/#/home"))' in source
-    assert 'page.goto(_url("/#/done"))' in source
+    assert [secrets[f"ARGUS_URL_{i}"] for i in range(1, 4)] == [
+        "http://h/#/home",
+        "http://h/#/done",
+        "http://h/app?a=1#/tasks",
+    ]
     assert (
-        'page.goto("about:blank")\n            response = page.goto(_url("/app?a=1#/tasks"))\n'
+        'page.goto("about:blank")\n            response = page.goto(_url(values["ARGUS_URL_3"], values))\n'
         "            _check_page(page, response)"
     ) in source
 
@@ -367,7 +377,9 @@ async def test_the_exported_check_scrolls_like_the_verifier(tmp_path):
     threading.Thread(target=server.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{server.server_address[1]}"
     try:
+        secrets = {}
         source, _ = generate_test(
+            secrets=secrets,
             finding_id="run:1",
             title="Late row is missing",
             expected="Late row is listed",
@@ -380,7 +392,7 @@ async def test_the_exported_check_scrolls_like_the_verifier(tmp_path):
         script = tmp_path / "t.py"
         script.write_text(source)
         # The row exists further down, so the "missing" symptom is not present.
-        assert (await run_exported_test(script, 90))["outcome"] == "passes"
+        assert (await run_exported_test(script, 90, secrets=secrets))["outcome"] == "passes"
     finally:
         server.shutdown()
 
@@ -535,7 +547,9 @@ async def test_unnamed_hidden_or_switch_inputs_replay_in_a_browser(tmp_path, row
             toggle.parent_context = context
             rows.append(toggle)
         target = next(el for el in rows if el.parent_context == row)
+        secrets = {}
         source, _ = generate_test(
+            secrets=secrets,
             finding_id="run:1",
             title="Tick is not kept",
             expected="The tick is kept",
@@ -548,7 +562,7 @@ async def test_unnamed_hidden_or_switch_inputs_replay_in_a_browser(tmp_path, row
         script = tmp_path / "t.py"
         script.write_text(source)
         # The click reaches the right input, so the "not kept" symptom is gone.
-        assert (await run_exported_test(script, 90))["outcome"] == "passes"
+        assert (await run_exported_test(script, 90, secrets=secrets))["outcome"] == "passes"
     finally:
         server.shutdown()
 
@@ -573,7 +587,8 @@ def test_back_scroll_resize_and_upload_steps_are_exported():
     assert "page.go_back()" in source
     assert 'page.evaluate("() => window.scrollBy(0, 500)")' in source
     assert 'page.set_viewport_size({"width": 375, "height": 812})' in source
-    assert "TODO(argus): step 4: upload_file 'Avatar; 1 file(s)'" in source
+    assert "TODO(argus): step 4: upload_file" in source
+    assert "Avatar" not in source
     assert len(notes) == 1 and "set_input_files" in notes[0]
     compile(source, "t.py", "exec")
 
@@ -801,7 +816,9 @@ async def test_exported_text_steps_target_the_visible_copy(tmp_path):
     threading.Thread(target=server.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{server.server_address[1]}"
     try:
+        secrets = {}
         source, _ = generate_test(
+            secrets=secrets,
             finding_id="run:1",
             title="Edit is not kept",
             expected="The edit is kept",
@@ -817,7 +834,7 @@ async def test_exported_text_steps_target_the_visible_copy(tmp_path):
         script = tmp_path / "t.py"
         script.write_text(source)
         # Without the visibility filter both steps hit a strict-mode error.
-        assert (await run_exported_test(script, 90))["outcome"] == "passes"
+        assert (await run_exported_test(script, 90, secrets=secrets))["outcome"] == "passes"
     finally:
         server.shutdown()
 

@@ -1,6 +1,6 @@
 # Agent result and progress protocol
 
-Available in 0.8.0 and newer; updated for 0.12.0. The result envelope remains version 1.
+Available in 0.8.0 and newer; updated for 0.12.1. The result envelope remains version 1.
 
 Existing tool names and scalar arguments remain compatible; `coverage_update.goal`
 also accepts a list of related goals. MCP responses retain text and
@@ -177,7 +177,7 @@ Argus does not infer semantic goal associations or completeness.
 
 ## Exporting a regression test
 
-`export_test(finding_id, run=False)` accepts a finding of the current session
+`export_test(finding_id, run=False, save_private_values=False)` accepts a finding of the current session
 whose receipt is reproduced by a fresh-load text check (`expect` `present` or
 `absent` with `target_text`). Replay-verified, status-code, observed and
 inconclusive findings are rejected with `INVALID_ARGUMENT`. The tool writes a
@@ -187,8 +187,11 @@ and returns `data`:
 | Field | Meaning |
 |---|---|
 | `finding_id` | The exported finding. |
+| `export_id` | Random identifier binding this generated file to its private values. |
 | `path` | Absolute path of the written test file. |
-| `manual_steps` | Steps that could not be translated; each is also a `TODO(argus)` line in the file. Current source exports with manual steps stop before browser actions until completed. An empty list means every recorded step was exported. |
+| `required_env` | Since 0.12.1: environment variable names mapped to fixed step/purpose descriptions, never values. Configure these privately for standalone or CI runs. |
+| `private_values_path` | Since 0.12.1: `null` by default; path to a local raw-values JSON file only when `save_private_values=true`. Never publish this file. |
+| `manual_steps` | Steps that could not be translated; each is also a `TODO(argus)` line in the file. Since 0.12.1, exports with manual steps stop before browser actions until completed. An empty list means every recorded step was exported. |
 | `run` | `null` unless `run=true`; otherwise `{"outcome", "detail"}` with outcome `fails_on_symptom`, `passes`, `errored` or `incomplete`. |
 
 The file replays the actions recorded up to the finding with locators captured
@@ -202,12 +205,38 @@ returned HTTP 4xx/5xx, or a login wall prevented the check). Exported control
 locators preserve iframe chains and scope duplicate matching to the same frame;
 text checks include nested frame content. A capsule restore
 cannot be replayed and is reported as a manual step. Uploaded files are not
-attached, and an upload is likewise a manual step. Sensitive inputs are read
-from `ARGUS_INPUT_n` environment variables; `run=true` passes the session's values that way and never
-writes them to the file. Current source also moves recognized credential-bearing
-navigation URLs to `ARGUS_URL_n`, checks required variables before browser actions,
-and reports `incomplete` without executing a journey with manual steps. These
-URL and incomplete-journey guards are pending a package release after 0.12.0.
+attached, and an upload is likewise a manual step. Since 0.12.1, Argus reads all
+application URLs, typed/selected inputs, locator strings, key values and assertion
+text from environment variables (`ARGUS_URL_n`, `ARGUS_INPUT_n`, `ARGUS_LOCATOR_n`,
+`ARGUS_KEY_n`, `ARGUS_TEXT_n`). `run=true` passes the session's values only in the
+child environment. By default no values file is written. Only when the user
+explicitly requests retaining replay values, use `save_private_values=true` before
+closing the session. The tool writes a raw JSON values file in a new local private
+directory (POSIX directory mode 0700, file mode 0600), with a `.gitignore` that
+ignores everything in that directory. Set `ARGUS_VALUES_FILE` to its returned path
+for later runs. Only required variables are loaded, and explicit environment
+variables override saved values. Every values file is bound to its generated test
+by `export_id`; a mismatched file fails before browser actions. Environment-only
+values and overrides also require `ARGUS_EXPORT_ID` to equal that test's returned
+`export_id`. Run one export per process with its own values configuration; do not
+point a whole pytest directory at one export's values. A new export creates a new
+identity, so keep each generated file with its matching private configuration.
+The loader does not change the runner's process
+environment. `ARGUS_URL_1` must be an absolute HTTP(S) URL.
+
+The values file is not encrypted; keep it out of commits, artifacts and backups
+that are shared. In CI, provide it privately or configure the variables through
+the runner's secret store. `ARGUS_BASE_URL` retargets URLs on the original origin and leaves external
+origins unchanged.
+
+Finding titles and descriptive evidence are omitted from the generated file and
+filename. Unsupported actions and unavailable inputs block execution before any
+browser actions; `run=true` returns `incomplete`. Generated Python exceptions
+suppress raw browser messages, and the tool returns only fixed diagnostics rather
+than subprocess output. These protections are available in 0.12.1. Regenerate older exported tests after
+upgrading. They apply to generated tests, not screenshots, reports, session capsules
+or logs from external runners; see [Privacy](../PRIVACY.md).
+
 A run repeats the journey's writes, executes in its own
 process group inside the operation deadline, and is killed with its browser on
 timeout or cancellation.

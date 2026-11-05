@@ -225,7 +225,7 @@ _CONCISE_TOOL_DESCRIPTIONS = {
     "get_errors": "Drain console errors and HTTP 4xx/5xx captured since the last call. New causes are auto-captured and not independently verified.",
     "capsule_save": "Save cookies and storage after establishing state through the UI. Pass a liveness_marker visible only while the state is valid. Capsules contain credentials.",
     "capsule_restore": "Restore a saved capsule and report LIVE or STALE from its liveness marker. It does not reset backend data.",
-    "export_test": "Write a Playwright test for a verified finding: replays its journey, fails while the bug is present, passes once fixed. run=true runs it once, repeating the journey's writes: only with the user's authority.",
+    "export_test": "Write a Playwright test for a verified finding: replays its journey, fails while the bug is present, passes once fixed. run=true repeats writes and requires authority. Application values are private parameters. save_private_values=true stores local raw values only when the user explicitly requests retention; never publish that file.",
     "regression_check": "Re-run fresh-load checks for findings journaled in earlier runs against the current build: still present, no longer reproduces, or inconclusive. Read-only; replay findings are not re-driven.",
     "end_session": "Close and export reports. Optionally submit final coverage_updates (goal, exercised|blocked, evidence) atomically in this call. Invalid updates keep the session open. Read unfinished goals and warnings; completion is not an application pass.",
 }

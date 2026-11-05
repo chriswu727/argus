@@ -112,35 +112,30 @@ discovery without a browser or a model, run `uvx --from argus-testing python -m 
 When a finding is reproduced by a fresh-load text check, `export_test` writes a
 standalone Playwright test that replays the recorded journey and asserts the
 opposite of the symptom. Confirm that the exported test fails on the symptom before relying on it in CI.
-An export that already passes is not a useful regression check. The body of a test exported against TodoMVC, whose todos do not
-survive a reload:
-
-```python
-page.goto(_url("/"))
-page.get_by_placeholder("What needs to be done?", exact=True).fill("Buy milk")
-page.get_by_placeholder("What needs to be done?", exact=True).press("Enter")
-page.wait_for_load_state("networkidle")
-page.get_by_placeholder("What needs to be done?", exact=True).fill("Walk dog")
-page.get_by_placeholder("What needs to be done?", exact=True).press("Enter")
-page.wait_for_load_state("networkidle")
-_in_row(page, "Walk dog", lambda scope: scope.locator("input[type=\"checkbox\"]")).click()
-page.wait_for_load_state("networkidle")
-page.goto("about:blank")
-page.goto(_url("/"))
-assert _present("Walk dog", page), SYMPTOM_MARKER + ": 'Walk dog' is missing"
-```
+An export that already passes is not a useful regression check.
 
 - **Stable locators.** They are captured from the elements Argus actually
-  resolved. A repeated control is scoped to its row by the row's title, not by
-  position.
-- **Sensitive inputs.** Recognized sensitive input fields use environment variables.
-  On the current source branch, recognized credential-bearing navigation URLs
-  also use `ARGUS_URL_n`; these URL guards are not yet in PyPI 0.12.0.
-  Review application-specific values before committing a generated test.
+  resolved. A repeated control is scoped to its row, and iframe scope is preserved.
+- **Private values.** Since 0.12.1, exports read all application URLs, inputs, locator
+  strings and assertion text from environment variables. `required_env` lists
+  each name and its step/purpose without values. `run=true` supplies the session's
+  values in memory. If the user explicitly wants to retain values for later runs,
+  use `save_private_values=true` before closing the session and set
+  `ARGUS_VALUES_FILE` to the returned `private_values_path`. That local JSON file
+  is private, unencrypted and ignored by Git; never publish it. In CI, configure
+  values through the runner's secret store, including the matching `ARGUS_EXPORT_ID`.
+  Run each export separately with its own values configuration. A wrong values
+  file or identity stops the test before browser actions. Finding prose
+  is omitted from filenames and source. These protections require
+  0.12.1. Earlier exports from 0.12.0 parameterize only recognized sensitive inputs.
+- **Bounded diagnostics.** Generated failures and tool results withhold raw
+  browser/subprocess messages. They report fixed error categories and the outcome
+  of the symptom check. The [export protocol](agent-protocol.md#exporting-a-regression-test)
+  describes the environment variables and return fields.
 - **No pass from a broken page.** HTTP errors and login walls stop the check;
   a missing symptom on those pages does not mean the bug is fixed.
 - **Manual steps.** Uploads, capsule restores and unsupported actions are listed
-  as `TODO(argus)`. Current source exports stop before any browser actions until
+  as `TODO(argus)`. Since 0.12.1, exports stop before any browser actions until
   you translate those steps and remove the guard; `run=true` returns `incomplete`.
   PyPI 0.12.0 only adds TODO comments, so review its exports before running them.
 - **Optional run.** `run=true` runs the file once to show that it fails on the
@@ -181,16 +176,16 @@ given model uses the tools well*, which is noisy and reported separately.
 Does installing Argus improve an agent? Measure it with the
 [paired evaluation harness](evaluation.md): the same model, task, fixture,
 initial state and budget, with both arms and failures retained. In the
-[0.8 Codex evaluation](evaluation-0.8.md), ten matched pairs, Argus found
-6/6 defect opportunities versus 5/6 for the browser baseline, including one
-post-hoc fixture defect. Both had zero observed false positives and equal
+[0.8 Codex evaluation](evaluation-0.8.md), ten matched pairs, both Argus and
+the browser baseline found all 5 predeclared defects. Argus also found one
+fixture defect identified after the run. Both had zero observed false positives and equal
 declared-goal coverage. Argus used more time and tokens. On four repeated pilot
 cases, the targeted update reduced Argus's median calls from 17 to 9. This small
 synthetic sample does not establish general superiority.
 
 The no-model [response encoding benchmark](evaluation.md#response-overhead)
 compares identical synthetic evidence. Delta mode reduces aggregate result JSON
-by 48.25% versus compact mode across those 24 responses, reproduced with 0.12.0.
+by 48.25% versus compact mode across those 24 responses, reproduced with 0.12.1.
 This measures bytes, **not agent token usage or testing quality**.
 
 <details>
