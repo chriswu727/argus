@@ -83,7 +83,7 @@ replaying a journey can repeat its writes.
 [Cursor, other MCP clients and troubleshooting](docs/usage.md#quick-start) ·
 [Claude plugin](plugins/claude) · [Codex plugin](plugins/codex)
 
-**Version 0.12.1:** generated tests keep application values in private parameters
+**0.12.1**: generated tests keep application values in private parameters
 and stop before execution when steps or configuration are incomplete. Upgrade
 from 0.12.0 for these protections. See the [releases](https://github.com/chriswu727/argus/releases)
 and [changelog](CHANGELOG.md#0121---2026-11-05).
