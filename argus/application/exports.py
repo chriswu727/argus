@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from argus.domain.contracts import ErrorCode, Rejection, ToolText
+from argus.security import _redact
 
 from .context import current_runtime
 from .session import _require_session, _require_web_session
@@ -28,8 +29,8 @@ async def export_test(finding_id: str, run: bool = False) -> str:
     project's tests to keep it in CI.
 
     Only findings verified on a fresh load with a text check can be exported.
-    Steps Argus cannot translate are marked TODO in the file and listed here.
-    Sensitive inputs (passwords, tokens) are read from environment variables;
+    Steps Argus cannot translate are marked TODO and block the test before any writes.
+    Sensitive inputs and credential-bearing URLs are read from environment variables;
     run=true passes this session's values to the test that way, never in the file.
 
     Args:
@@ -65,7 +66,7 @@ async def export_test(finding_id: str, run: bool = False) -> str:
 
     directory = current_runtime().settings.output_dir / "tests"
     directory.mkdir(parents=True, exist_ok=True)
-    path = directory / f"test_argus_{s.run_id}_{index}_{_slug(bug.title)[:40]}.py"
+    path = directory / f"test_argus_{s.run_id}_{index}_{_slug(_redact(bug.title))[:40]}.py"
 
     def resolve_input(action: dict):
         try:
@@ -93,7 +94,12 @@ async def export_test(finding_id: str, run: bool = False) -> str:
         lines.append(f"  {len(notes)} step(s) need manual translation (marked TODO in the file):")
         lines.extend(f"    {note}" for note in notes)
     result = None
-    if run:
+    if run and notes:
+        result = {"outcome": "incomplete", "detail": "Translate the listed steps before running."}
+        lines.append(
+            "  Not run: incomplete journey. Translate every TODO step and remove the guard."
+        )
+    elif run:
         # Finish inside the operation deadline; cancellation kills the test.
         budget = max(10.0, current_runtime().settings.operation_timeout - 15.0)
         result = await run_exported_test(path, timeout=min(180.0, budget), secrets=secrets)
@@ -111,7 +117,10 @@ async def export_test(finding_id: str, run: bool = False) -> str:
         lines.append(
             "  Not run. run=true runs it once (repeating the journey's writes) to show it fails now."
         )
-    lines.append("  Copy it into the project's tests; it passes once the bug is fixed.")
+    if not notes:
+        lines.append(
+            "  Confirm it fails on the symptom before using it as a regression check in CI."
+        )
     return ToolText(
         "\n".join(lines),
         {

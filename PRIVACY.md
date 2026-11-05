@@ -40,6 +40,12 @@ Cookie and storage inspection hides values unless the operator enables
 capture/restore, which intentionally preserves raw browser state. Local file
 inputs require approved directories in `ARGUS_FILE_ROOTS`; see [Security](SECURITY.md).
 
+Generated regression tests use environment variables for recognized sensitive
+inputs. Current source also parameterizes recognized credential-bearing
+navigation URLs and redacts descriptive metadata; the URL guard is pending a
+package release after 0.12.0. Application-specific values and locators still
+require review before sharing a generated test.
+
 ## Where data can go
 
 - The MCP host and its configured model provider receive the Argus tool inputs

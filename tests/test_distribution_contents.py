@@ -9,7 +9,9 @@ import pytest
 CHECK = runpy.run_path(str(Path(__file__).resolve().parents[1] / "scripts/check_distributions.py"))
 
 
-@pytest.mark.parametrize("name", ["", "docs/local-notes.md", ".env", "argus/.env", "../README.md"])
+@pytest.mark.parametrize(
+    "name", ["", "docs/local-notes.md", ".env", "argus/.env", "../README.md", "README.zh-CN.md"]
+)
 def test_unlisted_content_is_rejected(name):
     assert not CHECK["allowed"](name, wheel=False)
     assert not CHECK["allowed"](name, wheel=True)
@@ -29,9 +31,9 @@ def test_lab_code_is_allowed_only_in_source_distribution():
     assert not CHECK["allowed"]("argus_lab/bench/runner.py", wheel=True)
 
 
-def test_translation_is_allowed_only_in_source_distribution():
-    assert CHECK["allowed"]("README.zh-CN.md", wheel=False)
-    assert not CHECK["allowed"]("README.zh-CN.md", wheel=True)
+def test_usage_reference_is_allowed_only_in_source_distribution():
+    assert CHECK["allowed"]("docs/usage.md", wheel=False)
+    assert not CHECK["allowed"]("docs/usage.md", wheel=True)
 
 
 @pytest.mark.parametrize("name", ["../README.md", "argus_testing-1.0/docs/local-notes.md"])

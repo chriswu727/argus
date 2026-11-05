@@ -62,7 +62,7 @@ only-include = [
     "test-site/app.py", "human-eye-fixture/app.py",
     "docs/architecture.md", "docs/decisions.md",
     "docs/agent-protocol.md", "docs/evaluation.md", "docs/evaluation-0.8.md",
-    "pyproject.toml", "README.md", "README.zh-CN.md", "LICENSE", "CHANGELOG.md", "CONTRIBUTING.md",
+    "pyproject.toml", "README.md", "docs/usage.md", "LICENSE", "CHANGELOG.md", "CONTRIBUTING.md",
     "SECURITY.md", "PRIVACY.md", "AGENTS.md", "llms-install.md", "server.json", "glama.json",
 ]
 

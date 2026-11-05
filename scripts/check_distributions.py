@@ -9,7 +9,7 @@ from pathlib import Path, PurePosixPath
 PUBLIC_FILES = {
     "pyproject.toml",
     "README.md",
-    "README.zh-CN.md",
+    "docs/usage.md",
     "LICENSE",
     "CHANGELOG.md",
     "CONTRIBUTING.md",

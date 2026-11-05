@@ -167,3 +167,129 @@ async def test_exported_text_checks_ignore_bodyless_embeds(tmp_path, export_app)
     handler.mode = "svg"
     path, _ = _export(tmp_path, base)
     assert (await run_exported_test(path, 10))["outcome"] == "passes"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://example.test/app?token=synthetic-secret&view=all",
+        "https://example.test/app?%61pi_key=synthetic-secret",
+        "https://example.test/app#access_token=synthetic-secret",
+        "https://user:synthetic-secret@example.test/app",
+    ],
+)
+def test_export_parameterizes_credential_urls_without_changing_them(url):
+    secrets = {}
+    source, notes = generate_test(
+        finding_id="run:1",
+        title=f"Navigation fails at {url}",
+        expected=f"Load {url}",
+        receipt={"expect": "present", "target_text": "Error", "at_url": url},
+        journey=[{"tool": "navigate", "value": url}],
+        start_url=url,
+        resolve_input=lambda action: None,
+        filename="regression.py",
+        secrets=secrets,
+    )
+    assert "synthetic-secret" not in source
+    assert notes == []
+    assert len(secrets) == 1
+    namespace = {"__name__": "export_test"}
+    exec(compile(source, "regression.py", "exec"), namespace)
+    assert namespace["_url"](secrets["ARGUS_URL_1"]) == url
+
+
+async def test_url_environment_replays_navigation_and_fresh_check(
+    tmp_path, export_app, monkeypatch
+):
+    handler, base = export_app
+    requests = []
+    original = handler.do_GET
+
+    def capture(request):
+        requests.append(request.path)
+        original(request)
+
+    monkeypatch.setattr(handler, "do_GET", capture)
+    secrets = {}
+    source, notes = generate_test(
+        finding_id="run:1",
+        title="Persistence failure",
+        expected="Task stays deleted",
+        receipt={
+            "expect": "present",
+            "target_text": "Deleted task comes back",
+            "at_url": "http://old.test/check?token=synthetic-check",
+        },
+        journey=[{"tool": "navigate", "value": "http://old.test/app?api_key=synthetic-nav"}],
+        start_url="http://old.test/start?token=synthetic-start",
+        resolve_input=lambda action: None,
+        filename="regression.py",
+        secrets=secrets,
+    )
+    assert notes == []
+    assert all(
+        value not in source for value in ("synthetic-check", "synthetic-nav", "synthetic-start")
+    )
+    path = tmp_path / "regression.py"
+    path.write_text(source)
+    monkeypatch.setenv("ARGUS_BASE_URL", base)
+    result = await run_exported_test(path, 30, secrets=secrets)
+    assert result["outcome"] == "fails_on_symptom", result
+    assert "/start?token=synthetic-start" in requests
+    assert "/app?api_key=synthetic-nav" in requests
+    assert "/check?token=synthetic-check" in requests
+
+
+def test_ordinary_query_and_fragment_are_preserved():
+    source, notes = generate_test(
+        finding_id="run:1",
+        title="Example",
+        expected="Saved",
+        receipt={"expect": "present", "target_text": "Error"},
+        journey=[],
+        start_url="https://example.test/app?sort=name#details",
+        resolve_input=lambda action: None,
+        filename="regression.py",
+    )
+    assert notes == []
+    assert 'page.goto(_url("/app?sort=name#details"))' in source
+    assert "ARGUS_URL_1" not in source
+
+
+@pytest.mark.parametrize("tool", ["upload_file", "capsule_restore", "unknown_action", "press_key"])
+async def test_incomplete_exports_stop_before_any_navigation(tmp_path, export_app, tool):
+    handler, base = export_app
+    handler.mode = "fixed"
+    path, notes = _export(
+        tmp_path,
+        base,
+        journey=[
+            {"tool": "navigate", "value": base + "/right"},
+            {"tool": tool, "description": "Required trigger"},
+        ],
+    )
+    assert notes
+    result = await run_exported_test(path, 30)
+    assert result["outcome"] == "incomplete", result
+    assert handler.right_clicks == 0
+
+
+async def test_missing_url_environment_stops_before_any_navigation(
+    tmp_path, export_app, monkeypatch
+):
+    handler, base = export_app
+    monkeypatch.delenv("ARGUS_URL_1", raising=False)
+    path, notes = _export(
+        tmp_path,
+        base,
+        journey=[
+            {"tool": "navigate", "value": base + "/right"},
+            {"tool": "navigate", "value": base + "/check?token=synthetic-secret"},
+        ],
+    )
+    assert notes == []
+    result = await run_exported_test(path, 30)
+    assert result["outcome"] == "errored", result
+    assert "Missing required environment variable: ARGUS_URL_1" in result["detail"]
+    assert handler.right_clicks == 0

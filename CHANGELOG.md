@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Keep recognized credential-bearing navigation URLs out of generated regression
+  tests by reading them from environment variables. Redact descriptive metadata.
+- Stop incomplete exports before browser actions instead of silently skipping
+  unsupported steps. `export_test(run=True)` reports `incomplete` without running.
+- Shorten the project overview, move detailed usage and tool profiles to
+  `docs/usage.md`, and consolidate public documentation in English.
+
 ## Claude plugin 0.12.1 - 2026-10-28
 
 - Use `uv run --isolated --locked` without launcher environment overrides.

@@ -820,3 +820,32 @@ async def test_exported_text_steps_target_the_visible_copy(tmp_path):
         assert (await run_exported_test(script, 90))["outcome"] == "passes"
     finally:
         server.shutdown()
+
+
+async def test_export_tool_does_not_run_an_incomplete_journey(isolated_runtime, monkeypatch):
+    from argus.application import exports
+    from argus.application.session import _require_session
+
+    async def must_not_run(*args, **kwargs):
+        pytest.fail("An incomplete export must not execute the recorded writes")
+
+    server, base = _serve()
+    _TasksHandler.tasks = ["Buy groceries"]
+    try:
+        await _fn("start_session")(base + "/tasks")
+        recorded = await _fn("record_bug")(
+            "Task persists",
+            "high",
+            {"expected": "Gone", "actual": "Still listed"},
+            verify={"expect": "present", "target_text": "Buy groceries", "at_url": base + "/tasks"},
+        )
+        session = _require_session()
+        session.capsule_restores.append((0, "Required login state"))
+        monkeypatch.setattr(exports, "run_exported_test", must_not_run)
+        result = await _fn("export_test")(recorded.data["finding_id"], run=True)
+        assert result.data["run"]["outcome"] == "incomplete"
+        assert result.data["manual_steps"]
+        assert "Not run" in result
+    finally:
+        await _fn("end_session")()
+        server.shutdown()

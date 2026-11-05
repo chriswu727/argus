@@ -12,7 +12,7 @@ that exercises real user journeys, finds bugs and verifies them with evidence. I
 Install the Playwright Chromium browser once:
 
 ```bash
-uvx --from playwright playwright install chromium
+uvx --from argus-testing python -m playwright install chromium
 ```
 
 After an upgrade, a missing browser executable can mean the installed Chromium
@@ -44,8 +44,8 @@ claude mcp add argus -- uvx --from argus-testing argus-mcp
 codex mcp add argus -- uvx --from argus-testing argus-mcp
 ```
 
-For Cursor, use the standard JSON above or the one-click button in the project
-README.
+For Cursor, use the standard JSON above or the one-click button in the
+[usage reference](docs/usage.md#quick-start).
 
 ## Verify the installation
 
