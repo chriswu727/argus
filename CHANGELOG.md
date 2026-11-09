@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.12.2 - 2026-11-08
 
 - Treat intermittent regression receipts as inconclusive instead of fixed.
 - Retain full verification predicates and preconditions privately for journals
