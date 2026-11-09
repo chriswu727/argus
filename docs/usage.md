@@ -198,7 +198,7 @@ synthetic sample does not establish general superiority.
 
 The no-model [response encoding benchmark](evaluation.md#response-overhead)
 compares identical synthetic evidence. Delta mode reduces aggregate result JSON
-by 48.25% versus compact mode across those 24 responses, reproduced with 0.12.1.
+by 48.25% versus compact mode across those 24 responses, reproduced with 0.12.2.
 This measures bytes, **not agent token usage or testing quality**.
 
 <details>

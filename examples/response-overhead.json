@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "argus_version": "0.12.1",
+  "argus_version": "0.12.2",
   "mcp_sdk_version": "1.30.0",
   "python_version": "3.12.13",
   "method": "synthetic-identical-input-encoding-v1",
