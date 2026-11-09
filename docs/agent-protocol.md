@@ -1,6 +1,6 @@
 # Agent result and progress protocol
 
-Available in 0.8.0 and newer; updated for 0.12.1. The result envelope remains version 1.
+Available in 0.8.0 and newer; updated for 0.12.2. The result envelope remains version 1.
 
 Existing tool names and scalar arguments remain compatible; `coverage_update.goal`
 also accepts a list of related goals. MCP responses retain text and
@@ -138,6 +138,24 @@ Replay rechecks use the original finding's trace and still repeat its writes;
 they require the same authority as any replay. A limit or inconclusive receipt
 is a reason to preserve uncertainty, not to create a duplicate and force a pass.
 
+## Regression checks and migration
+
+Since 0.12.2, journals retain the complete verification predicate and preconditions
+privately, including URL queries and fragments, separately from public receipt
+previews. These local artifacts can contain sensitive application data.
+
+Automatic regression runs read-only built-in text/HTTP checks. Mixed reproduction
+receipts, such as `1/2`, remain `INCONCLUSIVE`; they do not indicate a fix. Replay,
+storage-reset and custom checks are not run automatically. A recorded login-page
+context permits regression checks of that intended surface; an unexpected login
+form cannot turn missing content into evidence of a fix.
+
+Journals from 0.12.1 and earlier lack complete preconditions and require re-recording.
+Preserve the old directory, record replacement findings in a new `ARGUS_OUTPUT_DIR`,
+and call `end_session` before checking the new journal. An empty journal is not a
+successful migration. Regenerate older exported tests from the new findings; saved
+Python files do not update when the package is upgraded.
+
 ## Finding evidence provenance
 
 `record_bug.evidence` declares optional `expected`, `actual`, `steps`, `url`,
@@ -182,7 +200,17 @@ whose receipt is reproduced by a fresh-load text check (`expect` `present` or
 `absent` with `target_text`). Replay-verified, status-code, observed and
 inconclusive findings are rejected with `INVALID_ARGUMENT`. The tool writes a
 standalone Playwright (Python, sync) file under the output directory's `tests/`
-and returns `data`:
+and returns `data`. Checks requiring `clear_storage=true` are rejected rather than
+exported without their storage-reset precondition.
+
+Since 0.12.2, row-scoped actions require a unique match for the complete recorded
+row text. Missing or ambiguous matches stop before the action; positional fallback
+locators and row text at the capture limit require manual translation. Network
+waits are bounded: positive symptom evidence can remain usable on a busy page,
+but missing text on an unsettled page is inconclusive. Login forms are allowed
+when the retained verification context identifies them as the intended target.
+
+Returned fields:
 
 | Field | Meaning |
 |---|---|

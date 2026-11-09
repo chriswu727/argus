@@ -190,3 +190,22 @@ set is unchanged. `agent` users see nine more tools and a larger discovery
 payload (34,379 versus 24,386 bytes); `core` users lose `check_links` and
 `check_performance` from the default (now in `advanced`) and receive a smaller
 payload (versus 51,732 bytes on Python 3.11/3.12 or 50,564 on 3.13).
+
+## ADR 13 — Export only reproducible checks with explicit preconditions
+
+Status: shipped in 0.12; privacy and regression safeguards updated in 0.12.2.
+
+Export standalone Playwright tests only for findings reproduced by supported
+fresh-load text checks. Preserve recorded control scope and the complete
+verification predicate. Keep application-specific replay values out of generated
+source; require private environment values or an explicitly requested, identity-bound
+values file. Unsupported actions need manual translation before execution.
+
+Automatic regression must not silently omit storage resets or reconstruct missing
+preconditions from report previews. Legacy journals require re-recording, and mixed
+reproduction remains inconclusive. Missing or ambiguous row targets and unexpected
+login forms stop exported checks instead of producing a misleading pass.
+
+Trade-off: exports are not self-contained, and changes to fixtures, authentication
+or recorded row text can require maintenance. A passing replay means the recorded
+symptom was not reproduced under those conditions, not that the entire app is correct.

@@ -74,9 +74,12 @@ Replay uses a separate browser context but can still repeat backend writes.
 
 CLI and MCP regression share `check_entries` and the same registry. Automatic
 regression refuses replay and custom strategies because their side effects are
-unknown. Invalid/corrupt journals are operational failures, not empty clean
-runs. Exit 3 means inconclusive; exit 0 can also mean there were no findings to
-check.
+unknown, and refuses storage-reset checks rather than dropping their preconditions.
+Mixed reproduction receipts remain inconclusive. Journals keep complete executable
+predicates separately from receipt previews; legacy entries without those
+preconditions require re-recording. Invalid/corrupt journals are operational
+failures, not empty clean runs. Exit 3 means inconclusive; exit 0 can also mean
+there were no findings to check.
 
 ## Finding and coverage evidence
 

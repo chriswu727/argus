@@ -16,6 +16,11 @@ Each failed `--doctor` check prints the exact fix. If your default interpreter i
 older than 3.11, use `uvx --python 3.12 --from argus-testing argus-mcp`. If an
 upgrade reports a missing browser, run `uvx --from argus-testing python -m playwright install chromium`.
 
+On minimal Debian-based images, an error loading `libatomic.so.1` means
+Playwright's bundled Node driver cannot start. Install the `libatomic1` system
+package before running Playwright, including `install --with-deps chromium`.
+For the Glama build configuration, see [Contributing](../CONTRIBUTING.md#verification-and-releases).
+
 Then connect Argus to your agent:
 
 <details open>
@@ -353,7 +358,7 @@ to the agent's page. See the [evidence contract](agent-protocol.md#finding-evide
 
 </details>
 
-<details>
+<details id="regression-gates-in-ci">
 <summary><b>Regression gates in CI</b></summary>
 
 ```bash

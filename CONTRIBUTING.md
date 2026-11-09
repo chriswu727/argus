@@ -90,6 +90,11 @@ For release, synchronize `pyproject.toml` and both version fields in
 `server.json`, update `CHANGELOG.md`, build with `python -m build`, check with
 `twine check`, and smoke-test the wheel outside the source directory. JS and
 dashboard assets are package resources and must be present in the wheel.
+Update the current-release section in `README.md` and the version and install pin
+in `llms-install.md`. When behavior changes, align `docs/usage.md`,
+`docs/agent-protocol.md`, architecture and privacy guidance with the implemented
+contract. Keep historical version notes and evaluation results tied to the
+versions they actually describe.
 Source distributions use an explicit inclusion list. Run
 `python scripts/check_distributions.py dist/*` after building; newly packaged
 files must satisfy the public-content policy before publication.
@@ -105,6 +110,23 @@ Argus version and MCP `serverInfo.version`. After the GitHub release and package
 publication succeed, manually publish that verified Glama build under the same
 version. A version label does not prove which source was built. Do not reuse an
 occupied version label for a different build.
+
+For Glama's `debian:bookworm-slim` build, install `libatomic1` before invoking
+Playwright. Its bundled Node driver needs `libatomic.so.1` to start, including
+when running `playwright install --with-deps`. Use these build steps:
+
+```json
+[
+  "apt-get update && apt-get install -y --no-install-recommends libatomic1",
+  "uv sync",
+  "uv run playwright install --with-deps chromium"
+]
+```
+
+A successful build can precede the image becoming available in Glama's registry.
+If release creation reports that the image is not available yet, wait and retry
+the same verified build. Confirm the published release links to that build;
+do not treat a successful test alone as a published release.
 
 After publication, verify the PyPI wheel and source archive, official MCP
 Registry package version, and directory release associations. Run
