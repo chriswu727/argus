@@ -56,7 +56,14 @@ async def test_regression_cli_exit_codes(tmp_path, monkeypatch):
                     "title": "ghost",
                     "severity": "high",
                     "type": "ux_issue",
-                    "verify": {"expect": "present", "target_text": "GHOST-BUG", "at_url": "/"},
+                    "verify": {
+                        "version": 1,
+                        "login_page": False,
+                        "clear_storage": False,
+                        "expect": "present",
+                        "target_text": "GHOST-BUG",
+                        "at_url": "/",
+                    },
                 }
             ]
         )

@@ -116,6 +116,12 @@ An export that already passes is not a useful regression check.
 
 - **Stable locators.** They are captured from the elements Argus actually
   resolved. A repeated control is scoped to its row, and iframe scope is preserved.
+  On current main, ambiguous row matches stop before that action; positional
+  fallback locators require manual translation rather than selecting by index.
+  Row-scoped actions match the complete recorded row text. If that text changes,
+  review the locator instead of allowing a prefix to choose a different record.
+  Row context at the 200-character capture limit needs a manually supplied
+  locator, since it may be truncated.
 - **Private values.** Since 0.12.1, exports read all application URLs, inputs, locator
   strings and assertion text from environment variables. `required_env` lists
   each name and its step/purpose without values. `run=true` supplies the session's
@@ -134,6 +140,13 @@ An export that already passes is not a useful regression check.
   describes the environment variables and return fields.
 - **No pass from a broken page.** HTTP errors and login walls stop the check;
   a missing symptom on those pages does not mean the bug is fixed.
+  On current main, login pages can be tested when they were the recorded target.
+  Initial text verification on login forms requires a positive observation.
+  Once confirmed there, the retained login-page context lets regression checks
+  recognize a fix. Missing content on an unexpected login form stays inconclusive.
+  Network waits are bounded; a missing target on an unsettled page is inconclusive.
+  Full predicates are retained privately, separate from report previews.
+  Checks requiring `clear_storage=true` cannot be exported yet.
 - **Manual steps.** Uploads, capsule restores and unsupported actions are listed
   as `TODO(argus)`. Since 0.12.1, exports stop before any browser actions until
   you translate those steps and remove the guard; `run=true` returns `incomplete`.
@@ -352,6 +365,15 @@ still reproduces, `2` operational/storage failure, `3` inconclusive. An exit of
 zero is not proof of complete application correctness. Automatic regression
 uses built-in text/HTTP checks, never write-performing replay. Tests written by
 `export_test` run in your own test suite instead.
+
+On current main, mixed receipts (such as `1/2`) and storage-reset preconditions
+are inconclusive, never a passing gate. Journals from 0.12.1 and earlier lack
+complete verification conditions and must be re-recorded. Preserve the old
+output directory, use a new `ARGUS_OUTPUT_DIR` when recording the replacement
+findings, and point `argus-regression --output` at that new directory after
+`end_session` has written the new journal. An empty directory has no checks;
+do not treat that as a successful migration. Older exported Python files do not
+update automatically; regenerate them from the new findings.
 
 </details>
 

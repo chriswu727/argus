@@ -148,7 +148,7 @@ def test_duplicate_controls_are_scoped_to_their_row():
         delete.parent_context = f"{title} Delete"
         rows.append(delete)
     assert locator_expr(rows[1], rows) == (
-        '_in_row(page, "Walk dog", '
+        '_in_row(page, "Walk dog Delete", '
         'lambda scope: scope.get_by_role("button", name="Delete", exact=True))'
     )
     lone = make_element(0, tag="button", text="Save")
@@ -213,7 +213,7 @@ def test_an_accepted_dialog_is_accepted_only_during_its_step():
         resolve_input=lambda action: None,
         filename="t.py",
     )
-    body = source[source.index('page.goto(_url(values["ARGUS_URL_1"], values))') :]
+    body = source[source.index('page.goto(_url(values["ARGUS_URL_1"], values),') :]
     other, delete = body.index("ARGUS_LOCATOR_1"), body.index("ARGUS_LOCATOR_2")
     on, off = (
         body.index('accept_dialog["pending"] = True'),
@@ -343,8 +343,8 @@ def test_hash_routes_are_kept_and_the_check_is_a_fresh_load():
         "http://h/app?a=1#/tasks",
     ]
     assert (
-        'page.goto("about:blank")\n            response = page.goto(_url(values["ARGUS_URL_3"], values))\n'
-        "            _check_page(page, response)"
+        'page.goto("about:blank")\n            check_url = _url(values["ARGUS_URL_3"], values)\n'
+        '            response = page.goto(check_url, wait_until="domcontentloaded")'
     ) in source
 
 
@@ -397,7 +397,7 @@ async def test_the_exported_check_scrolls_like_the_verifier(tmp_path):
         server.shutdown()
 
 
-def test_a_row_is_keyed_by_its_leading_words_not_changing_details():
+def test_a_row_requires_its_complete_recorded_identity():
     def rows(*contexts):
         out = []
         for context in contexts:
@@ -410,13 +410,15 @@ def test_a_row_is_keyed_by_its_leading_words_not_changing_details():
         "Schedule team standup medium 5.0 days ago Edit Delete",
         "Buy groceries high 1.0 days ago Edit Delete",
     )
-    assert '_in_row(page, "Schedule team",' in locator_expr(listed[0], listed)
-    # A shorter key that another row contains is extended until it is unique.
+    assert '_in_row(page, "Schedule team standup medium 5.0 days ago Edit Delete",' in locator_expr(
+        listed[0], listed
+    )
+    # Complete row text distinguishes similar titles without prefix guessing.
     listed = rows("Walk dog Delete", "Walk dog later Delete")
     assert '_in_row(page, "Walk dog Delete",' in locator_expr(listed[0], listed)
-    # Rows that cannot be told apart fall back to position.
+    # Rows that cannot be told apart need a stable identity before export.
     listed = rows("Same Delete", "Same Delete")
-    assert locator_expr(listed[1], listed).endswith(".nth(1)")
+    assert locator_expr(listed[1], listed) is None
 
 
 def test_an_unnamed_checkbox_is_found_by_role_inside_its_row():
@@ -476,10 +478,10 @@ def test_row_keys_account_for_controls_located_another_way():
     milk.parent_context = "Buy milk Delete"
     listed = [later, today, milk]
     # "Walk dog" would also match the row whose Delete has an id.
-    assert '_in_row(page, "Walk dog today",' in locator_expr(today, listed)
+    assert '_in_row(page, "Walk dog today Delete",' in locator_expr(today, listed)
     # A lone id-less Delete next to an id-bearing one is scoped too, since the
     # role locator alone would match both.
-    assert '_in_row(page, "Buy milk",' in locator_expr(milk, [later, milk])
+    assert '_in_row(page, "Buy milk Delete",' in locator_expr(milk, [later, milk])
 
 
 def test_an_unnamed_input_is_found_by_type_whatever_its_role_or_aria():
@@ -584,7 +586,7 @@ def test_back_scroll_resize_and_upload_steps_are_exported():
         resolve_input=lambda action: None,
         filename="t.py",
     )
-    assert "page.go_back()" in source
+    assert 'page.go_back(wait_until="domcontentloaded")' in source
     assert 'page.evaluate("() => window.scrollBy(0, 500)")' in source
     assert 'page.set_viewport_size({"width": 375, "height": 812})' in source
     assert "TODO(argus): step 4: upload_file" in source
@@ -654,7 +656,7 @@ async def test_going_back_is_recorded_replayed_and_exported(isolated_runtime):
             verify={"expect": "present", "target_text": "Page A", "at_url": base + "/a"},
         )
         exported = await _fn("export_test")(recorded.data["finding_id"], run=True)
-        assert "page.go_back()" in open(exported.data["path"]).read()
+        assert 'page.go_back(wait_until="domcontentloaded")' in open(exported.data["path"]).read()
         assert exported.data["run"]["outcome"] == "fails_on_symptom", exported
     finally:
         await _fn("end_session")()

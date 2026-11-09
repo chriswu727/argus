@@ -32,7 +32,10 @@ credential-bearing URL parameters and headers are redacted in captured requests.
 All built-in report formats use a common redacted copy of the report data,
 including visited URLs and nested reproduction evidence. This does not modify
 the live session or the journal's executable verification conditions. Journals
-remain private local artifacts and may retain sensitive verification URLs.
+remain private local artifacts and may retain sensitive verification URLs,
+full assertion text and verification preconditions. The complete execution
+predicate stays separate from the public receipt's text preview; a preview
+is not a substitute for reviewing artifacts before sharing them.
 Screenshots and unlabeled application-specific secrets still require manual review.
 
 Cookie and storage inspection hides values unless the operator enables

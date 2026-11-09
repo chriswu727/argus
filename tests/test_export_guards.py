@@ -143,8 +143,8 @@ async def test_exported_actions_keep_frame_scope_and_row_identity(
     if by_id:
         target.id = outside.id = "delete"
     else:
-        target.parent_context = outside.parent_context = "Target task"
-        other.parent_context = "Other task"
+        target.parent_context = outside.parent_context = "Target taskRemove"
+        other.parent_context = "Other taskRemove"
     locator = locator_expr(target, [outside, other, target])
     path, notes, secrets = _export(
         tmp_path,

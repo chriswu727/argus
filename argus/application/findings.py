@@ -11,7 +11,7 @@ from argus.domain.models import (
     Bug,
     Observation,
 )
-from argus.domain.verification import VerificationSpec
+from argus.domain.verification import VerificationSpec, retained_verification
 
 from .coverage import _coverage_goal_index, _refresh_finding_coverage
 from .events import _BUG_TYPE_BY_NAME, _SEVERITY_BY_NAME
@@ -299,6 +299,7 @@ async def record_bug(
         claimed_evidence_calls=list(claimed_calls),
         evidence_warnings=warnings,
         journey_end=len(s.action_trace),
+        verification_spec=retained_verification(verify, receipt),
     )
     s.bugs.append(bug)
     _refresh_finding_coverage(s, coverage_goals)
@@ -519,7 +520,13 @@ async def _recheck_finding(
     # repeated writes, so it must not become an unlimited retry.
     history = {
         "previous_receipt": previous,
-        "verify": {key: value for key, value in verify.items() if not key.startswith("_")},
+        "verify": {
+            key: value[:120]
+            if key in {"target_text", "target"} and isinstance(value, str)
+            else value
+            for key, value in verify.items()
+            if not key.startswith("_")
+        },
         "receipt": {
             "attempted": True,
             "reproduced": None,
@@ -539,6 +546,7 @@ async def _recheck_finding(
         }
     history["receipt"] = receipt
     bug.reproduction_receipt = receipt
+    bug.verification_spec = retained_verification(verify, receipt)
     _refresh_finding_coverage(s, bug.coverage_goals)
     verdict = (receipt or {}).get("reproduced")
     code = _verdict_code(receipt)
