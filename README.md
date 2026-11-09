@@ -87,7 +87,7 @@ replaying a journey can repeat its writes.
 
 **0.12.2**: regression checks preserve complete verification conditions and treat
 intermittent results as inconclusive. Exported tests stop on missing or ambiguous
-row targets. Regenerate older tests and follow the [journal migration steps](docs/usage.md).
+row targets. Regenerate older tests and follow the [journal migration steps](docs/usage.md#regression-gates-in-ci).
 See the [releases](https://github.com/chriswu727/argus/releases) and
 [changelog](CHANGELOG.md#0122---2026-11-08).
 

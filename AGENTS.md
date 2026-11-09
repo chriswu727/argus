@@ -84,7 +84,7 @@ result includes captured stages. See [the protocol](docs/agent-protocol.md).
 | `test_action(target, expect=...)` | Click + before/after diff in one call. Pass `expect` to PREDICT the outcome ({"count":{"label":"tasks","delta":1}}, {"gains":"Buy milk"}, {"removes":...}, {"text_present":...}, {"toast":...}, {"url_changed":true}) and Argus reports MATCH / SURPRISE — a surprise is a bug lead. Also shows CROSS-STACK: which requests the click fired (methods/statuses) and a CHECK nudge when a message appeared without a matching write. |
 | `verify_persistence(expect, target_text, after_url)` | Forces a fresh GET; returns target presence and the page observation. Check persistence once, repeat only to resolve uncertainty. A matching symptom is not proof of a semantic defect. |
 | `capsule_save(name, liveness_marker)` / `capsule_restore(name)` | Snapshot cookies and page storage after establishing state through the UI. Restore replaces the captured client state and checks a saved liveness marker when provided; without one, validity remains unverified. It does not reset backend data or guarantee identical application state across journeys. |
-| `regression_check()` | Re-test the findings journaled in prior runs against the CURRENT build: STILL-PRESENT / NO-LONGER-REPRODUCES / INCONCLUSIVE. "Did my fix land, did anything come back?" |
+| `regression_check()` | Re-test journaled findings against the current build: `STILL-PRESENT`, `FIXED` (the recorded symptom no longer reproduces), or `INCONCLUSIVE`. Mixed receipts remain inconclusive; a `FIXED` result is not proof of application correctness. |
 | `export_test(finding_id, run=False, save_private_values=False)` | Export a standalone Playwright test from a finding verified by a fresh-load text check. Confirm it fails on the symptom before using it in CI. Unsupported steps are marked TODO; 0.12.1 blocks incomplete exports before execution. See the [export protocol](docs/agent-protocol.md#exporting-a-regression-test) for environment variables and package-version limits. `run=true` repeats the journey's writes, so use it only with the user's authority. Only set `save_private_values=true` when the user explicitly requests retaining local replay values; its returned JSON file can contain credentials and must never be published. |
 | `inspect_element(description)` | Computed styles + ARIA + outerHTML + truncation flag for interactive or visible non-interactive content. |
 | `check_layout()` | Bounded viewport signals for horizontal overflow, clipped text, small targets, and fixed/sticky overlays. |
@@ -250,6 +250,12 @@ application data.
 `argus-regression` exits 0 for no reproduced known findings (including no
 journal), 1 for still-present findings, 2 for operational/storage failures and
 3 for inconclusive checks. An empty journal is not proof of app correctness.
+
+Since 0.12.2, automatic regression refuses storage-reset checks and legacy entries
+without complete preconditions. Preserve journals from 0.12.1 and earlier and
+re-record findings in a new output directory. Regenerate older exported tests;
+see [migration guidance](docs/usage.md#regression-gates-in-ci). Never drop a
+storage-reset precondition to make a finding exportable.
 
 ## What changed in 0.5 (if you knew 0.4)
 

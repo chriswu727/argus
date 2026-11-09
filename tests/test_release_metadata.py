@@ -66,6 +66,9 @@ def test_release_documentation_is_current_and_english():
     readme = (ROOT / "README.md").read_text()
     usage = (ROOT / "docs/usage.md").read_text()
     assert f"**{version}**" in readme
+    agent_install = (ROOT / "llms-install.md").read_text()
+    assert f"The current release is {version}." in agent_install
+    assert f"argus-testing=={version}" in agent_install
     assert f"## {version} - " in (ROOT / "CHANGELOG.md").read_text()
     overhead = json.loads((ROOT / "examples/response-overhead.json").read_text())
     assert overhead["argus_version"] == version

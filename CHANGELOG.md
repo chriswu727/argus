@@ -1,5 +1,15 @@
 # Changelog
 
+## Documentation and Glama deployment - 2026-11-09
+
+- Synchronize the agent installation guide and protocol with Argus 0.12.2,
+  including journal migration, regression verdicts and export preconditions.
+- Publish Glama 0.12.2 from release commit
+  `e2ac33da3b3eda998c3ba98084c33ed291381b66` after adding `libatomic1` to its
+  build steps. The verified build reports MCP server version 0.12.2.
+- Document the system dependency and the wait between build success and image
+  availability for release creation. The runtime package version is unchanged.
+
 ## Plugin updates - 2026-11-08
 
 - Claude plugin 0.12.3 and Codex plugin 0.12.2 pin the published Argus 0.12.2
