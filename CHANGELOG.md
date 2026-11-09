@@ -1,5 +1,12 @@
 # Changelog
 
+## Plugin updates - 2026-11-08
+
+- Claude plugin 0.12.3 and Codex plugin 0.12.2 pin the published Argus 0.12.2
+  runtime and refresh their dependency locks and setup commands.
+- Regenerate older exported tests to use the regression reliability fixes;
+  keep legacy journals and re-record findings in a new report directory.
+
 ## 0.12.2 - 2026-11-08
 
 - Treat intermittent regression receipts as inconclusive instead of fixed.
