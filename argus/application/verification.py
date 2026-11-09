@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
 from argus.domain.models import (
     PageState,
 )
@@ -11,11 +13,13 @@ from .text import _present_with_scroll, _resolve_url, _visible_text_in_state
 
 
 def _looks_logged_out(state: PageState) -> bool:
-    """Heuristic: the page is a login wall (so an auth-gated symptom is absent
-    because we're logged out, not because the bug was fixed). Conservative full
-    phrases, not the bare word 'login' (which appears on logged-in pages too)."""
     t = (state.page_text or "").lower()
-    return any(p in t for p in _LOGOUT_PHRASES)
+    login_heading = any(
+        str(heading.get("text", "")).strip().lower() in {"sign in", "log in", "login"}
+        for heading in state.headings
+    )
+    password = any(el.type == "password" and not el.frame for el in state.elements)
+    return (login_heading and password) or any(p in t for p in _LOGOUT_PHRASES)
 
 
 async def _run_reproduction_check(
@@ -73,6 +77,8 @@ async def _run_reproduction_check(
 
     restore_url = s.browser.current_url
     nav_url = _resolve_url(s, at_url) if at_url else restore_url
+    parsed_url = urlparse(nav_url)
+    nav_url = parsed_url._replace(path=parsed_url.path or "/").geturl()
     observations = []
     observed_statuses = []
     # A clean load means none of the agent's own forced responses are live —
@@ -81,6 +87,16 @@ async def _run_reproduction_check(
     inconclusive = None
     evidence = {}
     try:
+        baseline = await s.browser.get_state()
+        login_page = verify.get(
+            "_login_page",
+            (
+                baseline.url == nav_url
+                and _looks_logged_out(baseline)
+                and not any(p in baseline.page_text.lower() for p in _LOGOUT_PHRASES)
+            ),
+        )
+        evidence["login_page"] = bool(login_page)
         if verify.get("clear_storage"):
             # Opt-in: prove SERVER persistence by wiping client storage first, so
             # a localStorage-only "save" doesn't survive the reload and certify.
@@ -101,10 +117,23 @@ async def _run_reproduction_check(
                     f"clean load returned HTTP {resp.status} — can't attribute the symptom"
                 )
                 break
-            if _looks_logged_out(state):
+            if _looks_logged_out(state) and (
+                not login_page
+                or state.url != nav_url
+                or any(p in state.page_text.lower() for p in _LOGOUT_PHRASES)
+            ):
                 inconclusive = "clean load hit a login wall — the session may have expired"
                 break
-            observations.append(await _present_with_scroll(s, target, state))
+            present = await _present_with_scroll(s, target, state)
+            if not present and _looks_logged_out(state) and verify.get("_login_page") is not True:
+                inconclusive = (
+                    "clean load hit a login wall — absence cannot confirm an application symptom"
+                )
+                break
+            if not present and not getattr(s.browser, "last_navigation_settled", True):
+                inconclusive = "clean load did not settle — absence is not reliable evidence"
+                break
+            observations.append(present)
         evidence["evidence_url"] = s.browser.current_url
         if verify.get("_screenshot_label"):
             try:

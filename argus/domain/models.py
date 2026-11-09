@@ -146,6 +146,8 @@ class Bug:
     # Length of the session's action trace when the finding was recorded: the
     # journey export_test replays from the session start.
     journey_end: int = 0
+    # Full execution predicate, deliberately excluded from public report dictionaries.
+    verification_spec: Dict = field(default_factory=dict, repr=False)
 
     def to_dict(self) -> Dict:
         """Machine-readable finding — for JSON/JUnit/SARIF export so Argus can be

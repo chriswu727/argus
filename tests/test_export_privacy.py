@@ -150,6 +150,7 @@ async def test_tool_result_filename_and_manual_steps_do_not_echo_application_dat
             "at_url": url,
         },
     )
+    bug.verification_spec = {**bug.reproduction_receipt, "version": 1}
     session = SimpleNamespace(
         bugs=[bug],
         run_id="synthetic-run",
@@ -288,6 +289,7 @@ async def test_failed_private_values_write_cleans_up_and_returns_fixed_error(tmp
         journey_end=0,
         reproduction_receipt={"reproduced": True, "expect": "present", "target_text": "private"},
     )
+    bug.verification_spec = {**bug.reproduction_receipt, "version": 1}
     session = SimpleNamespace(
         bugs=[bug],
         run_id="run",

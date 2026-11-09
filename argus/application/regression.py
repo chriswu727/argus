@@ -32,14 +32,25 @@ async def check_entries(session, entries: list[dict], url: str) -> list[dict]:
     results = []
     for entry in entries:
         clause = entry.get("verify") or {}
-        if clause.get("replay") or clause.get("kind", "text") not in {"text", "http_status"}:
+        if (
+            clause.get("replay")
+            or clause.get("clear_storage")
+            or clause.get("kind", "text") not in {"text", "http_status"}
+        ):
             receipt = {
                 "attempted": False,
                 "reason": "automatic regression only runs read-only built-in checks",
             }
+        elif clause.get("version") != 1:
+            receipt = {
+                "attempted": False,
+                "reason": "legacy verification lacks complete preconditions; preserve this journal and re-record findings in a new ARGUS_OUTPUT_DIR (see docs/usage.md)",
+            }
         else:
-            receipt = await current_runtime().verifiers.verify(session, clause)
-        reproduced = receipt.get("reproduced")
+            receipt = await current_runtime().verifiers.verify(
+                session, clause, login_page=clause.get("login_page", False)
+            )
+        reproduced = None if receipt.get("flaky") else receipt.get("reproduced")
         status = (
             "STILL-PRESENT"
             if reproduced is True
@@ -53,6 +64,8 @@ async def check_entries(session, entries: list[dict], url: str) -> list[dict]:
                 "severity": entry.get("severity", "?"),
                 "status": status,
                 "runs": receipt.get("runs"),
+                "reason": receipt.get("reason")
+                or ("symptom reproduced intermittently" if receipt.get("flaky") else None),
                 "url": (entry.get("verify") or {}).get("at_url") or url,
             }
         )
@@ -113,6 +126,8 @@ async def regression_check() -> str:
             tag = "INCONCLUSIVE        "
             incon += 1
         lines.append(f"  [{tag}] [{e.get('severity', '?').upper()}] {e.get('title', '')[:80]}")
+        if e.get("reason"):
+            lines.append(f"    {e['reason']}")
     lines.append("")
     lines.append(
         f"{still} still present · {gone} no longer reproduce (likely fixed — "

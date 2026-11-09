@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- Treat intermittent regression receipts as inconclusive instead of fixed.
+- Retain full verification predicates and preconditions privately for journals
+  and exports; public receipt text remains a preview. Hash complete predicates
+  for deduplication, including URL queries and fragments.
+- Require re-recording legacy journal entries whose verification conditions are
+  incomplete. Storage-reset checks remain excluded from automatic regression
+  and test export rather than silently dropping the reset.
+- Detect unexpected password login forms while allowing recorded checks of a
+  login page itself. Stop ambiguous row selection before replaying its action;
+  positional fallbacks require manual translation.
+- Bound exported network waits like live verification. Busy pages can still
+  provide positive symptom evidence; unsettled absence stays inconclusive.
+
 ## Plugin updates - 2026-11-05
 
 - Claude plugin 0.12.2 and Codex plugin 0.12.1 pin the published Argus 0.12.1

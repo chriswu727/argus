@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any, Mapping
 
 LOGIN_WALL_PHRASES = (
@@ -24,6 +24,7 @@ class VerificationSpec:
     target_text: str = ""
     at_url: str = ""
     expect_status: int | None = None
+    clear_storage: bool = False
 
     @classmethod
     def parse(cls, clause: Mapping[str, Any]) -> VerificationSpec:
@@ -63,4 +64,24 @@ class VerificationSpec:
             raise ValueError("text verification needs expect present/absent and target_text")
         elif status is not None:
             raise ValueError("text/replay verification cannot include expect_status")
-        return cls(kind=kind, expect_status=status, **fields)
+        clear_storage = clause.get("clear_storage", False)
+        if not isinstance(clear_storage, bool):
+            raise ValueError("clear_storage must be a boolean")
+        return cls(kind=kind, expect_status=status, clear_storage=clear_storage, **fields)
+
+
+def retained_verification(clause: Mapping[str, Any] | None, receipt: Mapping | None) -> dict:
+    if not clause or not receipt:
+        return {}
+    try:
+        spec = VerificationSpec.parse(clause)
+    except ValueError:
+        return {}
+    if spec.kind not in {"text", "http_status"}:
+        return {}
+    return {
+        **asdict(spec),
+        "version": 1,
+        "at_url": receipt.get("at_url") or spec.at_url,
+        "login_page": receipt.get("login_page", False),
+    }

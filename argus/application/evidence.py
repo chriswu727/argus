@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from pathlib import Path
 from typing import Optional
@@ -64,15 +66,23 @@ def _journal_path(origin: str) -> Path:
 
 
 def _bug_fingerprint(bug: "Bug") -> str:
-    """Stable identity for cross-run dedup — from the receipt's structural fields
-    (type + url path + expect + target), never the LLM-authored title, so a
-    genuinely new bug is never silently collapsed into an old one."""
-    r = bug.reproduction_receipt or {}
-    path = urlparse(r.get("at_url") or bug.url or "").path or "/"
-    return (
-        f"{bug.type.value}|{path}|{r.get('expect', '')}|"
-        f"{(r.get('target_text') or '')[:80]}|{r.get('expect_status', '')}"
-    )
+    r = bug.verification_spec or bug.reproduction_receipt or {}
+    identity = {
+        key: r.get(key)
+        for key in (
+            "version",
+            "kind",
+            "at_url",
+            "expect",
+            "target_text",
+            "expect_status",
+            "clear_storage",
+            "login_page",
+        )
+    }
+    identity["at_url"] = identity["at_url"] or bug.url
+    payload = json.dumps(identity, sort_keys=True, ensure_ascii=True)
+    return f"{bug.type.value}|{hashlib.sha256(payload.encode()).hexdigest()}"
 
 
 def _journal_entries(origin: str, *, strict: bool = False) -> list:
@@ -109,6 +119,8 @@ def _write_journal(s: "Session") -> None:
                 verify["expect_status"] = expected_status
             else:
                 verify.update({"expect": expect, "target_text": target})
+            if b.verification_spec:
+                verify = dict(b.verification_spec)
             fresh.append(
                 {
                     "fingerprint": _bug_fingerprint(b),

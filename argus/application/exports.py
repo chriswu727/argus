@@ -73,6 +73,16 @@ async def export_test(finding_id: str, run: bool = False, save_private_values: b
             ErrorCode.INVALID_ARGUMENT,
         )
 
+    spec = bug.verification_spec
+    if spec.get("version") != 1:
+        return Rejection(
+            "export_test: complete verification conditions are unavailable; record the finding again."
+        )
+    if spec.get("clear_storage"):
+        return Rejection(
+            "export_test: clear_storage verification is not supported by test export; the storage reset cannot be omitted."
+        )
+
     directory = current_runtime().settings.output_dir / "tests"
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"test_argus_{s.run_id}_{index}.py"
@@ -90,7 +100,7 @@ async def export_test(finding_id: str, run: bool = False, save_private_values: b
         finding_id=finding_id,
         title=bug.title,
         expected=bug.expected,
-        receipt=receipt,
+        receipt={**receipt, **spec},
         journey=_journey(s, bug.journey_end),
         start_url=s.url or receipt.get("at_url") or "",
         resolve_input=resolve_input,

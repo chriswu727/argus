@@ -124,6 +124,8 @@ def _locator_in_frame(el: InteractiveElement, elements: List[InteractiveElement]
     # Every listed control the emitted locator could also match, including
     # ones Argus locates differently (an id-bearing "Delete" in another row).
     twins = [other for other in elements if other is not el and _overlaps(el, other, base)]
+    if (twins or unnamed) and len(el.parent_context or "") >= 200:
+        return None
     row = " ".join((el.parent_context or "").split())
     if unnamed and any(" ".join((o.parent_context or "").split()) == row for o in twins):
         # The role alone would match another control in the same row.
@@ -136,8 +138,7 @@ def _locator_in_frame(el: InteractiveElement, elements: List[InteractiveElement]
         return f"_in_row(page, {_q(key)}, lambda scope: scope.{inner})"
     if unnamed and el.css_path:
         return f"page.locator({_q(el.css_path)})"
-    position = sum(1 for o in elements[: elements.index(el)] if _overlaps(el, o, base))
-    return f"{base}.nth({position})"
+    return None
 
 
 def _role_and_name(el: InteractiveElement) -> tuple:
@@ -165,15 +166,8 @@ def _overlaps(el: InteractiveElement, other: InteractiveElement, base: str) -> b
 
 
 def _row_key(row: str, others: List[str]) -> Optional[str]:
-    """The fewest leading words of `row` (at least two when it has them) that
-    no other row contains. Rows usually start with their title and end with
-    changing details ("5 days ago"), so the key stays stable over time."""
-    words = row.split()
-    for count in range(min(2, len(words)), len(words) + 1):
-        key = " ".join(words[:count])[:60]
-        if not any(key.lower() in " ".join(o.split()).lower() for o in others):
-            return key
-    return None
+    key = " ".join(row.split())
+    return key if key and all(key.lower() != " ".join(o.split()).lower() for o in others) else None
 
 
 def is_sensitive(el: InteractiveElement, description: str) -> bool:
@@ -209,7 +203,7 @@ import os
 import re
 from urllib.parse import urljoin, urlparse
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, sync_playwright
 
 LOGIN_WALL_PHRASES = {login_wall_phrases}
 REQUIRED_ENV = {required_env}
@@ -267,23 +261,43 @@ def _url(path, values):
     return re.search(before + re.escape(needle) + after, haystack) is not None
 
 
-def _check_page(page, response):
+def _settle(page):
+    try:
+        page.wait_for_load_state("networkidle", timeout=6000)
+        return True
+    except PlaywrightTimeoutError:
+        return False
+
+
+def _check_page(page, response, allow_login=False, expected_url=None):
     if response is not None and response.status >= 400:
         raise _ExportFailure("fresh-load check returned an HTTP error")
-    page.wait_for_load_state("networkidle")
+    settled = _settle(page)
     text = page.inner_text("body").lower()
     login_heading = page.get_by_role(
         "heading", name=re.compile(r"^(sign in|log in|login)$", re.IGNORECASE)
     )
     password_login = page.locator('input[type="password"]:visible').count() and login_heading.count()
-    if password_login or any(phrase in text for phrase in LOGIN_WALL_PHRASES):
+    parsed = urlparse(page.url)
+    actual_url = parsed._replace(path=parsed.path or "/").geturl()
+    parsed = urlparse(expected_url or page.url)
+    expected_url = parsed._replace(path=parsed.path or "/").geturl()
+    if (password_login and (not allow_login or actual_url != expected_url)) or any(
+        phrase in text for phrase in LOGIN_WALL_PHRASES
+    ):
         raise _ExportFailure("fresh-load check hit a login wall")
+    return settled
+
+
+def _login_form(page):
+    return bool(page.locator('input[type="password"]:visible').count() and page.get_by_role(
+        "heading", name=re.compile(r"^(sign in|log in|login)$", re.IGNORECASE)
+    ).count())
 
 
 def _present(text, page, max_scrolls=20):
     """Text and field values, scrolling (bounded) like Argus's fresh-load check
     so a row a virtualized or lazy list renders further down is still found."""
-    page.wait_for_load_state("networkidle")
     last_y = None
     for scrolls in range(max_scrolls + 1):
         for frame in page.frames:
@@ -320,8 +334,12 @@ _ROW_HELPER = '''ROW_SELECTOR = {row_selector}
 def _in_row(page, text, find):
     """`find(scope)` within the row showing `text`: the innermost row holding
     the text and the control, not a list container that also matches."""
-    rows = page.locator(ROW_SELECTOR).filter(has_text=text).filter(has=find(page))
-    return find(rows.filter(has_not=rows)).first
+    pattern = re.compile(r"^\\s*" + r"\\s+".join(re.escape(word) for word in text.split()) + r"\\s*$", re.IGNORECASE)
+    rows = page.locator(ROW_SELECTOR).filter(has_text=pattern).filter(has=find(page))
+    controls = find(rows.filter(has_not=rows))
+    if controls.count() != 1:
+        raise _ExportFailure("replay target is missing or ambiguous; no row was selected")
+    return controls
 
 
 '''
@@ -397,6 +415,8 @@ def generate_test(
     expect = receipt["expect"]
     at_url = receipt.get("at_url") or start_url
     notes: List[str] = []
+    if receipt.get("clear_storage"):
+        notes.append("clear_storage precondition requires manual implementation before replay")
     bindings: dict[str, dict[str, str]] = {}
     purposes: dict[str, str] = {}
 
@@ -426,11 +446,15 @@ def generate_test(
         return ast.unparse(Parameters().visit(ast.parse(expression, mode="eval")))
 
     initial = binding(start_url, "URL", "initial navigation URL")
-    lines = [f"page.goto(_url({initial}, values))"]
+    lines = [f'page.goto(_url({initial}, values), wait_until="domcontentloaded")', "_settle(page)"]
 
     for number, action in enumerate(journey, 1):
         tool = action.get("tool")
         locator = action.get("locator")
+        if locator and ".nth(" in locator:
+            notes.append(
+                f"step {number}: positional locator has no stable identity; translate it before running"
+            )
         if locator:
             locator = private_locator(locator, number)
         value = action.get("value")
@@ -438,7 +462,8 @@ def generate_test(
             lines.append('accept_dialog["pending"] = True')
         if tool == "navigate" and value:
             url = binding(str(value), "URL", f"step {number} navigation URL")
-            lines.append(f"page.goto(_url({url}, values))")
+            lines.append(f'page.goto(_url({url}, values), wait_until="domcontentloaded")')
+            lines.append("_settle(page)")
         elif tool in ("double_click", "hover_what") and str(value or "").startswith("text:"):
             method = "dblclick" if tool == "double_click" else "hover"
             # Visible matches only, as when recorded: a hidden copy of the same
@@ -468,7 +493,7 @@ def generate_test(
                 notes.append(f"step {number}: press_key without a recorded key")
                 lines.append(f"# TODO(argus): step {number} press_key needs a key")
         elif tool == "go_back":
-            lines.append("page.go_back()")
+            lines.append('page.go_back(wait_until="domcontentloaded")')
         elif tool == "scroll_down":
             lines.append('page.evaluate("() => window.scrollBy(0, 500)")')
             lines.append("page.wait_for_timeout(500)")
@@ -481,11 +506,23 @@ def generate_test(
         elif tool == "capsule_restore":
             notes.append(f"step {number}: establish restored session state before continuing")
             lines.append(f"# TODO(argus): step {number}: establish restored session state")
+        elif tool in {
+            "click_what",
+            "double_click",
+            "hover_what",
+            "type_into",
+            "select_into",
+            "set_checked",
+        }:
+            notes.append(
+                f"step {number}: no complete, unambiguous locator was recorded; supply a stable target before running"
+            )
+            lines.append(f"# TODO(argus): step {number}: supply a stable target")
         else:
             notes.append(f"step {number}: unsupported action; translate it before running")
             lines.append(f"# TODO(argus): replay step {number} by hand")
         if tool in ("click_what", "double_click", "press_key", "set_checked", "go_back"):
-            lines.append('page.wait_for_load_state("networkidle")')
+            lines.append("_settle(page)")
         if action.get("accept_dialog"):
             lines.append('accept_dialog["pending"] = False')
 
@@ -493,11 +530,21 @@ def generate_test(
     # route matches the current URL.
     lines.append('page.goto("about:blank")')
     final_url = binding(at_url, "URL", "fresh-load verification URL")
-    lines.append(f"response = page.goto(_url({final_url}, values))")
-    lines.append("_check_page(page, response)")
+    lines.append(f"check_url = _url({final_url}, values)")
+    lines.append('response = page.goto(check_url, wait_until="domcontentloaded")')
+    lines.append(
+        f"settled = _check_page(page, response, allow_login={bool(receipt.get('login_page'))}, expected_url=check_url)"
+    )
     target_expr = binding(target, "TEXT", "fresh-load assertion text")
+    lines.append(f"present = _present({target_expr}, page)")
+    lines.append(f"if not present and _login_form(page) and not {bool(receipt.get('login_page'))}:")
+    lines.append('    raise _ExportFailure("fresh-load check hit a login wall")')
+    lines.append("if not present and not settled:")
+    lines.append(
+        '    raise _ExportFailure("fresh-load check did not settle; absence is inconclusive")'
+    )
     condition = "" if expect == "present" else "not "
-    lines.append(f"if {condition}_present({target_expr}, page):")
+    lines.append(f"if {condition}present:")
     lines.append("    raise _ExportSymptom()")
 
     note_text = "\n\nRequired environment variables (values are not stored):\n"
@@ -596,6 +643,8 @@ async def run_exported_test(path: Path, timeout: float, secrets: Optional[dict] 
     for diagnostic in (
         "fresh-load check returned an HTTP error",
         "fresh-load check hit a login wall",
+        "fresh-load check did not settle; absence is inconclusive",
+        "replay target is missing or ambiguous; no row was selected",
         "ARGUS_URL_1 must be an absolute http(s) URL",
         "ARGUS_VALUES_FILE could not be read as a values object",
         "ARGUS_VALUES_FILE values must be strings",

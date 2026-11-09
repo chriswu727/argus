@@ -26,6 +26,7 @@ class VerificationRegistry:
         *,
         screenshot_label: str | None = None,
         replay_start: str | None = None,
+        login_page: bool | None = None,
     ) -> dict:
         try:
             spec = VerificationSpec.parse(clause)
@@ -36,6 +37,8 @@ class VerificationRegistry:
             return {"attempted": False, "reason": f"unsupported verification kind: {spec.kind}"}
         # Underscore keys are set only here; never accept them from the caller.
         request = {key: value for key, value in clause.items() if not key.startswith("_")}
+        if login_page is not None:
+            request["_login_page"] = login_page
         if screenshot_label and spec.kind in {"text", "http_status"}:
             request["_screenshot_label"] = "".join(
                 char if char.isalnum() else "_" for char in screenshot_label

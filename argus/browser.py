@@ -145,6 +145,7 @@ class BrowserDriver:
         self._browser: Optional[Browser] = None
         self._context: Optional[BrowserContext] = None
         self._page: Optional[Page] = None
+        self.last_navigation_settled = False
         error_cap = self.capture_settings.error_events
         self.console_errors = BoundedEventLog[Dict](error_cap)
         self.network_errors = BoundedEventLog[Dict](error_cap)
@@ -902,8 +903,9 @@ class BrowserDriver:
         never block long or throw — the caller proceeds with the loaded DOM."""
         try:
             await (page or self._page).wait_for_load_state("networkidle", timeout=timeout)
+            return True
         except Exception:
-            pass
+            return False
 
     async def goto(self, url: str):
         self.access_policy.check_url(url)
@@ -920,8 +922,9 @@ class BrowserDriver:
         # stuck "Loading…" spinner) means networkidle never fires, so we time out
         # and proceed with the loaded DOM. That makes the stuck state OBSERVABLE
         # (and flaggable as a bug) instead of a 30s hang reported as a load failure.
+        self.last_navigation_settled = False
         resp = await self._page.goto(url, wait_until="domcontentloaded", timeout=30_000)
-        await self._settle_network()
+        self.last_navigation_settled = await self._settle_network()
         self.access_policy.check_url(self._page.url)
         return resp
 

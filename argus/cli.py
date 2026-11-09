@@ -120,6 +120,8 @@ async def _run_regression(url: str, output: str, headless: bool = True) -> int:
         return run.exit_code
     for result in run.results:
         console.print(f"{result['status']} [{result['severity'].upper()}] {result['title'][:70]}")
+        if result.get("reason"):
+            console.print(f"  {result['reason']}")
     if not run.results:
         console.print("No journaled findings. Nothing to regression-test.")
         return 0
