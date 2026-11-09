@@ -116,7 +116,7 @@ An export that already passes is not a useful regression check.
 
 - **Stable locators.** They are captured from the elements Argus actually
   resolved. A repeated control is scoped to its row, and iframe scope is preserved.
-  On current main, ambiguous row matches stop before that action; positional
+  Since 0.12.2, ambiguous row matches stop before that action; positional
   fallback locators require manual translation rather than selecting by index.
   Row-scoped actions match the complete recorded row text. If that text changes,
   review the locator instead of allowing a prefix to choose a different record.
@@ -140,7 +140,7 @@ An export that already passes is not a useful regression check.
   describes the environment variables and return fields.
 - **No pass from a broken page.** HTTP errors and login walls stop the check;
   a missing symptom on those pages does not mean the bug is fixed.
-  On current main, login pages can be tested when they were the recorded target.
+  Since 0.12.2, login pages can be tested when they were the recorded target.
   Initial text verification on login forms requires a positive observation.
   Once confirmed there, the retained login-page context lets regression checks
   recognize a fix. Missing content on an unexpected login form stays inconclusive.
@@ -366,7 +366,7 @@ zero is not proof of complete application correctness. Automatic regression
 uses built-in text/HTTP checks, never write-performing replay. Tests written by
 `export_test` run in your own test suite instead.
 
-On current main, mixed receipts (such as `1/2`) and storage-reset preconditions
+Since 0.12.2, mixed receipts (such as `1/2`) and storage-reset preconditions
 are inconclusive, never a passing gate. Journals from 0.12.1 and earlier lack
 complete verification conditions and must be re-recorded. Preserve the old
 output directory, use a new `ARGUS_OUTPUT_DIR` when recording the replacement
