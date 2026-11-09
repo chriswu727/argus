@@ -18,8 +18,10 @@
 </div>
 
 Argus is an [MCP](https://modelcontextprotocol.io/) testing server for Claude Code,
-Codex, Cursor and other coding agents. It gives your existing agent browser tools
-to exercise your app, check suspected bugs and produce reports with evidence.
+Codex, Cursor and other coding agents. It gives your existing agent the tools to
+test your app the way a testing engineer works through it: explore user journeys,
+check state after each action, try edge cases, verify suspected failures on a fresh
+load and report with evidence.
 The agent decides what to test; Argus handles browser actions, repeatable checks
 and the results.
 
