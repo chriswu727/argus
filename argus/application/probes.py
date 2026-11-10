@@ -10,7 +10,7 @@ from .payloads import observation_data
 from .progress import Stage
 from .session import _require_session
 from .text import _present_with_scroll, _resolve_url, _short, _text_in_state
-from .verification import _looks_logged_out
+from .verification import _fresh_goto, _login_form, _looks_logged_out, _moved_from
 
 
 async def verify_persistence(
@@ -84,16 +84,21 @@ async def verify_persistence(
     if clear_storage:
         await s.browser.goto(nav_url)  # land on the right origin
         await s.browser.clear_client_storage()  # then wipe client storage
-    response = await s.browser.goto(nav_url)
+    response = await _fresh_goto(s.browser, nav_url)
     after_state = await s.browser.get_state()
     s._last_elements = after_state.elements
 
     present = await _present_with_scroll(s, target_text, after_state)
     text_matches = present == (expect_norm == "present")
     status = response.status if response is not None else None
+    moved = _moved_from(nav_url, s.browser.current_url)
     status_matches = (status == expect_status) if expect_status else None
-    unreliable_page = _looks_logged_out(after_state) or (
-        status is not None and status >= 400 and not status_matches
+    unreliable_page = (
+        _looks_logged_out(after_state)
+        or _login_form(after_state)
+        or moved
+        or after_state.text_truncated
+        or (status is not None and status >= 400 and not status_matches)
     )
     # Observed presence and an observed status mismatch are direct evidence;
     # absence on an error or login page may have the wrong cause.
@@ -134,10 +139,22 @@ async def verify_persistence(
     if status_matches is False:
         verdict = f"HTTP {status}, expected {expect_status}. " + verdict
     if not conclusive:
-        verdict = (
-            "Target absent on an HTTP error or login page — absence cannot establish "
-            "persistence. Pass expect_status if this status is the expected outcome."
-        )
+        if after_state.text_truncated:
+            verdict = (
+                "Target not found, but the page text exceeds the inspection limit — "
+                "absence cannot establish persistence."
+            )
+        elif moved:
+            verdict = (
+                f"Target absent, but the load ended on {s.browser.current_url} instead of the "
+                "requested page — absence there cannot establish persistence. Check the "
+                "page that actually shows the content."
+            )
+        else:
+            verdict = (
+                "Target absent on an HTTP error or login page — absence cannot establish "
+                "persistence. Pass expect_status if this status is the expected outcome."
+            )
 
     suggested_verify = None
     if conclusive and not text_matches and before_matches and not _looks_logged_out(before_state):

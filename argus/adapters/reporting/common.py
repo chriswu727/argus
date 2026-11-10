@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import re
 from pathlib import Path
 from typing import List, Optional
 from urllib.parse import quote
@@ -13,6 +14,17 @@ from argus.domain.models import (
     BugType,
     Severity,
 )
+
+_XML_ILLEGAL = re.compile("[^\t\n\r\u0020-\ud7ff\ue000-\ufffd\U00010000-\U0010ffff]")
+
+
+def xml_safe(document: str) -> str:
+    """Drop characters XML 1.0 cannot carry (ANSI escapes, NUL, lone surrogates).
+
+    ElementTree serializes them as-is, which leaves a file no parser accepts.
+    """
+    return _XML_ILLEGAL.sub("", document)
+
 
 _BUGTYPE_LABELS = {
     BugType.CONSOLE_ERROR: "Console Error",
@@ -78,10 +90,10 @@ def _repro_badge(receipt: Optional[dict]) -> str:
                 "#b35900",
                 f"NOT REPRODUCED · replayed {receipt.get('steps', '?')} steps, symptom absent",
             )
-        elif receipt.get("expect_status") is not None:
-            color, label = "#b35900", f"NOT REPRODUCED · expected HTTP {receipt['expect_status']}"
         elif receipt.get("flaky"):
             color, label = "#9a6700", f"INTERMITTENT · {receipt.get('runs', '')} on reload"
+        elif receipt.get("expect_status") is not None:
+            color, label = "#b35900", f"NOT REPRODUCED · expected HTTP {receipt['expect_status']}"
         else:
             color, label = (
                 "#b35900",

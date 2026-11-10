@@ -91,8 +91,8 @@ def compute_changes(
             targets.append(" ".join(words[-2:]))
 
         for target in targets[:3]:
-            was_present = target.lower() in before.page_text.lower()
-            is_present = target.lower() in after.page_text.lower()
+            was_present = target.lower() in before.searchable_text.lower()
+            is_present = target.lower() in after.searchable_text.lower()
             if was_present and not is_present:
                 changes.append(f"Text '{target}': was present -> GONE")
             elif not was_present and is_present:
@@ -108,7 +108,9 @@ def compute_changes(
         changes.append(f"Field values changed: {changed_values} (values omitted)")
 
     # Only worth a line when nothing more specific explains the change.
-    if not changes and " ".join(before.page_text.split()) != " ".join(after.page_text.split()):
+    if not changes and " ".join(before.searchable_text.split()) != " ".join(
+        after.searchable_text.split()
+    ):
         changes.append("Visible page text changed; inspect the post-action observation")
 
     if not changes:

@@ -26,6 +26,18 @@ def _resolve_url(s: "Session", url: str) -> str:
     return urljoin(base, url) if base else url
 
 
+# Scripts written without spaces between words have no word boundary to test:
+# "已完成" inside "任务已完成" is a real occurrence, not a mid-word match.
+_UNSPACED = (
+    "\u0e00-\u0eff\u1000-\u109f\u1780-\u17ff"  # Thai, Lao, Myanmar, Khmer
+    "\u3040-\u30ff\u31f0-\u31ff"  # Hiragana, Katakana
+    "\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff"  # CJK ideographs
+    "\uac00-\ud7af"  # Hangul syllables (particles attach without a space)
+    "\U00020000-\U0003134f"  # CJK extensions
+)
+_WORD_CHAR = f"[^\\W{_UNSPACED}]"
+
+
 def _token_present(needle: str, haystack: str) -> bool:
     """Whitespace-normalised, word-boundary containment.
 
@@ -42,8 +54,8 @@ def _token_present(needle: str, haystack: str) -> bool:
         return False
     # A boundary matters only on a word-character edge of the needle: "-50%"
     # printed straight after a price ("$89.99-50%") is a real occurrence.
-    before = r"(?<!\w)" if re.match(r"\w", needle) else ""
-    after = r"(?!\w)" if re.search(r"\w$", needle) else ""
+    before = f"(?<!{_WORD_CHAR})" if re.match(_WORD_CHAR, needle) else ""
+    after = f"(?!{_WORD_CHAR})" if re.search(_WORD_CHAR + "$", needle) else ""
     return re.search(before + re.escape(needle) + after, haystack) is not None
 
 
@@ -51,7 +63,7 @@ def _text_in_state(text: str, state: PageState) -> bool:
     """Check if text is present as a token in page_text, elements, or item_lists."""
     if not text.strip():
         return False
-    if _token_present(text, state.page_text):
+    if _token_present(text, state.searchable_text):
         return True
     for el in state.elements:
         if el.text and _token_present(text, el.text):
@@ -72,7 +84,7 @@ def _marker_visible(text: str, state: PageState) -> bool:
     """
     if not text.strip():
         return False
-    if _token_present(text, state.page_text):
+    if _token_present(text, state.searchable_text):
         return True
     for el in state.elements:
         if el.text and _token_present(text, el.text):
@@ -86,7 +98,7 @@ def _visible_text_in_state(text: str, state: PageState) -> bool:
     a symptom off the text the replay itself entered)."""
     if not text.strip() or state is None:
         return False
-    if _token_present(text, state.page_text):
+    if _token_present(text, state.searchable_text):
         return True
     for el in state.elements:
         if el.text and _token_present(text, el.text):

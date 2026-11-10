@@ -258,6 +258,10 @@ class BrowserDriver:
             self._attach_page_listeners(page)
 
     def _attach_page_listeners(self, page: Page):
+        # The context's "page" event already attached these while new_page()
+        # was still returning; a second set would log every event twice.
+        if getattr(page, "_argus_attached", False) is True:
+            return
         page.on("console", lambda message, source=page: self._on_console(message, source))
         page.on("pageerror", lambda error, source=page: self._on_page_error(error, source))
         page.on("request", self._on_request)
@@ -278,11 +282,16 @@ class BrowserDriver:
         spec = self._dialog_queue.pop(0) if self._dialog_queue else None
         action = (spec or {}).get("action", "dismiss")
         text = (spec or {}).get("text", "")
+        # Dismissing a beforeunload prompt means "stay on this page", which
+        # would cancel Argus's own navigations and fresh-load checks.
+        leaving = spec is None and dialog.type == "beforeunload"
+        if leaving:
+            action = "accept"
         self._dialog_log.append(
             {
                 "type": dialog.type,
                 "message": dialog.message,
-                "responded_with": action if spec else "auto-dismiss",
+                "responded_with": "auto-accept" if leaving else action if spec else "auto-dismiss",
                 "text": text,
                 "timestamp": datetime.now().isoformat(),
             }
@@ -357,7 +366,8 @@ class BrowserDriver:
                 "resource_type": request.resource_type,
                 "headers": _redact_headers(dict(request.headers)),
                 "post_data": redact_body(
-                    request.post_data or "", request.headers.get("content-type", "")
+                    (request.post_data or "")[: self.capture_settings.read_bytes],
+                    request.headers.get("content-type", ""),
                 )
                 or None,
                 "started_at": datetime.now().isoformat(),
@@ -923,7 +933,16 @@ class BrowserDriver:
         # and proceed with the loaded DOM. That makes the stuck state OBSERVABLE
         # (and flaggable as a bug) instead of a 30s hang reported as a load failure.
         self.last_navigation_settled = False
-        resp = await self._page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+        try:
+            resp = await self._page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+        except Exception:
+            # Chromium is still committing its error page; a navigation started
+            # before that finishes is aborted by it, so the retry would fail too.
+            try:
+                await self._page.wait_for_url("chrome-error://**", timeout=1_500)
+            except Exception:
+                pass
+            raise
         self.last_navigation_settled = await self._settle_network()
         self.access_policy.check_url(self._page.url)
         return resp
@@ -960,6 +979,8 @@ class BrowserDriver:
             title=await page.title(),
             elements=elements,
             page_text=content.get("pageText", ""),
+            full_text=content.get("fullText", ""),
+            text_truncated=bool(content.get("textTruncated")),
             toast_messages=[t["text"] for t in content.get("toasts", []) if t.get("visible")],
             counts=content.get("counts", {}),
             css_indicators=[

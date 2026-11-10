@@ -1,6 +1,6 @@
 
 () => {
-    const result = { pageText: '', toasts: [], counts: {}, cssIndicators: [], itemLists: {},
+    const result = { pageText: '', fullText: '', textTruncated: false, toasts: [], counts: {}, cssIndicators: [], itemLists: {},
                      links: [], images: [], metaTags: {}, headings: [], a11yIssues: [], mixedContent: [],
                      openModals: [], focused: null, viewport: null, canvases: [] };
 
@@ -25,7 +25,12 @@
 
     // 1. Full visible text — simple and robust
     try {
-        result.pageText = (document.body.innerText || '').slice(0, 5000);
+        // fullText backs presence checks; pageText is the bounded preview shown to the agent.
+        const TEXT_LIMIT = 2000000;
+        const text = document.body.innerText || '';
+        result.fullText = text.slice(0, TEXT_LIMIT);
+        result.textTruncated = text.length > TEXT_LIMIT;
+        result.pageText = text.slice(0, 5000);
     } catch(e) {}
 
     // 1a. Open modals / dialogs / popovers
@@ -133,7 +138,10 @@
             if (!_shown(container)) return;
             const items = Array.from(container.querySelectorAll('.task-item, .list-item, li, tr')).filter(_shown);
             if (items.length >= 2) {
-                const key = (container.className || container.tagName).slice(0, 50);
+                const base = String(container.getAttribute('class') || container.tagName).slice(0, 50);
+                // Lists sharing a class or tag must not overwrite each other.
+                let key = base;
+                for (let n = 2; key in result.itemLists; n++) key = base + ' #' + n;
                 result.itemLists[key] = items.map(it => it.textContent.trim().slice(0, 200));
             }
         });
@@ -147,7 +155,7 @@
             result.links.push({
                 href: href,
                 text: (el.textContent || '').trim().slice(0, 100),
-                isInternal: href.startsWith(window.location.origin)
+                isInternal: el.origin === window.location.origin
             });
         });
     } catch(e) {}

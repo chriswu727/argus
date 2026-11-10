@@ -331,7 +331,9 @@ async def test_form(
                 sensitive=is_sensitive(el, field_desc),
             )
         except Exception as exc:
-            field_results.append(f"[FAIL] {field_desc!r} — {exc}")
+            # Playwright's message embeds its call log, including the typed value.
+            reason = str(exc) if isinstance(exc, ValueError) else type(exc).__name__
+            field_results.append(f"[FAIL] {field_desc!r} — {reason}")
             partial = True
 
     # Submit

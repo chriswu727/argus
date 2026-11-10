@@ -22,6 +22,13 @@ from .common import (
 )
 from .privacy import safe_report
 
+# A check with matches=None was inconclusive (login wall, HTTP error, redirect).
+_CHECK_STYLE = {
+    True: ("cv-ok", "MATCH"),
+    False: ("cv-bad", "MISMATCH"),
+    None: ("cv-unknown", "INCONCLUSIVE"),
+}
+
 
 @safe_report
 def render_html(
@@ -165,8 +172,8 @@ def render_html(
                 reference_groups.append(f"<strong>Actions</strong><ul>{values}</ul>")
             if refs.get("verifications"):
                 values = "".join(
-                    f'<li><span class="cv {"cv-ok" if check.get("matches") else "cv-bad"}">'
-                    f"{'MATCH' if check.get('matches') else 'MISMATCH'}</span> "
+                    f'<li><span class="cv {_CHECK_STYLE[check.get("matches")][0]}">'
+                    f"{_CHECK_STYLE[check.get('matches')][1]}</span> "
                     f"{_esc(check.get('expect', ''))} {_esc(check.get('target_text', ''))} "
                     f"@ <code>{_esc(check.get('url', ''))}</code></li>"
                     for check in refs["verifications"]
@@ -307,6 +314,7 @@ h3{{font-size:1.1rem;margin:.5rem 0;color:#f1f5f9}}
 .cv{{display:inline-block;padding:1px 5px;border-radius:3px;font-size:.65rem;font-weight:700}}
 .cv-ok{{background:#166534;color:#dcfce7}}
 .cv-bad{{background:#9a3412;color:#ffedd5}}
+.cv-unknown{{background:#475569;color:#f1f5f9}}
 .cs{{display:inline-block;padding:2px 7px;border-radius:4px;font-size:.7rem;font-weight:700;text-transform:uppercase;margin-right:.35rem}}
 .cs-exercised{{background:#166534;color:#dcfce7}}
 .cs-blocked{{background:#9a3412;color:#ffedd5}}

@@ -1,5 +1,39 @@
 # Changelog
 
+## Unreleased
+
+Fixes from a full audit of 0.12.2. Regenerate nothing; journals stay compatible.
+
+- Check symptom text against the whole page instead of its first 5,000
+  characters, so text further down is no longer reported as gone. Match targets
+  inside Chinese, Japanese, Korean and Thai text. Keep lists that share a class
+  or tag apart.
+- Load a new document for fresh-load checks of hash-route URLs; a same-document
+  navigation previously read in-memory state.
+- Treat an HTTP-status check as inconclusive when the load answers with a
+  different error, is redirected or lands on a login page. Only a clean answer
+  from the requested page counts as no longer reproduced.
+- Treat an absent symptom as inconclusive when the load ended on another page
+  or shows a login form in any common UI language.
+- `argus-regression` exits 2 for a URL without a scheme or with credentials and
+  for journal entries of the wrong type, and names other origins that have
+  journals when the given one has none.
+- Report intermittent receipts as inconclusive in JUnit (a failure, labelled
+  INTERMITTENT), SARIF and the HTML badge. Map SARIF `critical` to `error`.
+  Strip characters XML cannot carry. Show inconclusive checks as INCONCLUSIVE in
+  HTML. Redact regression artifacts.
+- `argus-cleanup` ignores report files whose name is not a run ID; one such
+  name could select the whole output directory. Automatic screenshot names can
+  no longer leave the run directory.
+- Make credential redaction linear in input size and cap captured request
+  bodies. Stop redacting ordinary keys such as `author` and `sidebar`; redact
+  `pwd`, quoted values, full Bearer and Basic values, signatures and private keys.
+- Observe forms that contain a control named `id`. Attach page listeners once.
+  Accept unsaved-changes prompts so navigation proceeds. Recover after a failed
+  navigation. Judge internal links by origin.
+- A start rejected after launch closes the browser; `end_session` always leaves
+  the failed state. `test_form` no longer echoes a typed value when a fill fails.
+
 ## Documentation and Glama deployment - 2026-11-09
 
 - Synchronize the agent installation guide and protocol with Argus 0.12.2,

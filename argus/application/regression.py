@@ -3,9 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
+from argus.access import canonical_origin
 from argus.application.context import current_runtime, runtime_scope
 from argus.application.manager import SessionManager
 from argus.domain.contracts import ErrorCode, OperationError
+from argus.domain.verification import receipt_outcome
 
 from .evidence import _journal_entries
 from .lifecycle import start_session
@@ -50,7 +52,7 @@ async def check_entries(session, entries: list[dict], url: str) -> list[dict]:
             receipt = await current_runtime().verifiers.verify(
                 session, clause, login_page=clause.get("login_page", False)
             )
-        reproduced = None if receipt.get("flaky") else receipt.get("reproduced")
+        reproduced = receipt_outcome(receipt)
         status = (
             "STILL-PRESENT"
             if reproduced is True
@@ -72,6 +74,25 @@ async def check_entries(session, entries: list[dict], url: str) -> list[dict]:
     return results
 
 
+def _regression_target_error(url: str) -> str | None:
+    """Reject a URL that would silently select the wrong journal.
+
+    "localhost:3000" parses with an empty host, reads the catch-all journal and
+    reports no findings, which a CI gate would take as a pass.
+    """
+    scheme = urlparse(url).scheme.lower()
+    if scheme == "file":
+        return None
+    try:
+        canonical_origin(url)
+    except ValueError:
+        return (
+            f"regression: {url!r} is not a testable URL; pass the full address the findings "
+            "were recorded at, such as http://localhost:3000"
+        )
+    return None
+
+
 async def run_regression(runtime: SessionManager, url: str, headless: bool = True) -> RegressionRun:
     async def run():
         entries = _journal_entries(urlparse(url).netloc or "default", strict=True)
@@ -83,6 +104,9 @@ async def run_regression(runtime: SessionManager, url: str, headless: bool = Tru
         return RegressionRun(await check_entries(runtime.session, entries, url))
 
     try:
+        invalid = _regression_target_error(url)
+        if invalid:
+            return RegressionRun([], invalid)
         with runtime_scope(runtime):
             result = await runtime.execute("regression", run)
         return RegressionRun([], str(result.value)) if result.error else result.value

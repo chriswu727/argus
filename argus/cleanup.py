@@ -6,6 +6,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from .domain.models import validated_run_id
 from .storage import StorageError, exclusive_file_lock
 
 _REPORT_FILE = re.compile(r"^report_(.+)\.(?:html|json|junit\.xml|sarif)$")
@@ -53,8 +54,15 @@ def discover_report_runs(output_dir: str | Path) -> list[ReportRun]:
     if root.exists():
         for path in root.iterdir():
             match = _REPORT_FILE.match(path.name)
-            if match:
-                report_paths.setdefault(match.group(1), []).append(path)
+            if not match:
+                continue
+            try:
+                # The id becomes a directory name below; "report_...html" would
+                # otherwise yield ".." and select the whole output directory.
+                run_id = validated_run_id(match.group(1))
+            except ValueError:
+                continue
+            report_paths.setdefault(run_id, []).append(path)
 
     runs: list[ReportRun] = []
     for run_id, report_files in report_paths.items():
