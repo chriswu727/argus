@@ -55,6 +55,10 @@ Fixes from a full audit of 0.12.2. Regenerate nothing; journals stay compatible.
 - `argus-regression` gives each finding its own deadline; a long journal or one
   unreachable page no longer fails the whole run.
 - Coverage goals match on whole words.
+- Network mocks are registered on the browser context with one handler per
+  pattern. Replacing a mock no longer leaves the first response active during
+  a fresh-load verification, and mocks follow tab switches and device emulation.
+- CI also runs on Python 3.13 and 3.14.
 - A start rejected after launch closes the browser; `end_session` always leaves
   the failed state. `test_form` no longer echoes a typed value when a fill fails.
 

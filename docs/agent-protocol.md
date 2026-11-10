@@ -48,13 +48,18 @@ not that a root cause or defect interpretation has been proven.
   `screenshot` when that observation is insufficient. These bounds do not claim
   to cap the entire legacy text response or browser memory.
 - `test_action`: structural changes (at most 100), machine-checkable expectation
-  results, screenshot path and auto-captured event count. A mismatch is a lead,
-  not an independently confirmed finding.
+  results, screenshot path and auto-captured event count. `browser_events`
+  lists up to five console messages and five failed requests the action raised
+  (URLs redacted, `omitted` counts the rest); `cross_stack` carries the requests
+  the action fired and a `check` note when the page's message and the wire
+  disagree. These are current-call-only: the buffers are drained by the action.
+  A mismatch is a lead, not an independently confirmed finding.
 - `click_what`, `type_into`, `select_into`, `press_key`, `navigate`, `go_back`:
   action execution metadata and post-action observation. `application_passed`
   is null: successfully executing an interaction is not a passing journey.
 - `test_form`: field outcomes, partial-completion flag, post-submit observation,
-  changes and screenshot reference. A failed field is not hidden by a successful submit.
+  changes, `browser_events` and screenshot reference. A failed field is not
+  hidden by a successful submit.
 - `verify_persistence`: expected/present/matches, storage-reset policy and the
   post-check page observation, so a separate `observe` is usually unnecessary.
   `finding_confirmed` is false: this probe does not independently record a bug.
