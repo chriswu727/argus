@@ -12,8 +12,10 @@
         const parts = [];
         let node = el;
         while (node && node.nodeType === 1 && node.tagName !== 'HTML') {
-            if (node.id) {
-                parts.unshift('[id="' + node.id.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"]');
+            // getAttribute, not node.id: a form control named "id" shadows the property.
+            const nodeId = node.getAttribute('id');
+            if (nodeId) {
+                parts.unshift('[id="' + nodeId.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"]');
                 break;
             }
             let i = 1, sib = node;

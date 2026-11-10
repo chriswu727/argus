@@ -31,27 +31,41 @@ def export_trace(actions: list[dict]) -> list[dict]:
     return result
 
 
-_SECRET_KEY = (
-    r"(?:[\w-]*(?:password|passwd|secret|token|jwt|bearer|auth|api[_-]?key|"
-    r"access[_-]?key|session|sid|csrf|xsrf|credential|cookie)[\w-]*)"
+# Long stems are unambiguous wherever they appear in a key ("JSESSIONID",
+# "csrfmiddlewaretoken"). Short ones only count as a whole word, so "sid" does
+# not hide "sidebar" and "auth" does not hide "author".
+_RE_SECRET_STEM = re.compile(
+    r"password|passwd|passphrase|secret|token|jwt|bearer|credential|cookie|csrf|xsrf|"
+    r"session|sessid|authorization|authenti|oauth|signature|"
+    r"api[_-]?key|access[_-]?key|private[_-]?key",
+    re.IGNORECASE,
 )
+_SECRET_WORDS = frozenset({"auth", "sid", "pwd", "otp", "sig"})
+_RE_KEY_WORD = re.compile(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+")
 
 
-_RE_SECRET_KEY = re.compile(_SECRET_KEY, re.IGNORECASE)
+def is_secret_key(key: str) -> bool:
+    # "pass" only as the whole key: "pass_rate" and "passed" are test results.
+    if _RE_SECRET_STEM.search(key) or key.strip().lower() == "pass":
+        return True
+    return any(word.lower() in _SECRET_WORDS for word in _RE_KEY_WORD.findall(key))
 
 
-_RE_JSON_STR = re.compile(r'("' + _SECRET_KEY + r'"\s*:\s*)"(?:[^"\\]|\\.)*"', re.IGNORECASE)
+_RE_JSON_STR = re.compile(r'("((?:[^"\\]|\\.)*)"\s*:\s*)"(?:[^"\\]|\\.)*"')
 _RE_JSON_KEY = re.compile(r'("(?:[^"\\]|\\.)*")\s*:')
 
 
-_RE_FORM = re.compile(r"([\w%.\-]+)=([^&\s#\"<>]+)")
+# The lookbehind and the length bound keep this linear: without them a long run
+# of key characters with no "=" (a hex or base64 body) backtracks quadratically.
+_RE_FORM = re.compile(r"(?<![\w%.\-])([\w%.\-]{1,128})=(\"[^\"\n]*\"|'[^'\n]*'|[^&\s#\"<>]+)")
 _RE_URL_AUTH = re.compile(r"(https?://)[^\s/@]+(?::[^\s/@]*)?@", re.IGNORECASE)
 
 
 _RE_JWT = re.compile(r"eyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]+")
 
 
-_RE_BEARER = re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._\-]+")
+_RE_BEARER = re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._~+/\-]+=*")
+_RE_AUTH_HEADER = re.compile(r"(?i)(authorization[\"']?\s*[:=]\s*[\"']?[a-z]+\s+)[^\s\"']+")
 
 
 _SENSITIVE_HEADERS = {
@@ -86,17 +100,18 @@ def _redact(text: str) -> str:
         except (ValueError, RecursionError):
             for key in _RE_JSON_KEY.findall(text):
                 try:
-                    if _RE_SECRET_KEY.search(json.loads(key)):
+                    if is_secret_key(json.loads(key)):
                         return "[redacted malformed structured data]"
                 except ValueError:
                     continue
     text = _RE_JWT.sub("[redacted-jwt]", text)
-    text = _RE_JSON_STR.sub(r'\1"[redacted]"', text)
+    text = _RE_JSON_STR.sub(lambda m: f'{m[1]}"[redacted]"' if is_secret_key(m[2]) else m[0], text)
     text = _RE_FORM.sub(
-        lambda m: f"{m[1]}=[redacted]" if _RE_SECRET_KEY.search(unquote(m[1])) else m[0],
+        lambda m: f"{m[1]}=[redacted]" if is_secret_key(unquote(m[1])) else m[0],
         text,
     )
     text = _RE_URL_AUTH.sub(r"\1[redacted]@", text)
+    text = _RE_AUTH_HEADER.sub(r"\1[redacted]", text)
     text = _RE_BEARER.sub(r"\1[redacted]", text)
     return text
 
@@ -106,9 +121,7 @@ def _redact_headers(headers: dict) -> dict:
     out = {}
     for k, v in (headers or {}).items():
         out[k] = (
-            "[redacted]"
-            if k.lower() in _SENSITIVE_HEADERS or _RE_SECRET_KEY.search(k)
-            else _redact(str(v))
+            "[redacted]" if k.lower() in _SENSITIVE_HEADERS or is_secret_key(k) else _redact(str(v))
         )
     return out
 
@@ -124,8 +137,7 @@ def redacted_copy(value):
         )
     if isinstance(value, dict):
         return {
-            k: "[redacted]" if _RE_SECRET_KEY.search(str(k)) else redacted_copy(v)
-            for k, v in value.items()
+            k: "[redacted]" if is_secret_key(str(k)) else redacted_copy(v) for k, v in value.items()
         }
     if isinstance(value, list):
         return [redacted_copy(item) for item in value]

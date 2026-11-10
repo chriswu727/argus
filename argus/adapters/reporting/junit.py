@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from argus.domain.models import ExplorationResult
+from argus.domain.verification import receipt_outcome
 
+from .common import xml_safe
 from .privacy import safe_report
 
 
@@ -14,9 +16,7 @@ def render_junit(r: ExplorationResult) -> str:
     import xml.etree.ElementTree as ET
 
     findings = [b.to_dict() for b in r.bugs]
-    failures = sum(
-        1 for f in findings if (f.get("reproduction") or {}).get("reproduced") is not False
-    )
+    failures = sum(1 for f in findings if receipt_outcome(f.get("reproduction")) is not False)
     suite = ET.Element(
         "testsuite",
         {
@@ -28,8 +28,16 @@ def render_junit(r: ExplorationResult) -> str:
         },
     )
     for f in findings:
-        verdict = (f.get("reproduction") or {}).get("reproduced")
-        tier = "PROVEN" if verdict is True else ("REFUTED" if verdict is False else "UNVERIFIED")
+        verdict = receipt_outcome(f.get("reproduction"))
+        tier = (
+            "PROVEN"
+            if verdict is True
+            else "REFUTED"
+            if verdict is False
+            else "INTERMITTENT"
+            if (f.get("reproduction") or {}).get("flaky")
+            else "UNVERIFIED"
+        )
         tc = ET.SubElement(
             suite,
             "testcase",
@@ -56,4 +64,6 @@ def render_junit(r: ExplorationResult) -> str:
         else:
             fail = ET.SubElement(tc, "failure", {"message": f["title"][:200], "type": f["type"]})
             fail.text = "\n".join(body_lines)
-    return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(suite, encoding="unicode")
+    return '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_safe(
+        ET.tostring(suite, encoding="unicode")
+    )

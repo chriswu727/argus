@@ -70,6 +70,17 @@ class VerificationSpec:
         return cls(kind=kind, expect_status=status, clear_storage=clear_storage, **fields)
 
 
+def receipt_outcome(receipt: Mapping[str, Any] | None) -> bool | None:
+    """True reproduced, False not reproduced, None inconclusive.
+
+    A symptom seen on some fresh loads but not all is neither confirmed nor
+    refuted, whatever the receipt's own `reproduced` flag says.
+    """
+    if not receipt or receipt.get("flaky"):
+        return None
+    return receipt.get("reproduced")
+
+
 def retained_verification(clause: Mapping[str, Any] | None, receipt: Mapping | None) -> dict:
     if not clause or not receipt:
         return {}

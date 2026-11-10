@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Dict
 
 from argus.domain.models import ExplorationResult, Severity
+from argus.domain.verification import receipt_outcome
 
 from .common import (
     _BUGTYPE_LABELS,
@@ -14,7 +15,13 @@ from .privacy import safe_report
 def render_sarif(r: ExplorationResult) -> str:
     import json
 
-    _LEVEL = {Severity.HIGH: "error", Severity.MEDIUM: "warning", Severity.LOW: "note"}
+    _LEVEL = {
+        Severity.CRITICAL: "error",
+        Severity.HIGH: "error",
+        Severity.MEDIUM: "warning",
+        Severity.LOW: "note",
+        Severity.INFO: "note",
+    }
     rules: Dict[str, dict] = {}
     results = []
     for b in r.bugs:
@@ -26,7 +33,7 @@ def render_sarif(r: ExplorationResult) -> str:
                 "name": rid,
                 "shortDescription": {"text": _BUGTYPE_LABELS.get(b.type, rid)},
             }
-        verdict = (d.get("reproduction") or {}).get("reproduced")
+        verdict = receipt_outcome(d.get("reproduction"))
         msg = d["title"] + (f" — {d['description']}" if d.get("description") else "")
         results.append(
             {
@@ -41,6 +48,7 @@ def render_sarif(r: ExplorationResult) -> str:
                 "properties": {
                     "verified": d["verified"],
                     "reproduced": verdict,
+                    "intermittent": bool((d.get("reproduction") or {}).get("flaky")),
                     "severity": d["severity"],
                 },
             }

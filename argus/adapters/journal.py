@@ -17,6 +17,8 @@ class FileJournal:
         if any(
             not isinstance(entry.get("fingerprint"), str)
             or not isinstance(entry.get("verify"), dict)
+            or not isinstance(entry.get("title", ""), str)
+            or not isinstance(entry.get("severity", ""), str)
             for entry in entries
         ):
             raise StorageError(f"invalid finding entry in {path}")

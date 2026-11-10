@@ -84,7 +84,10 @@ class AccessPolicy:
         return resolved
 
     def check_url(self, url: str) -> None:
-        if url == "about:blank":
+        # Chromium's own error page (failed navigation) holds no site content;
+        # rejecting it would refuse every later call, including the navigate
+        # that leaves it.
+        if url == "about:blank" or url.startswith("chrome-error://"):
             return
         try:
             parsed = urlsplit(url)

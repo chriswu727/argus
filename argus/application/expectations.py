@@ -96,7 +96,7 @@ def _evaluate_expectation(before: PageState, after: PageState, expect: dict) -> 
         return [x] if isinstance(x, str) else list(x or [])
 
     def _in(item, state):
-        if _token_present(item, state.page_text):
+        if _token_present(item, state.searchable_text):
             return True
         for el in state.elements:
             if el.text and _token_present(item, el.text):

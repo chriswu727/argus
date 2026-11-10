@@ -124,6 +124,13 @@ async def _run_regression(url: str, output: str, headless: bool = True) -> int:
             console.print(f"  {result['reason']}")
     if not run.results:
         console.print("No journaled findings. Nothing to regression-test.")
+        others = _other_journal_origins(output, url)
+        if others:
+            console.print(
+                "[yellow]Findings are journaled for other origins in this directory: "
+                f"{', '.join(others)}. Journals are per origin; pass the URL the findings "
+                "were recorded at.[/]"
+            )
         return 0
     art = _write_regression_artifact(output, url, run.results)
     if art:
@@ -134,6 +141,19 @@ async def _run_regression(url: str, output: str, headless: bool = True) -> int:
     return run.exit_code
 
 
+def _other_journal_origins(output_dir: str, url: str) -> list[str]:
+    from urllib.parse import urlparse
+
+    from .application.evidence import _journal_file_name
+
+    own = _journal_file_name(urlparse(url).netloc)
+    journal_dir = Path(output_dir) / ".argus" / "journal"
+    try:
+        return sorted(path.stem for path in journal_dir.glob("*.json") if path.name != own)[:10]
+    except OSError:
+        return []
+
+
 def _write_regression_artifact(output_dir: str, url: str, results: list) -> Optional[str]:
     """Emit the regression run as JSON + JUnit so CI can consume it, not just the
     exit code — STILL-PRESENT = a <failure> (a known bug came back / never got
@@ -142,10 +162,16 @@ def _write_regression_artifact(output_dir: str, url: str, results: list) -> Opti
     import xml.etree.ElementTree as ET
     from datetime import datetime
 
+    from .adapters.reporting.common import xml_safe
     from .domain.models import new_run_id
+    from .security import _redact, redacted_copy
     from .storage import atomic_write_json, atomic_write_text, storage_warning
 
     try:
+        # These files are meant for CI logs and artifacts; the journal's private
+        # check URLs must not travel with them unredacted.
+        results = redacted_copy(results)
+        url = _redact(url)
         out = Path(output_dir)
         out.mkdir(parents=True, exist_ok=True)
         ts = new_run_id()
@@ -184,7 +210,9 @@ def _write_regression_artifact(output_dir: str, url: str, results: list) -> Opti
                 f.text = f"{r['title']}\nruns={r.get('runs')}\nurl={r.get('url')}"
             elif r["status"] == "INCONCLUSIVE":
                 ET.SubElement(tc, "skipped", {"message": "symptom check inconclusive"})
-        xml = '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(suite, encoding="unicode")
+        xml = '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_safe(
+            ET.tostring(suite, encoding="unicode")
+        )
         atomic_write_text(out / f"regression_{ts}.junit.xml", xml)
         return str(out / f"regression_{ts}")
     except Exception as exc:

@@ -168,7 +168,9 @@ class SessionManager:
             if isinstance(value, Rejection):
                 error = value.code
                 return self._result(str(value), error)
-            if self.state != SessionState.FAILED:
+            # A completed end_session always leaves the failed state, even when
+            # there was no session left to close.
+            if self.state != SessionState.FAILED or name == "end_session":
                 self.transition(SessionState.ACTIVE if self.session.active else SessionState.IDLE)
             return self._result(value)
         except asyncio.CancelledError:
@@ -186,6 +188,12 @@ class SessionManager:
             )
         except OperationError as exc:
             error = exc.code
+            if self.state == SessionState.STARTING:
+                # A start rejected after launch must not leave the browser owned
+                # by a session that reports "starting" forever. A start refused
+                # before launch changed nothing and stays idle.
+                await self.close_backends()
+                self.transition(SessionState.FAILED)
             return self._result(f"{name}: {exc}", error)
         except StorageError:
             error = ErrorCode.STORAGE

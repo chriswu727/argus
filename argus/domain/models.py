@@ -89,6 +89,9 @@ class PageState:
     title: str
     elements: List[InteractiveElement]
     page_text: str = ""
+    # Whole-document text for presence checks; page_text is only a bounded preview.
+    full_text: str = ""
+    text_truncated: bool = False
     toast_messages: List[str] = field(default_factory=list)
     counts: Dict[str, int] = field(default_factory=dict)
     css_indicators: List[str] = field(default_factory=list)
@@ -104,6 +107,10 @@ class PageState:
     focused: Optional[Dict] = None
     viewport: Optional[Dict] = None
     timestamp: datetime = field(default_factory=datetime.now)
+
+    @property
+    def searchable_text(self) -> str:
+        return self.full_text or self.page_text
 
 
 @dataclass

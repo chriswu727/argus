@@ -11,7 +11,7 @@ from argus.domain.models import (
     Bug,
     Observation,
 )
-from argus.domain.verification import VerificationSpec, retained_verification
+from argus.domain.verification import VerificationSpec, receipt_outcome, retained_verification
 
 from .coverage import _coverage_goal_index, _refresh_finding_coverage
 from .events import _BUG_TYPE_BY_NAME, _SEVERITY_BY_NAME
@@ -303,7 +303,7 @@ async def record_bug(
     )
     s.bugs.append(bug)
     _refresh_finding_coverage(s, coverage_goals)
-    verdict = (receipt or {}).get("reproduced")
+    verdict = receipt_outcome(receipt)
     code = (
         "verified" if verdict is True else "not_reproduced" if verdict is False else "inconclusive"
     )

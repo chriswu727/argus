@@ -23,7 +23,7 @@ from typing import List, Optional
 from argus.domain.models import InteractiveElement
 from argus.domain.verification import LOGIN_WALL_PHRASES
 from argus.resolver import kind_of
-from argus.security import _RE_SECRET_KEY
+from argus.security import is_secret_key
 
 # Same containers extraction uses for an element's row (parent_context).
 _ROW_SELECTOR = 'li, tr, .card, .list-item, [class*="item"], [class*="row"]'
@@ -174,7 +174,7 @@ def is_sensitive(el: InteractiveElement, description: str) -> bool:
     if (el.type or "").lower() == "password":
         return True
     faces = " ".join(filter(None, [el.name, el.id, el.aria_label, el.placeholder, description]))
-    return bool(_RE_SECRET_KEY.search(faces))
+    return is_secret_key(faces)
 
 
 def _doc(text: str) -> str:

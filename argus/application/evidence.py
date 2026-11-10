@@ -60,9 +60,12 @@ def _screenshot_dir(s: "Session") -> Path:
     return Path(_output_dir()) / "screenshots" / s.run_id
 
 
+def _journal_file_name(origin: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]", "_", origin or "default") + ".json"
+
+
 def _journal_path(origin: str) -> Path:
-    safe = re.sub(r"[^A-Za-z0-9._-]", "_", origin or "default")
-    return Path(_output_dir()) / ".argus" / "journal" / f"{safe}.json"
+    return Path(_output_dir()) / ".argus" / "journal" / _journal_file_name(origin)
 
 
 def _bug_fingerprint(bug: "Bug") -> str:
@@ -144,7 +147,8 @@ async def _auto_screenshot(s: Session, name: str, step: str) -> Optional[str]:
     location and append a Screenshot record with the correct URL.
     """
     s._screenshot_counter += 1
-    safe_name = f"{s._screenshot_counter:03d}_{name}"
+    # Callers pass page-controlled text (an element label); keep it a file name.
+    safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", f"{s._screenshot_counter:03d}_{name}")
     path = str(_screenshot_dir(s) / f"{safe_name}.png")
 
     if s.mode == "web" and s.browser is not None:
