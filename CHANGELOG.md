@@ -61,6 +61,21 @@ Fixes from a full audit of 0.12.2. Regenerate nothing; journals stay compatible.
 - CI also runs on Python 3.13 and 3.14.
 - A start rejected after launch closes the browser; `end_session` always leaves
   the failed state. `test_form` no longer echoes a typed value when a fill fails.
+- Resolve "Last name" and "First name" to the fields with those labels instead
+  of reading the word as a position. Only the last kind word sets the kind, so
+  "Select all button" and "Menu button" pick the button. A bare label shared by
+  several rows stays ambiguous. Chinese, Japanese, Korean and Thai descriptions
+  match inside longer labels.
+- List elements in `srcdoc` and blank iframes once, and reach controls in
+  cross-origin frames nested inside other cross-origin frames.
+- An exported step located by a structural CSS path (`:nth-of-type`,
+  `:nth-child`) is positional: the export is incomplete and does not run.
+- `drag_what`, `right_click`, `storage_set`, `storage_remove`, `storage_clear`,
+  `cookies_set`, `cookies_clear`, `tabs_switch` and `eval_js` appear in the
+  action trace without their values, so an export that contains them is
+  incomplete and a replay through them reports that it cannot repeat them.
+- `crawl_site` stays on the origin it started from, skips a link that redirects
+  elsewhere, returns to the start page, and counts only the event-bugs it captured.
 
 ## Documentation and Glama deployment - 2026-11-09
 

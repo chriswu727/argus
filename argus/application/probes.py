@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from argus.access import canonical_origin
 from argus.application.context import current_runtime
 from argus.domain.contracts import Rejection, ToolText
 
@@ -266,6 +267,15 @@ async def crawl_site(max_pages: int = 20) -> str:
 
     s = _require_session()
     start_url = s.browser.current_url if s.browser.has_page else s.url
+
+    def _origin(u: str):
+        try:
+            return canonical_origin(u)
+        except ValueError:
+            return None
+
+    start_origin = _origin(start_url)
+    left_site: list = []
     visited: set = set()
     visited_paths: set = set()  # track by path to avoid ?ref=x duplicates
     to_visit: list = [start_url]
@@ -287,6 +297,12 @@ async def crawl_site(max_pages: int = 20) -> str:
         try:
             await s.browser.goto(url)
         except Exception:
+            continue
+        # A same-origin link can redirect off the site; its page and links are
+        # another site's, and its events must not be filed against the next page.
+        if _origin(s.browser.current_url) != start_origin:
+            s.browser.drain_errors()
+            left_site.append(url)
             continue
 
         state = await s.browser.get_state()
@@ -324,7 +340,15 @@ async def crawl_site(max_pages: int = 20) -> str:
             ):
                 to_visit.append(href)
 
-    lines = [f"Crawl complete: {len(visited)} pages visited, {len(s.bugs)} event-bugs captured"]
+    try:
+        await s.browser.goto(start_url)
+        s.browser.drain_errors()
+        s._last_elements = (await s.browser.get_state()).elements
+    except Exception:
+        pass
+
+    captured = sum(bug_count for _, bug_count, _ in page_results)
+    lines = [f"Crawl complete: {len(visited)} pages visited, {captured} event-bugs captured"]
     lines.append("")
     for url, bug_count, dead_count in page_results:
         markers = []
@@ -334,6 +358,8 @@ async def crawl_site(max_pages: int = 20) -> str:
             markers.append(f"{dead_count} dead link(s)")
         marker = f"  ({', '.join(markers)})" if markers else ""
         lines.append(f"  {url}{marker}")
+    for url in left_site:
+        lines.append(f"  {url}  (redirected to another origin; not crawled)")
     lines.append("")
     lines.append("Crawl auto-records only console/network events. For everything")
     lines.append("else, observe the pages yourself and call record_bug.")

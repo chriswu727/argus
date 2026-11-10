@@ -46,6 +46,7 @@ async def tabs_switch(index: int) -> str:
     # click_what/type_into resolves against THIS tab, not the previous one.
     s._last_elements = (await s.browser.get_state()).elements
     s.steps.append(f"tabs_switch({index})")
+    _record_action(s, "tabs_switch", f"tab {index}")
     return f"Switched to tab {index}: {s.browser.current_url}. observe() to see its elements."
 
 

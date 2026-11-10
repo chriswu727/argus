@@ -4,6 +4,7 @@ import re
 
 from argus.application.context import current_runtime
 
+from .evidence import _record_action
 from .observation import _resolve_or_error
 from .session import _require_session, _require_web_session
 
@@ -207,6 +208,8 @@ async def eval_js(code: str) -> str:
 
     s = _require_session()
     s.steps.append(f"eval_js: {code[:80]}")
+    # Recorded before running: the code can change the page even if it throws.
+    _record_action(s, "eval_js", "code omitted")
 
     try:
         result = await s.browser.evaluate_js(code)

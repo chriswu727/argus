@@ -121,6 +121,35 @@ _FIND_VISIBLE_ELEMENT_JS = (
 _CHECK_LAYOUT_JS = files("argus.adapters.scripts").joinpath("check_layout_js.js").read_text()
 _REF_ENGINE_JS = files("argus.adapters.scripts").joinpath("ref_engine_js.js").read_text()
 
+# Traced steps that replay does not repeat; a journey through one diverges
+# instead of silently skipping a step that may have caused the symptom.
+_NOT_REPLAYED = frozenset(
+    {
+        "drag_what",
+        "right_click",
+        "storage_set",
+        "storage_remove",
+        "storage_clear",
+        "cookies_set",
+        "cookies_clear",
+        "tabs_switch",
+        "eval_js",
+    }
+)
+
+# Must build the same selector as ifSel() in extract_elements_js.js, which
+# writes the chain for frames that the in-page walk enters itself.
+_IFRAME_SELECTOR_JS = """el => {
+    const src = el.getAttribute('src');
+    let sel;
+    if (el.id) sel = 'iframe[id=' + JSON.stringify(el.id) + ']';
+    else if (el.name) sel = 'iframe[name=' + JSON.stringify(el.name) + ']';
+    else if (src) sel = 'iframe[src=' + JSON.stringify(src) + ']';
+    else sel = 'iframe >> nth='
+        + Array.prototype.indexOf.call(el.getRootNode().querySelectorAll('iframe'), el);
+    return {sel: sel, src: src};
+}"""
+
 # JS snippet for performance metrics (on-demand).
 _EXTRACT_PERFORMANCE_JS = (
     files("argus.adapters.scripts").joinpath("extract_performance_js.js").read_text()
@@ -1065,9 +1094,10 @@ class BrowserDriver:
             extra, covered = await self._extract_cross_origin_frames(pg)
             if extra:
                 elements = [
-                    e for e in elements if not (e.tag == "iframe" and (e.href or "") in covered)
+                    e
+                    for e in elements + extra
+                    if not (e.tag == "iframe" and (e.href or "") in covered)
                 ]
-                elements += extra
                 for i, el in enumerate(elements):
                     el.index = i
         except Exception:
@@ -1075,46 +1105,54 @@ class BrowserDriver:
         return elements
 
     async def _extract_cross_origin_frames(self, pg):
-        """Run the element extractor inside each CROSS-ORIGIN child frame (which
-        the in-page JS could not reach) and tag those elements with the iframe
-        selector. Returns (elements, covered_srcs) — covered_srcs lets the caller
-        drop the now-redundant cross-origin markers."""
+        """Run the element extractor inside each frame that the walk of its
+        parent frame could not enter (a cross-origin child), and tag those
+        elements with the full iframe selector chain. Returns (elements,
+        covered_srcs) — covered_srcs lets the caller drop the now-redundant
+        cross-origin markers."""
         from urllib.parse import urlsplit
 
-        def origin(u):
+        def origin(url, parent_origin):
+            # about:srcdoc / about:blank documents inherit their parent's origin,
+            # so the parent's in-page walk reads them through contentDocument.
+            if not url or url.startswith("about:"):
+                return parent_origin
             try:
-                s = urlsplit(u or "")
+                s = urlsplit(url)
                 return (s.scheme, s.hostname, s.port)
             except Exception:
                 return None
 
-        main = pg.main_frame
-        main_o = origin(main.url)
         extra, covered = [], set()
-        for fr in pg.frames:
-            if fr is main or origin(fr.url) == main_o:
-                continue  # main or same-origin: the in-page JS already covered it
-            try:
-                handle = await fr.frame_element()
-                info = await handle.evaluate(
-                    "el => ({sel: el.id ? ('iframe[id='+JSON.stringify(el.id)+']')"
-                    " : (el.name ? ('iframe[name='+JSON.stringify(el.name)+']')"
-                    " : (el.getAttribute('src') ? ('iframe[src='+JSON.stringify(el.getAttribute('src'))+']') : null)),"
-                    " src: el.getAttribute('src')})"
-                )
-            except Exception:
-                info = None
-            if not info or not info.get("sel"):
-                continue
-            try:
-                raw = await fr.evaluate(_EXTRACT_ELEMENTS_JS)
-            except Exception:
-                continue
-            for el in raw:
-                el["frame"] = info["sel"]
-                extra.append(InteractiveElement(**el))
-            if info.get("src"):
-                covered.add(info["src"])
+
+        async def visit(frame, frame_origin, chain):
+            for child in frame.child_frames:
+                child_origin = origin(child.url, frame_origin)
+                try:
+                    handle = await child.frame_element()
+                    info = await handle.evaluate(_IFRAME_SELECTOR_JS)
+                except Exception:
+                    info = None
+                if not info or not info.get("sel"):
+                    continue
+                child_chain = chain + [info["sel"]]
+                if child_origin is None or child_origin != frame_origin:
+                    try:
+                        raw = await child.evaluate(_EXTRACT_ELEMENTS_JS)
+                    except Exception:
+                        continue
+                    prefix = " >>> ".join(child_chain)
+                    for el in raw:
+                        el["frame"] = prefix + (" >>> " + el["frame"] if el.get("frame") else "")
+                        if el.get("form"):
+                            el["form"] = el["frame"] + "#" + el["form"].rsplit("#", 1)[1]
+                        extra.append(InteractiveElement(**el))
+                    if info.get("src"):
+                        covered.add(info["src"])
+                await visit(child, child_origin, child_chain)
+
+        main = pg.main_frame
+        await visit(main, origin(main.url, None), [])
         return extra, covered
 
     async def _extract_page_content(self, page=None) -> Dict:
@@ -1280,6 +1318,10 @@ class BrowserDriver:
                         diverged = True
                         break
                     continue
+                if tool in _NOT_REPLAYED:
+                    steps.append({"act": f"{tool} {desc!r}", "ok": False, "reason": "not replayed"})
+                    diverged = True
+                    break
                 if tool in ("go_back", "scroll_down", "resize", "upload_file"):
                     try:
                         if tool == "go_back":
