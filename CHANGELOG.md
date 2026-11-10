@@ -46,6 +46,15 @@ Fixes from a full audit of 0.12.2. Regenerate nothing; journals stay compatible.
   combinations apply modifiers per key and accept hyphenated key names, and
   failed typing no longer echoes the text. `screen_wait_for_stable` works.
   `ARGUS_SCREEN_ABORT_FILE` expands `~`, and its directory is created at start.
+- `test_action` and `test_form` return the console and HTTP failures an action
+  raised, and the cross-stack check, as structured data (`browser_events`,
+  `cross_stack`); compact and delta responses previously dropped them.
+- Failed actions (hover, resize, upload, drag, coordinate input, missing
+  screenshots, a screen session that cannot start) are reported as errors
+  instead of `status: completed`.
+- `argus-regression` gives each finding its own deadline; a long journal or one
+  unreachable page no longer fails the whole run.
+- Coverage goals match on whole words.
 - A start rejected after launch closes the browser; `end_session` always leaves
   the failed state. `test_form` no longer echoes a typed value when a fill fails.
 

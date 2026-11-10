@@ -94,22 +94,46 @@ def _regression_target_error(url: str) -> str | None:
 
 
 async def run_regression(runtime: SessionManager, url: str, headless: bool = True) -> RegressionRun:
-    async def run():
+    async def start():
         entries = _journal_entries(urlparse(url).netloc or "default", strict=True)
         if not entries:
-            return RegressionRun([])
+            return []
         await start_session(url, headless=headless, include_observation=False)
         if not runtime.session.active:
             raise OperationError(ErrorCode.BACKEND, "Could not start regression session")
-        return RegressionRun(await check_entries(runtime.session, entries, url))
+        return entries
 
     try:
         invalid = _regression_target_error(url)
         if invalid:
             return RegressionRun([], invalid)
         with runtime_scope(runtime):
-            result = await runtime.execute("regression", run)
-        return RegressionRun([], str(result.value)) if result.error else result.value
+            started = await runtime.execute("regression", start)
+            if started.error:
+                return RegressionRun([], str(started.value))
+            results: list[dict] = []
+            # One operation per finding: a journal only grows, and a single
+            # deadline for the whole run would fail it once it is long enough.
+            for entry in started.value:
+
+                async def check(entry=entry):
+                    return await check_entries(runtime.session, [entry], url)
+
+                checked = await runtime.execute("regression", check)
+                if checked.error:
+                    results.append(
+                        {
+                            "title": entry.get("title", ""),
+                            "severity": entry.get("severity", "?"),
+                            "status": "INCONCLUSIVE",
+                            "runs": None,
+                            "reason": f"check did not complete: {checked.value}"[:300],
+                            "url": (entry.get("verify") or {}).get("at_url") or url,
+                        }
+                    )
+                else:
+                    results.extend(checked.value)
+        return RegressionRun(results)
     finally:
         await runtime.shutdown()
 
