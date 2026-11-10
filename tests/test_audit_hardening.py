@@ -202,3 +202,52 @@ async def test_rejected_start_and_empty_end_leave_no_stuck_state(isolated_runtim
     assert isolated_runtime.state is SessionState.FAILED
     await isolated_runtime.execute("end_session", end_session)
     assert isolated_runtime.state is SessionState.IDLE
+
+
+async def test_action_evidence_survives_compact_mode(isolated_runtime, site):
+    from argus.application.journeys import test_action as run_action
+
+    pages, base = site
+    pages["/"] = (
+        "<button onclick=\"fetch('/missing-api').then(()=>console.error('save failed'))\">Save</button>"
+    )
+    try:
+        await start_session(base)
+        result = await run_action("Save")
+        events = result.data["browser_events"]
+        assert any("save failed" in text for text in events["console"]) or events["http"]
+        assert "cross_stack" in result.data
+    finally:
+        await isolated_runtime.shutdown()
+
+
+async def test_failed_action_is_an_error_not_a_completed_call(isolated_runtime, site):
+    from argus.application.actions import upload_file
+    from argus.application.screenshots import screenshot_diff
+    from argus.domain.contracts import ErrorCode
+
+    _, base = site
+    try:
+        await start_session(base)
+        empty = await isolated_runtime.execute("upload_file", upload_file, "Attach", [])
+        assert empty.error is ErrorCode.INVALID_ARGUMENT
+        missing = await isolated_runtime.execute(
+            "screenshot_diff", screenshot_diff, "nope-a", "nope-b"
+        )
+        assert missing.error is not None
+    finally:
+        await isolated_runtime.shutdown()
+
+
+def test_coverage_goal_matches_whole_words_only(isolated_runtime):
+    from argus.application.coverage import _coverage_goal_index
+
+    session = isolated_runtime.session
+    session.coverage_goals = [
+        {"goal": "Checkout with credit card"},
+        {"goal": "Delete account"},
+    ]
+    assert _coverage_goal_index(session, "edit")[0] is None
+    assert _coverage_goal_index(session, "count")[0] is None
+    assert _coverage_goal_index(session, "delete account")[0] == 1
+    assert _coverage_goal_index(session, "credit card")[0] == 0

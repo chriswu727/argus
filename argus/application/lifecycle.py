@@ -183,10 +183,11 @@ async def start_screen_session(target_app: str = "") -> str:
         from argus.screen.backend import ScreenBackend
         from argus.screen.permissions import gate_screen_mode
     except ImportError as exc:
-        return (
+        return Rejection(
             f"start_screen_session: screen-mode dependencies not installed.\n"
             f"  pip install argus-testing[mac]\n"
-            f"  ({exc})"
+            f"  ({exc})",
+            ErrorCode.BACKEND,
         )
 
     missing = gate_screen_mode()
@@ -197,7 +198,7 @@ async def start_screen_session(target_app: str = "") -> str:
             lines.append(f"    Open: {c.settings_url}")
         lines.append("")
         lines.append("Run `argus-mcp --doctor` for full details, then re-try.")
-        return "\n".join(lines)
+        return Rejection("\n".join(lines), ErrorCode.PERMISSION)
 
     # The abort file is the user's stop button. Only the user clears it: if a
     # new session removed it, the agent could undo a stop by starting over.
@@ -212,8 +213,10 @@ async def start_screen_session(target_app: str = "") -> str:
 
     teardown_errors = await _teardown_active_session()
     if teardown_errors:
-        return "start_screen_session: could not close the active session safely — " + "; ".join(
-            teardown_errors
+        return Rejection(
+            "start_screen_session: could not close the active session safely — "
+            + "; ".join(teardown_errors),
+            ErrorCode.BACKEND,
         )
 
     current_runtime().session = Session()
@@ -241,7 +244,10 @@ async def start_screen_session(target_app: str = "") -> str:
     except Exception as exc:
         await current_runtime().close_backends()
         current_runtime().transition(SessionState.FAILED)
-        raise OperationError(ErrorCode.BACKEND, f"failed to start — {type(exc).__name__}") from exc
+        # RuntimeError carries the backend's own guidance (missing extras, no
+        # app matching the name, an ambiguous name); other errors may not be safe.
+        detail = str(exc)[:300] if isinstance(exc, RuntimeError) else type(exc).__name__
+        raise OperationError(ErrorCode.BACKEND, f"failed to start — {detail}") from exc
 
     current_runtime().session._last_screen_elements = obs.elements
     current_runtime().session.tool_calls = 1

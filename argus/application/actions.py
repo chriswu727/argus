@@ -183,7 +183,7 @@ async def paste_into(description: str, text: str) -> str:
     idx = s._last_elements.index(el)
     ok = await s.browser.paste_into(idx, text, s._last_elements)
     if not ok:
-        return f"paste_into: failed on {description!r}."
+        return Rejection(f"paste_into: failed on {description!r}.", ErrorCode.BACKEND)
     label = el.text or el.aria_label or el.placeholder or el.name or el.tag
     s.steps.append(f"paste_into({description!r}, ...)")
     _record_action(s, "paste_into", description, text)
@@ -253,7 +253,10 @@ async def hover_what(description: str) -> str:
     locator = locator_expr(el, s._last_elements)
     ok = await s.browser.hover(idx, s._last_elements)
     if not ok:
-        return f"hover_what({description!r}) — failed (element may be off-screen or detached)."
+        return Rejection(
+            f"hover_what({description!r}) — failed (element may be off-screen or detached).",
+            ErrorCode.BACKEND,
+        )
     _record_action(s, "hover_what", description, locator=locator)
     # The observation is taken while the pointer stays put, so controls the
     # hover revealed (a row's delete button) are listed and targetable next.
@@ -282,7 +285,7 @@ async def right_click(description: str) -> str:
     idx = s._last_elements.index(el)
     ok = await s.browser.right_click(idx, s._last_elements)
     if not ok:
-        return f"right_click({description!r}) — failed."
+        return Rejection(f"right_click({description!r}) — failed.", ErrorCode.BACKEND)
     return f'Right-clicked "{label[:60]}". observe() to see the menu / new state.'
 
 
@@ -361,7 +364,7 @@ async def resize(width: int, height: int) -> str:
         return err
     ok = await s.browser.resize(width, height)
     if not ok:
-        return f"resize: failed to set viewport {width}x{height}."
+        return Rejection(f"resize: failed to set viewport {width}x{height}.", ErrorCode.BACKEND)
     s.steps.append(f"resize({width}x{height})")
     _record_action(s, "resize", f"{width}x{height}")
     new_state = await s.browser.get_state()
@@ -389,7 +392,7 @@ async def emulate_device(device: str) -> str:
     if not r.get("ok"):
         ex = r.get("examples") or []
         tail = f" Try one of: {', '.join(ex)}." if ex else ""
-        return f"emulate_device: {r.get('reason', 'failed')}.{tail}"
+        return Rejection(f"emulate_device: {r.get('reason', 'failed')}.{tail}", ErrorCode.BACKEND)
     s.steps.append(f"emulate_device({device})")
     _record_action(s, "emulate_device", device)
     new_state = await s.browser.get_state()
@@ -421,7 +424,10 @@ async def emulate_media(color_scheme: str = "", reduced_motion: str = "") -> str
         return 'emulate_media: pass color_scheme="dark"/"light" and/or reduced_motion="reduce".'
     ok = await s.browser.emulate_media(color_scheme or None, reduced_motion or None)
     if not ok:
-        return "emulate_media: failed (valid: color_scheme dark|light|no-preference, reduced_motion reduce|no-preference)."
+        return Rejection(
+            "emulate_media: failed (valid: color_scheme dark|light|no-preference, reduced_motion reduce|no-preference).",
+            ErrorCode.INVALID_ARGUMENT,
+        )
     what = ", ".join(
         x
         for x in (
@@ -459,7 +465,7 @@ async def click_at(x: int, y: int) -> str:
     _bc, _bn = s.browser.error_cursors()
     ok = await s.browser.click_at(x, y)
     if not ok:
-        return f"click_at: failed to click ({x},{y})."
+        return Rejection(f"click_at: failed to click ({x},{y}).", ErrorCode.BACKEND)
     s.steps.append(f"click_at({x},{y})")
     _record_action(s, "click_at", f"({x},{y})")
     new_state = await s.browser.get_state()
@@ -480,7 +486,7 @@ async def type_at(x: int, y: int, text: str) -> str:
         return err
     ok = await s.browser.type_at(x, y, text)
     if not ok:
-        return f"type_at: failed at ({x},{y})."
+        return Rejection(f"type_at: failed at ({x},{y}).", ErrorCode.BACKEND)
     s.steps.append(f"type_at({x},{y},...)")
     _record_action(s, "type_at", f"({x},{y})")
     new_state = await s.browser.get_state()
@@ -504,7 +510,9 @@ async def drag_at(from_x: int, from_y: int, to_x: int, to_y: int) -> str:
         return err
     ok = await s.browser.drag_at(from_x, from_y, to_x, to_y)
     if not ok:
-        return f"drag_at: failed to drag ({from_x},{from_y}) -> ({to_x},{to_y})."
+        return Rejection(
+            f"drag_at: failed to drag ({from_x},{from_y}) -> ({to_x},{to_y}).", ErrorCode.BACKEND
+        )
     s.steps.append(f"drag_at(({from_x},{from_y})->({to_x},{to_y}))")
     _record_action(s, "drag_at", f"({from_x},{from_y})->({to_x},{to_y})")
     new_state = await s.browser.get_state()
@@ -524,7 +532,7 @@ async def hover_at(x: int, y: int) -> str:
         return err
     ok = await s.browser.hover_at(x, y)
     if not ok:
-        return f"hover_at: failed at ({x},{y})."
+        return Rejection(f"hover_at: failed at ({x},{y}).", ErrorCode.BACKEND)
     s.steps.append(f"hover_at({x},{y})")
     _record_action(s, "hover_at", f"({x},{y})")
     return f"Moved mouse to ({x},{y}). Call screenshot() to see any tooltip/hover state."
@@ -545,10 +553,10 @@ async def drag_what(from_description: str, to_description: str) -> str:
         return err
     src, err = _resolve_or_error(s, from_description)
     if err:
-        return f"drag_what(from): {err}"
+        return Rejection(f"drag_what(from): {err}", ErrorCode.INVALID_ARGUMENT)
     tgt, err = _resolve_or_error(s, to_description)
     if err:
-        return f"drag_what(to): {err}"
+        return Rejection(f"drag_what(to): {err}", ErrorCode.INVALID_ARGUMENT)
     src_label = src.text or src.id or src.tag
     tgt_label = tgt.text or tgt.id or tgt.tag
     s.steps.append(f"drag_what({from_description!r} -> {to_description!r})")
@@ -584,7 +592,7 @@ async def upload_file(description: str, paths: list) -> str:
     if err:
         return err
     if not paths:
-        return "upload_file: paths is empty."
+        return Rejection("upload_file: paths is empty.", ErrorCode.INVALID_ARGUMENT)
     el, err = _resolve_or_error(s, description, kind_filter="input")
     if err:
         return err
@@ -598,7 +606,7 @@ async def upload_file(description: str, paths: list) -> str:
     idx = s._last_elements.index(el)
     ok = await s.browser.upload_file(idx, paths, s._last_elements)
     if not ok:
-        return f"upload_file({description!r}) — failed."
+        return Rejection(f"upload_file({description!r}) — failed.", ErrorCode.BACKEND)
     # Recorded so replay reports it cannot repeat the upload and export_test
     # marks it TODO, instead of both skipping it silently. Paths stay out.
     _record_action(s, "upload_file", f"{description}; {len(paths)} file(s)")
@@ -628,14 +636,16 @@ async def drop_file(description: str, path: str) -> str:
     import os
 
     if not os.path.exists(path):
-        return f"drop_file: file not found: {path}"
+        return Rejection(f"drop_file: file not found: {path}", ErrorCode.INVALID_ARGUMENT)
     el, err = _resolve_or_error(s, description)
     if err:
         return err
     idx = s._last_elements.index(el)
     ok = await s.browser.drop_file(idx, path, s._last_elements)
     if not ok:
-        return f"drop_file: failed to drop {path} onto {description!r}."
+        return Rejection(
+            f"drop_file: failed to drop {path} onto {description!r}.", ErrorCode.BACKEND
+        )
     label = el.text or el.aria_label or el.name or el.tag
     s.steps.append(f"drop_file({os.path.basename(path)!r} -> {description!r})")
     _record_action(s, "drop_file", f"{os.path.basename(path)} onto {description}")
@@ -665,7 +675,9 @@ async def set_dialog_handler(action: str = "accept", text: str = "") -> str:
     if err:
         return err
     if action not in ("accept", "dismiss"):
-        return "set_dialog_handler: action must be 'accept' or 'dismiss'."
+        return Rejection(
+            "set_dialog_handler: action must be 'accept' or 'dismiss'.", ErrorCode.INVALID_ARGUMENT
+        )
     s.browser.queue_dialog_response(action, text)
     s.steps.append(f"set_dialog_handler({action!r}, text=...)")
     return (

@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from typing import Optional
 
-from argus.domain.contracts import ImageArtifact
+from argus.domain.contracts import ErrorCode, ImageArtifact, Rejection
 from argus.domain.models import (
     Screenshot,
 )
@@ -48,9 +48,10 @@ async def screenshot(
         selector = s.browser.selector_for(el)
         result = await s.browser.element_screenshot(selector, path)
         if result is None:
-            return (
+            return Rejection(
                 f"screenshot(element={element!r}) — could not capture; the "
-                f"element may have moved or detached. observe() and try again."
+                f"element may have moved or detached. observe() and try again.",
+                ErrorCode.BACKEND,
             )
         s.screenshots.append(
             Screenshot(
@@ -127,15 +128,15 @@ async def screenshot_diff(
     before_path = _resolve(before)
     after_path = _resolve(after)
     if before_path is None:
-        return f"screenshot_diff: cannot find {before!r}"
+        return Rejection(f"screenshot_diff: cannot find {before!r}", ErrorCode.INVALID_ARGUMENT)
     if after_path is None:
-        return f"screenshot_diff: cannot find {after!r}"
+        return Rejection(f"screenshot_diff: cannot find {after!r}", ErrorCode.INVALID_ARGUMENT)
 
     try:
         img_a = Image.open(before_path).convert("RGB")
         img_b = Image.open(after_path).convert("RGB")
     except Exception as exc:
-        return f"screenshot_diff: failed to open images: {exc}"
+        return Rejection(f"screenshot_diff: failed to open images: {exc}", ErrorCode.BACKEND)
 
     if img_a.size != img_b.size:
         # Resize the smaller to match — keeps comparison meaningful even

@@ -9,7 +9,7 @@ from argus.domain.models import (
 )
 
 from .session import Session
-from .text import _short
+from .text import _short, _token_present
 
 _COVERAGE_STATUSES = frozenset({"untested", "in_progress", "exercised", "blocked"})
 
@@ -313,7 +313,8 @@ def _coverage_goal_index(s: Session, query: str) -> tuple[Optional[int], Optiona
     matches = [
         i
         for i, goal in enumerate(s.coverage_goals)
-        if normalized in goal["goal"].casefold() or goal["goal"].casefold() in normalized
+        # Whole words only: "edit" must not select "Checkout with credit card".
+        if _token_present(normalized, goal["goal"]) or _token_present(goal["goal"], normalized)
     ]
     if len(matches) == 1:
         return matches[0], None

@@ -12,6 +12,7 @@ from argus.resolver import (
     kind_of,
     resolve_element,
 )
+from argus.security import _redact
 
 from .capture import _capture_browser_events, _file_event_bugs
 from .evidence import _auto_screenshot, _record_action, _record_coverage_action
@@ -157,7 +158,7 @@ async def test_action(
         for err in console_errs[:3]:
             lines.append(f"  [CONSOLE] {err['text'][:80]}")
         for err in network_errs[:3]:
-            lines.append(f"  [HTTP {err['status']}] {err['method']} {err['url'][:60]}")
+            lines.append(f"  [HTTP {err['status']}] {err['method']} {_redact(err['url'])[:60]}")
     else:
         lines.append("BROWSER EVENTS: none")
 
@@ -225,9 +226,31 @@ async def test_action(
             "screenshot": ss_path,
             "dialogs": dialogs,
             "auto_captured_findings": len(filed_bugs),
+            "browser_events": _event_data(console_errs, network_errs),
+            "cross_stack": {"evidence": xs_evidence[:10], "check": xs_check},
             "finding_confirmed": False,
         },
     )
+
+
+def _event_data(console_errs: list, network_errs: list) -> dict:
+    """Console and HTTP failures an action raised, as structured evidence.
+
+    The error buffers are drained by the action, and compact responses replace
+    the text that used to be the only place these were reported.
+    """
+    return {
+        "console": [str(err.get("text", ""))[:200] for err in console_errs[:5]],
+        "http": [
+            {
+                "status": err.get("status"),
+                "method": err.get("method"),
+                "url": _redact(str(err.get("url", "")))[:200],
+            }
+            for err in network_errs[:5]
+        ],
+        "omitted": max(0, len(console_errs) - 5) + max(0, len(network_errs) - 5),
+    }
 
 
 def _checked_value(value) -> bool | None:
@@ -475,7 +498,7 @@ async def test_form(
         for err in console_errs[:3]:
             lines.append(f"  [CONSOLE] {err['text'][:80]}")
         for err in network_errs[:3]:
-            lines.append(f"  [HTTP {err['status']}] {err['method']} {err['url'][:60]}")
+            lines.append(f"  [HTTP {err['status']}] {err['method']} {_redact(err['url'])[:60]}")
 
     if filed_bugs:
         lines.append(f"\nEvent-bugs auto-captured ({len(filed_bugs)} new):")
@@ -500,6 +523,7 @@ async def test_form(
             "changes": changes[:100],
             "changes_omitted": max(0, len(changes) - 100),
             "screenshot": ss_path,
+            "browser_events": _event_data(console_errs, network_errs),
             "finding_confirmed": False,
             "partial": partial,
         },
