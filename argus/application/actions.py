@@ -286,6 +286,7 @@ async def right_click(description: str) -> str:
     ok = await s.browser.right_click(idx, s._last_elements)
     if not ok:
         return Rejection(f"right_click({description!r}) — failed.", ErrorCode.BACKEND)
+    _record_action(s, "right_click", description)
     return f'Right-clicked "{label[:60]}". observe() to see the menu / new state.'
 
 
@@ -569,6 +570,7 @@ async def drag_what(from_description: str, to_description: str) -> str:
             f"The source may not actually be draggable, or the target may be "
             f"off-screen."
         )
+    _record_action(s, "drag_what", f"{from_description} -> {to_description}")
     return f'Dragged "{src_label[:40]}" onto "{tgt_label[:40]}". observe() to verify.'
 
 

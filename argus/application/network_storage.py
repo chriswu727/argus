@@ -3,6 +3,7 @@ from __future__ import annotations
 from argus.security import _redact, _redact_headers
 
 from .context import current_runtime
+from .evidence import _record_action
 from .session import _require_session, _require_web_session
 
 
@@ -310,6 +311,8 @@ async def cookies_set(cookies: list) -> str:
             "cookies_set: 0 set — check that each entry has name + value "
             "and either url OR domain+path."
         )
+    names = ", ".join(str(c.get("name")) for c in cookies if isinstance(c, dict))
+    _record_action(s, "cookies_set", f"cookies {names} (values omitted)")
     return f"Set {n} cookie(s) on the context."
 
 
@@ -321,6 +324,8 @@ async def cookies_clear() -> str:
         return err
     ok = await s.browser.cookies_clear()
     s.steps.append("cookies_clear")
+    if ok:
+        _record_action(s, "cookies_clear", "all cookies")
     return "Cleared all cookies." if ok else "cookies_clear: failed."
 
 
@@ -373,6 +378,8 @@ async def storage_set(key: str, value: str, kind: str = "local") -> str:
     ok = await s.browser.storage_set(key, value, kind)
     label = "localStorage" if kind == "local" else "sessionStorage"
     s.steps.append(f"storage_set({label}, {key!r})")
+    if ok:
+        _record_action(s, "storage_set", f"{label} key {key} (value omitted)")
     return f"Set {label}[{key!r}]." if ok else f"storage_set: failed for {key!r}."
 
 
@@ -387,6 +394,8 @@ async def storage_remove(key: str, kind: str = "local") -> str:
     ok = await s.browser.storage_remove(key, kind)
     label = "localStorage" if kind == "local" else "sessionStorage"
     s.steps.append(f"storage_remove({label}, {key!r})")
+    if ok:
+        _record_action(s, "storage_remove", f"{label} key {key}")
     return f"Removed {label}[{key!r}]." if ok else "storage_remove: failed."
 
 
@@ -401,4 +410,6 @@ async def storage_clear(kind: str = "local") -> str:
     ok = await s.browser.storage_clear(kind)
     label = "localStorage" if kind == "local" else "sessionStorage"
     s.steps.append(f"storage_clear({label})")
+    if ok:
+        _record_action(s, "storage_clear", label)
     return f"Cleared {label}." if ok else "storage_clear: failed."

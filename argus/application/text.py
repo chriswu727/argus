@@ -6,6 +6,7 @@ from urllib.parse import urljoin
 from argus.domain.models import (
     PageState,
 )
+from argus.domain.wordchars import WORD_CHAR as _WORD_CHAR
 
 from .session import Session
 
@@ -24,18 +25,6 @@ def _resolve_url(s: "Session", url: str) -> str:
     if not url:
         return base
     return urljoin(base, url) if base else url
-
-
-# Scripts written without spaces between words have no word boundary to test:
-# "已完成" inside "任务已完成" is a real occurrence, not a mid-word match.
-_UNSPACED = (
-    "\u0e00-\u0eff\u1000-\u109f\u1780-\u17ff"  # Thai, Lao, Myanmar, Khmer
-    "\u3040-\u30ff\u31f0-\u31ff"  # Hiragana, Katakana
-    "\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff"  # CJK ideographs
-    "\uac00-\ud7af"  # Hangul syllables (particles attach without a space)
-    "\U00020000-\U0003134f"  # CJK extensions
-)
-_WORD_CHAR = f"[^\\W{_UNSPACED}]"
 
 
 def _token_present(needle: str, haystack: str) -> bool:

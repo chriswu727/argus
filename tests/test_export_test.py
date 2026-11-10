@@ -438,6 +438,30 @@ def test_an_unnamed_checkbox_is_found_by_role_inside_its_row():
     assert locator_expr(toggle, [toggle]) == 'page.locator("body > ul > li:nth-of-type(1) > input")'
 
 
+def test_a_structural_css_path_is_a_positional_step_that_needs_translation():
+    def export(locator):
+        return generate_test(
+            finding_id="run:1",
+            title="t",
+            expected="",
+            receipt={"expect": "present", "target_text": "x", "at_url": "http://h/"},
+            journey=[{"tool": "set_checked", "locator": locator, "value": "true"}],
+            start_url="http://h/",
+            resolve_input=lambda action: None,
+            filename="t.py",
+        )
+
+    for locator in (
+        'page.locator("body:nth-of-type(1) > ul:nth-of-type(1) > li:nth-of-type(2) > input")',
+        'page.frame_locator("iframe[id=\\"f\\"]").locator("ul > li:nth-child(2) > input")',
+    ):
+        source, notes = export(locator)
+        assert any("positional locator" in note for note in notes), locator
+        assert "ARGUS_INCOMPLETE_TEST" in source
+    source, notes = export('page.get_by_role("checkbox", name="Done")')
+    assert notes == [] and "ARGUS_INCOMPLETE_TEST" not in source
+
+
 def test_helpers_are_written_only_when_the_test_uses_them():
     def source(journey):
         return generate_test(
@@ -865,6 +889,66 @@ async def test_export_tool_does_not_run_an_incomplete_journey(isolated_runtime, 
         assert result.data["run"]["outcome"] == "incomplete"
         assert result.data["manual_steps"]
         assert "Not run" in result
+    finally:
+        await _fn("end_session")()
+        server.shutdown()
+
+
+class _BoardHandler(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
+
+    def do_GET(self):
+        body = (
+            "<html><body><h1>Board</h1><div draggable='true'>Card A</div>"
+            "<div draggable='true'>Column B</div></body></html>"
+        ).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html")
+        self.end_headers()
+        self.wfile.write(body)
+
+
+async def test_drags_and_storage_writes_make_an_export_incomplete(isolated_runtime, monkeypatch):
+    from argus.application import exports
+
+    async def must_not_run(*args, **kwargs):
+        pytest.fail("An export that cannot reproduce the journey must not run")
+
+    class _Server(socketserver.ThreadingTCPServer):
+        allow_reuse_address = True
+        daemon_threads = True
+
+    server = _Server(("127.0.0.1", 0), _BoardHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        try:
+            await _fn("start_session")(base + "/board")
+        except Exception as exc:
+            pytest.skip(f"Chromium/session unavailable: {exc}")
+        s = m.runtime.session
+        assert str(await _fn("drag_what")("Card A", "Column B")).startswith("Dragged")
+        assert str(await _fn("storage_set")("feature", "secret-flag-value")).startswith("Set")
+        assert [a["tool"] for a in s.action_trace] == ["drag_what", "storage_set"]
+        assert "secret-flag-value" not in repr(s.action_trace)
+        replayed = await s.browser.replay(base + "/board", list(s.action_trace))
+        assert replayed["diverged"] and replayed["steps"][-1]["reason"] == "not replayed"
+
+        recorded = await _fn("record_bug")(
+            "Card does not move",
+            "medium",
+            {"expected": "Card A in Column B", "actual": "Board unchanged"},
+            verify={"expect": "present", "target_text": "Board", "at_url": base + "/board"},
+        )
+        monkeypatch.setattr(exports, "run_exported_test", must_not_run)
+        exported = await _fn("export_test")(recorded.data["finding_id"], run=True)
+        assert exported.data["run"]["outcome"] == "incomplete", exported
+        manual = exported.data["manual_steps"]
+        assert any("step 1: unsupported action" in note for note in manual), manual
+        assert any("step 2: unsupported action" in note for note in manual), manual
+        source = open(exported.data["path"]).read()
+        assert "ARGUS_INCOMPLETE_TEST" in source and "secret-flag-value" not in source
     finally:
         await _fn("end_session")()
         server.shutdown()

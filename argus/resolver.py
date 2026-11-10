@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 from .domain.models import InteractiveElement
+from .domain.wordchars import WORD_CHAR
 
 
 @dataclass
@@ -123,13 +124,14 @@ _ORDINAL_WORDS = {
 }
 
 
-def extract_ordinal(desc: str) -> Tuple[str, Optional[int]]:
+def extract_ordinal(desc: str, literal: frozenset = frozenset()) -> Tuple[str, Optional[int]]:
     """Pull a positional selector out of a description, return (rest, n).
 
     Lets a tester pick among identical labels by position the way a human
     would: "Delete #2", "the 2nd Delete", "third Edit button", "last Delete".
     Returns the description with the ordinal removed and the index (1-based, or
-    -1 for "last"), or (desc, None) when there's no ordinal.
+    -1 for "last"), or (desc, None) when there's no ordinal. Ordinal words in
+    `literal` are label content ("Last name") and are never read as positions.
     """
     d = desc.strip()
     m = re.search(r"#\s*(\d+)\s*$", d)
@@ -142,10 +144,10 @@ def extract_ordinal(desc: str) -> Tuple[str, Optional[int]]:
     if len(toks) > 1:  # a lone "second"/"last" is a label, not a position
         for i, t in enumerate(toks):
             low = t.lower()
+            if low in literal:
+                continue
             if low in _ORDINAL_WORDS:
                 return " ".join(toks[:i] + toks[i + 1 :]).strip(), _ORDINAL_WORDS[low]
-            # "last X" -> from the end. The exact-label fast path runs before
-            # this, so a real label like "Last name" is matched verbatim first.
             if low == "last":
                 return " ".join(toks[:i] + toks[i + 1 :]).strip(), -1
     return d, None
@@ -199,7 +201,7 @@ _OBSERVED_SCAFFOLDING = re.compile(
 
 
 def _strip_kind(desc: str, keep: frozenset = frozenset()) -> Tuple[List[str], Optional[str]]:
-    """Lowercase + tokenise, remove the first kind-hint word; keep stopwords.
+    """Lowercase + tokenise, remove the last kind-hint word; keep stopwords.
 
     Shared by split_description (which then drops stopwords) and the
     exact-label fast path (which must NOT drop them — 'in' is a real label
@@ -223,19 +225,18 @@ def _strip_kind(desc: str, keep: frozenset = frozenset()) -> Tuple[List[str], Op
     raw = [w.strip("\"“”‘’'`()[]{}") for w in desc.strip().split()]
     raw = [w for w in raw if w]
     # A kind word can sit anywhere ("Submit button", "the Delete button for X"),
-    # not just at the end. Consume EVERY kind word (first one is the signal) so a
-    # second — "card input field", "dropdown menu" — doesn't leak into the core
-    # and break matching. Strict callers can't fall back, so a residual kind word
-    # there means a hard no_match.
-    kind: Optional[str] = None
-    kept: List[str] = []
-    for w in raw:
-        if w in _KIND_HINTS:
-            if kind is None:
-                kind = _KIND_HINTS[w]
-            continue
-        kept.append(w)
-    return kept, kind
+    # but the LAST one is the signal: an earlier one is usually a label word
+    # ("Select all button", "Menu button", "Switch account button"). Same-kind
+    # words right before it are one compound ("card input field", "dropdown
+    # menu") and are consumed with it so they don't leak into the core.
+    last = max((i for i, w in enumerate(raw) if w in _KIND_HINTS), default=None)
+    if last is None:
+        return raw, None
+    kind = _KIND_HINTS[raw[last]]
+    first = last
+    while first > 0 and _KIND_HINTS.get(raw[first - 1]) == kind:
+        first -= 1
+    return raw[:first] + raw[last + 1 :], kind
 
 
 def split_description(desc: str, keep: frozenset = frozenset()) -> Tuple[str, Optional[str]]:
@@ -250,6 +251,32 @@ def split_description(desc: str, keep: frozenset = frozenset()) -> Tuple[str, Op
     return " ".join(words), kind
 
 
+def _label_words(text: Optional[str]) -> frozenset:
+    words = (w.strip("*:.,;!?\"'()[]{}") for w in (text or "").lower().split())
+    return frozenset(w for w in words if w and w not in _STOPWORDS and w not in _KIND_HINTS)
+
+
+def _literal_ordinals(
+    description: str, keep: frozenset, pool: List[InteractiveElement]
+) -> frozenset:
+    """Ordinal words that belong to a candidate's own label, as in "Last name".
+
+    A label counts only when it carries every word of the description, so
+    "first Delete" stays positional on a page that also has a "First name",
+    and "first checkbox" (no other content word) is always positional."""
+    words = _label_words(split_description(description, keep)[0])
+    ordinals = frozenset(w for w in words if w in _ORDINAL_WORDS or w == "last")
+    if not ordinals or words == ordinals:
+        return frozenset()
+    if any(
+        words <= _label_words(face)
+        for el in pool
+        for face in (el.text, el.aria_label, el.placeholder)
+    ):
+        return ordinals
+    return frozenset()
+
+
 def _has_token(core: str, hay: str) -> bool:
     """Word-boundary containment: 'add' matches 'add task' but not 'address'.
 
@@ -259,7 +286,8 @@ def _has_token(core: str, hay: str) -> bool:
     hits count."""
     if not core or not hay:
         return False
-    return re.search(r"(?<!\w)" + re.escape(core) + r"(?!\w)", hay) is not None
+    pattern = f"(?<!{WORD_CHAR})" + re.escape(core) + f"(?!{WORD_CHAR})"
+    return re.search(pattern, hay) is not None
 
 
 def _label_equals(el: InteractiveElement, phrase: str) -> bool:
@@ -357,6 +385,12 @@ def _score(el: InteractiveElement, core: str) -> int:
         score = max(score, 30)
 
     return score
+
+
+def _names_beyond_label(core: str, el: InteractiveElement) -> bool:
+    """True if `core` has a word that is not on the element's own face."""
+    face = " ".join((f or "").lower() for f in (el.text, el.aria_label, el.placeholder, el.value))
+    return any(not _has_token(w, face) for w in core.split())
 
 
 def _kind_compatible(el_kind: str, kind_filter: str) -> bool:
@@ -479,7 +513,8 @@ def resolve_element(
         ordinal = None
         core, _ = split_description(description, keep)
     else:
-        description, ordinal = extract_ordinal(description)
+        literal = _literal_ordinals(description, keep, pool)
+        description, ordinal = extract_ordinal(description, literal)
         core, _ = split_description(description, keep)
 
     # Kind-only call: the description was just a kind word ("dropdown",
@@ -596,7 +631,9 @@ def resolve_element(
             (el, set(re.findall(r"[a-z0-9]+", (el.parent_context or "").lower()))) for el in band
         ]
         minimal = [el for el, ts in ctx if ts and all(el is o or ts < ots for o, ots in ctx)]
-        if len(minimal) == 1:
+        # A bare "Delete" names no row at all; the tighter row is not a choice
+        # the caller made, so it stays ambiguous.
+        if len(minimal) == 1 and _names_beyond_label(core, minimal[0]):
             return ResolveResult(found=minimal[0], candidates=scored[:3], reason="unique")
 
     return ResolveResult(found=None, candidates=scored[:5], reason="ambiguous")

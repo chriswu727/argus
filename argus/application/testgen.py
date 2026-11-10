@@ -100,6 +100,10 @@ def _single_locator(el: InteractiveElement) -> Optional[str]:
 
 _UNNAMED_BASES = {f"page.locator({_q(css)})" for css in _UNNAMED_INPUT.values()}
 
+# A structural css path picks an element by its position among siblings, which
+# shifts as soon as the list it sits in changes.
+_POSITIONAL_CSS = re.compile(r'\.locator\("(?:[^"\\]|\\.)*?:nth-(?:of-type|child)\(')
+
 
 def locator_expr(el: InteractiveElement, elements: List[InteractiveElement]) -> Optional[str]:
     elements = [other for other in elements if other.frame == el.frame]
@@ -451,7 +455,7 @@ def generate_test(
     for number, action in enumerate(journey, 1):
         tool = action.get("tool")
         locator = action.get("locator")
-        if locator and ".nth(" in locator:
+        if locator and (".nth(" in locator or _POSITIONAL_CSS.search(locator)):
             notes.append(
                 f"step {number}: positional locator has no stable identity; translate it before running"
             )

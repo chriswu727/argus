@@ -745,3 +745,96 @@ def test_faceless_row_exemption_requires_the_requested_kind():
     icon.parent_context = "Buy groceries high Edit Delete"
     r = resolve_element("checkbox for Buy groceries", [icon])
     assert r.found is None
+
+
+def _labelled_inputs(*labels):
+    els = []
+    for i, label in enumerate(labels):
+        el = make_element(i, tag="input", type="text")
+        el.aria_label = label
+        els.append(el)
+    return els
+
+
+def test_ordinal_words_inside_a_real_label_are_content():
+    els = _labelled_inputs("First name", "Last name", "Company name")
+    for desc, want in [
+        ("the Last name field", 1),
+        ("Last name", 1),
+        ("the First name field", 0),
+    ]:
+        r = resolve_element(desc, els, kind_filter="input", strict_kind=True)
+        assert r.found is els[want], desc
+
+
+def test_ordinal_words_ignore_required_markers_in_labels():
+    els = _labelled_inputs("Display name *", "First name *", "Last name *", "Company name")
+    assert resolve_element("Last name", els, kind_filter="input", strict_kind=True).found is els[2]
+    assert resolve_element("First name field", els, "input", strict_kind=True).found is els[1]
+
+
+def test_ordinal_stays_positional_when_no_label_carries_the_description():
+    name = make_element(0, tag="input", type="text")
+    name.aria_label = "First name"
+    deletes = [make_element(i, tag="button", text="Delete") for i in (1, 2)]
+    boxes = [make_element(i, tag="input", type="checkbox") for i in (3, 4)]
+    els = [name, *deletes, *boxes]
+    assert resolve_element("first Delete button", els).found is deletes[0]
+    assert resolve_element("last Delete", els).found is deletes[1]
+    assert resolve_element("first checkbox", els).found is boxes[0]
+
+
+def test_only_the_trailing_kind_word_sets_the_kind():
+    select = make_element(1, tag="select", value="All")
+    select.aria_label = "Filter"
+    select_all = make_element(0, tag="button", text="Select all")
+    assert resolve_element("Select all button", [select_all, select]).found is select_all
+
+    menu = make_element(0, tag="button", text="Menu")
+    language = make_element(1, tag="select", value="English")
+    language.aria_label = "Language"
+    assert resolve_element("Menu button", [menu, language]).found is menu
+    assert resolve_element("the Menu button", [menu, language]).found is menu
+
+    link_account = make_element(0, tag="button", text="Link account")
+    settings = make_element(1, tag="a", text="Account settings")
+    settings.href = "http://x/account"
+    assert resolve_element("Link account button", [link_account, settings]).found is link_account
+
+    switch_account = make_element(0, tag="button", text="Switch account")
+    notifications = make_element(1, tag="div")
+    notifications.role = "switch"
+    notifications.aria_label = "Email notifications for this account"
+    found = resolve_element("Switch account button", [switch_account, notifications]).found
+    assert found is switch_account
+
+
+def test_compound_kind_words_are_consumed_together():
+    language = make_element(0, tag="select", value="English")
+    language.aria_label = "Language"
+    other = make_element(1, tag="button", text="Language help")
+    assert resolve_element("Language dropdown menu", [language, other]).found is language
+
+
+def test_row_tie_break_needs_a_row_named_in_the_description():
+    rows = []
+    for i, title in enumerate(["Buy milk", "Buy milk and eggs"]):
+        el = make_element(i, tag="button", text="Delete")
+        el.parent_context = f"{title} Delete"
+        rows.append(el)
+    for desc in ("Delete", "Delete button"):
+        r = resolve_element(desc, rows)
+        assert r.reason == "ambiguous", desc
+        assert {id(el) for _, el in r.candidates} == {id(el) for el in rows}
+    assert resolve_element("Delete Buy milk", rows).found is rows[0]
+
+
+def test_cjk_description_matches_inside_cjk_label():
+    els = [
+        make_element(0, tag="button", text="删除任务"),
+        make_element(1, tag="button", text="编辑任务"),
+    ]
+    r = resolve_element("删除", els)
+    assert r.reason == "unique"
+    assert r.found is els[0]
+    assert resolve_element("delete", [make_element(0, tag="button", text="undelete")]).found is None
