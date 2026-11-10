@@ -199,14 +199,16 @@ async def start_screen_session(target_app: str = "") -> str:
         lines.append("Run `argus-mcp --doctor` for full details, then re-try.")
         return "\n".join(lines)
 
-    # Stale abort file from a previous session would gate every action
-    # immediately — clean it up at the boundary.
+    # The abort file is the user's stop button. Only the user clears it: if a
+    # new session removed it, the agent could undo a stop by starting over.
     abort_path = screen_safety.abort_file_path()
     if abort_path.exists():
-        try:
-            abort_path.unlink()
-        except OSError:
-            pass
+        raise OperationError(
+            ErrorCode.PERMISSION,
+            f"the abort file {abort_path} is present, so screen control is stopped. "
+            "Ask the user to remove it if they want screen testing to continue.",
+        )
+    screen_safety.prepare_abort_location()
 
     teardown_errors = await _teardown_active_session()
     if teardown_errors:

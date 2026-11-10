@@ -31,6 +31,73 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+MAX_INPUT_SECONDS = 5.0
+MAX_CLICK_COUNT = 20
+MAX_WALKED_NODES = 5000
+_MODIFIERS = {
+    "cmd": "cmd",
+    "ctrl": "ctrl",
+    "control": "ctrl",
+    "alt": "alt",
+    "option": "alt",
+    "shift": "shift",
+    "fn": "fn",
+}
+_NAMED_KEYS = frozenset(
+    "arrow-down arrow-left arrow-right arrow-up brightness-down brightness-up delete end enter "
+    "esc f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 f11 f12 f13 f14 f15 f16 fwd-delete home keys-light-down "
+    "keys-light-toggle keys-light-up mute num-0 num-1 num-2 num-3 num-4 num-5 num-6 num-7 num-8 "
+    "num-9 num-clear num-divide num-enter num-equals num-minus num-multiply num-plus page-down "
+    "page-up play-next play-pause play-previous return space tab volume-down volume-up".split()
+)
+
+
+def _point(x: int, y: int) -> str:
+    # cliclick reads a leading "-" as "relative to the pointer"; "=" forces absolute.
+    return ",".join(f"={int(v)}" if int(v) < 0 else str(int(v)) for v in (x, y))
+
+
+def key_commands(keys: List[str]) -> List[str]:
+    """Translate key names and combos into cliclick commands.
+
+    Modifiers wrap only the key they belong to. A bare modifier item ("cmd",
+    "c") applies to the next key. Raises ValueError for anything cliclick
+    cannot press, before any key is sent.
+    """
+    commands: List[str] = []
+    pending: List[str] = []
+    for item in keys:
+        raw = (item or "").strip()
+        lowered = raw.lower()
+        if lowered in _MODIFIERS:
+            pending.append(_MODIFIERS[lowered])
+            continue
+        mods = list(pending)
+        pending = []
+        key = lowered
+        while key not in _NAMED_KEYS and len(key) > 1:
+            parts = re.split(r"[-+]", key, maxsplit=1)
+            if len(parts) != 2 or parts[0] not in _MODIFIERS or not parts[1]:
+                break
+            head, rest = parts
+            mods.append(_MODIFIERS[head])
+            key = rest
+        if key in _NAMED_KEYS:
+            press = f"kp:{key}"
+        elif len(key) == 1:
+            press = f"t:{key}"
+        else:
+            raise ValueError(f"unknown key {raw!r}")
+        mods = list(dict.fromkeys(mods))
+        if mods:
+            commands.append("kd:" + ",".join(mods))
+        commands.append(press)
+        if mods:
+            commands.append("ku:" + ",".join(mods))
+    if pending:
+        raise ValueError("a modifier needs a key after it")
+    return commands
+
 
 def _is_macos() -> bool:
     return platform.system() == "Darwin"
@@ -87,6 +154,53 @@ class ScreenBackend:
 
     def invalidate_target(self):
         self._app_pid = None
+        self._pinned_pid = None
+
+    def _require_frontmost(self) -> None:
+        """Refuse synthetic input unless the bound app will receive it.
+
+        cliclick types and clicks into whatever is frontmost. If the bound app
+        lost focus (the user switched apps, or the agent's own terminal is in
+        front), bring it forward; if that fails, send nothing.
+        """
+        pid = self._app_pid
+        if pid is None or self._workspace is None:
+            raise RuntimeError("no app is bound; call screen_observe first")
+
+        def is_front() -> bool:
+            front = self._workspace.frontmostApplication()
+            return front is not None and front.processIdentifier() == pid
+
+        if is_front():
+            return
+        for app in self._workspace.runningApplications():
+            if app.processIdentifier() == pid:
+                app.activateWithOptions_(1 << 1)  # NSApplicationActivateIgnoringOtherApps
+                break
+        deadline = time.time() + 1.0
+        while time.time() < deadline:
+            if is_front():
+                return
+            time.sleep(0.05)
+        raise RuntimeError(
+            f"{self._app_name or 'the bound app'} is not the frontmost app; no input was sent"
+        )
+
+    def _cliclick(self, commands: List[str], timeout: float = 3.0) -> None:
+        """Run cliclick against the bound app.
+
+        Errors carry no argv: the command line of a typing call is the text.
+        """
+        self._require_frontmost()
+        timeout = min(float(timeout), MAX_INPUT_SECONDS + 5)
+        try:
+            subprocess.run(
+                ["cliclick", *commands], capture_output=True, timeout=timeout, check=True
+            )
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(f"cliclick did not finish within {timeout:.0f}s") from None
+        except subprocess.CalledProcessError as exc:
+            raise RuntimeError(f"cliclick exited with status {exc.returncode}") from None
 
     # Attribute names the AX walker reads. Loaded lazily so this module
     # imports cleanly on non-macOS.
@@ -95,6 +209,8 @@ class ScreenBackend:
     def __init__(self) -> None:
         self._workspace = None
         self._app_pid: Optional[int] = None
+        self._pinned_pid: Optional[int] = None
+        self._walked: int = 0
         self._app_name: Optional[str] = None
         self._target_app_name: Optional[str] = None
         self._max_depth: int = 6
@@ -204,8 +320,20 @@ class ScreenBackend:
                 f"Screen mode: no running app matches {target!r}. "
                 f"Frontmost is {front.localizedName()!r}."
             )
-        # No target specified — bind to whatever is foreground right now.
+        # No target specified — bind to whatever is foreground at the first
+        # observation and stay with it; following the foreground would hand the
+        # session to any app the user switches to.
+        pinned = self._pinned_pid
+        if pinned is not None:
+            for app in self._workspace.runningApplications():
+                if app.processIdentifier() == pinned:
+                    return (
+                        pinned,
+                        app.localizedName() or "<unknown>",
+                        AX.AXUIElementCreateApplication(pinned),
+                    )
         front = self._workspace.frontmostApplication()
+        self._pinned_pid = front.processIdentifier()
         return (
             front.processIdentifier(),
             front.localizedName() or "<unknown>",
@@ -230,6 +358,11 @@ class ScreenBackend:
         whether an element is *recorded* in `out`.
         """
         if len(out) >= self._max_elements or depth > self._max_depth:
+            return
+        # Unlabeled nodes are never recorded, so the element cap alone does not
+        # bound a walk over a huge table.
+        self._walked += 1
+        if self._walked > MAX_WALKED_NODES:
             return
         AX = self._AX
 
@@ -335,6 +468,12 @@ class ScreenBackend:
         pid, name, app_ref = self._find_target_app()
         self._app_pid = pid
         self._app_name = name
+        self._walked = 0
+        try:
+            # An unresponsive app otherwise blocks each AX query for seconds.
+            AX.AXUIElementSetMessagingTimeout(app_ref, 2.0)
+        except Exception:
+            pass
 
         window_ref = self._focused_window(app_ref)
         window_title = self._ax_get(window_ref, AX.kAXTitleAttribute) or ""
@@ -544,16 +683,15 @@ class ScreenBackend:
         except Exception:
             pass
 
-        # Fall back to coordinate click via cliclick.
+        # Fall back to a coordinate click, but only where the element still is:
+        # its rectangle was read at the last observation.
+        rect = self._ax_rect(el._ax_ref)
+        if rect is None or (int(rect[0]), int(rect[1])) != (el.x, el.y):
+            return False, "element moved or closed since the last observation; observe again"
         cx = el.x + el.width // 2
         cy = el.y + el.height // 2
         try:
-            subprocess.run(
-                ["cliclick", f"c:{cx},{cy}"],
-                capture_output=True,
-                timeout=3,
-                check=True,
-            )
+            self._cliclick([f"c:{_point(cx, cy)}"])
             return True, f"cliclick-coord:{cx},{cy}"
         except FileNotFoundError:
             return False, "cliclick-missing"
@@ -584,22 +722,20 @@ class ScreenBackend:
         except Exception:
             pass
 
-        # Path 2: focus + cliclick keystrokes.
+        # Path 2: focus + cliclick keystrokes. Without focus on this field the
+        # keystrokes would go wherever the cursor happens to be.
         try:
-            AX.AXUIElementSetAttributeValue(
+            focus_error = AX.AXUIElementSetAttributeValue(
                 el._ax_ref,
                 AX.kAXFocusedAttribute,
                 True,
             )
         except Exception:
-            pass
+            focus_error = -1
+        if focus_error != 0:
+            return False, "could not focus the field; nothing was typed"
         try:
-            subprocess.run(
-                ["cliclick", f"t:{text}"],
-                capture_output=True,
-                timeout=10,
-                check=True,
-            )
+            self._cliclick([f"t:{text}"], timeout=MAX_INPUT_SECONDS)
             return True, "cliclick-keystrokes"
         except FileNotFoundError:
             return False, "cliclick-missing"
@@ -612,16 +748,7 @@ class ScreenBackend:
         """Press a single key by cliclick name (e.g. 'return', 'esc',
         'space', 'arrow-up'). Useful for submitting forms or dismissing
         modals when the agent has no clickable surface for it."""
-        try:
-            subprocess.run(
-                ["cliclick", f"kp:{key}"],
-                capture_output=True,
-                timeout=3,
-                check=True,
-            )
-            return True, f"cliclick-kp:{key}"
-        except Exception as exc:
-            return False, f"key-error: {exc}"
+        return self.press_keys([key])
 
     # ── coordinate-driven primitives ──────────────────────────────────
     # Required when the target app is AX-blind (Unity, Electron with
@@ -646,14 +773,21 @@ class ScreenBackend:
                  before releasing (long-press / press-and-hold).
         """
         button_l = (button or "left").lower()
+        if button_l not in ("left", "right"):
+            return False, f"unsupported button {button!r}; use left or right"
+        if not 1 <= count <= MAX_CLICK_COUNT:
+            return False, f"count must be between 1 and {MAX_CLICK_COUNT}"
+        if not 0 <= hold_ms <= MAX_INPUT_SECONDS * 1000:
+            return False, f"hold_ms must be at most {int(MAX_INPUT_SECONDS * 1000)}"
+        if hold_ms > 0 and button_l != "left":
+            return False, "press-and-hold is only available for the left button"
+        at = _point(x, y)
         if hold_ms > 0:
             # Mouse-down at coord, wait, mouse-up — long-press / hold.
             try:
-                subprocess.run(
-                    ["cliclick", f"dd:{x},{y}", f"w:{int(hold_ms)}", f"du:{x},{y}"],
-                    capture_output=True,
-                    timeout=max(5, int(hold_ms / 1000) + 5),
-                    check=True,
+                self._cliclick(
+                    [f"dd:{at}", f"w:{int(hold_ms)}", f"du:{at}"],
+                    timeout=MAX_INPUT_SECONDS + 5,
                 )
                 return True, f"cliclick-hold:{x},{y},{hold_ms}ms"
             except Exception as exc:
@@ -661,7 +795,7 @@ class ScreenBackend:
 
         # Map count + button to a cliclick verb.
         if count == 1:
-            verb = {"left": "c", "right": "rc", "middle": "c"}.get(button_l, "c")
+            verb = "rc" if button_l == "right" else "c"
         elif count == 2 and button_l == "left":
             verb = "dc"
         elif count == 3 and button_l == "left":
@@ -673,15 +807,9 @@ class ScreenBackend:
         try:
             if count > 3 or (count > 1 and verb in ("c", "rc")):
                 # Rapid sequence — chain N click commands in one cliclick call.
-                args = ["cliclick"] + [f"{verb}:{x},{y}"] * count
-                subprocess.run(args, capture_output=True, timeout=5, check=True)
+                self._cliclick([f"{verb}:{at}"] * count, timeout=5)
                 return True, f"cliclick-{verb}:{x},{y} x{count}"
-            subprocess.run(
-                ["cliclick", f"{verb}:{x},{y}"],
-                capture_output=True,
-                timeout=3,
-                check=True,
-            )
+            self._cliclick([f"{verb}:{at}"])
             return True, f"cliclick-{verb}:{x},{y}"
         except FileNotFoundError:
             return False, "cliclick-missing (brew install cliclick)"
@@ -694,12 +822,7 @@ class ScreenBackend:
         """Move the cursor to (x, y) without clicking — useful for
         triggering hover-state changes the agent then observes."""
         try:
-            subprocess.run(
-                ["cliclick", f"m:{x},{y}"],
-                capture_output=True,
-                timeout=3,
-                check=True,
-            )
+            self._cliclick([f"m:{_point(x, y)}"])
             return True, f"cliclick-m:{x},{y}"
         except Exception as exc:
             return False, f"hover_at-error: {exc}"
@@ -718,19 +841,17 @@ class ScreenBackend:
         rely on inertial drag detection (sliders, kanban boards) don't
         always honour zero-duration drags, so 300 ms is the default.
         """
+        if not 0 <= duration_ms <= MAX_INPUT_SECONDS * 1000:
+            return False, f"duration_ms must be at most {int(MAX_INPUT_SECONDS * 1000)}"
         try:
-            args = [
-                "cliclick",
-                f"dd:{from_x},{from_y}",
-                f"w:{int(duration_ms)}",
-                f"m:{to_x},{to_y}",
-                f"du:{to_x},{to_y}",
-            ]
-            subprocess.run(
-                args,
-                capture_output=True,
-                timeout=max(5, int(duration_ms / 1000) + 5),
-                check=True,
+            self._cliclick(
+                [
+                    f"dd:{_point(from_x, from_y)}",
+                    f"w:{int(duration_ms)}",
+                    f"m:{_point(to_x, to_y)}",
+                    f"du:{_point(to_x, to_y)}",
+                ],
+                timeout=MAX_INPUT_SECONDS + 5,
             )
             return True, f"cliclick-drag:{from_x},{from_y}->{to_x},{to_y}"
         except FileNotFoundError:
@@ -747,52 +868,33 @@ class ScreenBackend:
           ["cmd", "c"]               -> Cmd+C (modifier-aware list)
           ["cmd", "shift", "z"]      -> Cmd+Shift+Z
           ["a", "b", "c"]            -> three separate keypresses
+          ["tab", "cmd-delete"]      -> Tab, then Cmd+Delete
 
-        cliclick's `kp:` only handles printable / named keys; modifiers
-        must be wrapped in `kd:` / `ku:`. We expand combos and emit the
-        right command shape so cmd-shortcuts actually fire.
+        Modifiers wrap only their own key; see key_commands.
         """
         if not keys:
             return False, "press_keys: empty key list"
-
-        expanded: List[str] = []
-        for k in keys:
-            if any(sep in k for sep in ("-", "+")):
-                expanded.extend(p for p in re.split(r"[-+]", k) if p)
-            else:
-                expanded.append(k)
-
-        modifier_aliases = {"control": "ctrl", "option": "alt"}
-        modifier_set = {"cmd", "ctrl", "alt", "shift", "fn"}
-        mods: List[str] = []
-        rest: List[str] = []
-        for k in expanded:
-            norm = modifier_aliases.get(k.lower(), k.lower())
-            if norm in modifier_set:
-                mods.append(norm)
-            else:
-                rest.append(k)
-
-        args = ["cliclick"]
-        if mods:
-            for m in mods:
-                args.append(f"kd:{m}")
-            for k in rest:
-                args.append(f"kp:{k}")
-            for m in reversed(mods):
-                args.append(f"ku:{m}")
-        else:
-            args.extend(f"kp:{k}" for k in rest)
-
+        if len(keys) > MAX_CLICK_COUNT:
+            return False, f"press_keys: at most {MAX_CLICK_COUNT} keys per call"
         try:
-            subprocess.run(args, capture_output=True, timeout=10, check=True)
-            return True, f"cliclick-{'+'.join(expanded)}"
+            commands = key_commands(keys)
+        except ValueError as exc:
+            return False, f"press_keys: {exc}"
+        try:
+            self._cliclick(commands, timeout=MAX_INPUT_SECONDS)
+            return True, "cliclick-" + "+".join(keys)
         except FileNotFoundError:
             return False, "cliclick-missing (brew install cliclick)"
-        except subprocess.CalledProcessError as exc:
-            err = (exc.stderr or b"").decode(errors="replace").strip()
-            return False, f"press_keys-error: cliclick exit {exc.returncode}: {err}"
         except Exception as exc:
+            held = sorted({m for c in commands if c.startswith("kd:") for m in c[3:].split(",")})
+            if held:
+                # A failure between key-down and key-up would leave it held.
+                try:
+                    subprocess.run(
+                        ["cliclick", "ku:" + ",".join(held)], capture_output=True, timeout=3
+                    )
+                except Exception:
+                    pass
             return False, f"press_keys-error: {exc}"
 
     def type_at(self, x: int, y: int, text: str) -> Tuple[bool, str]:
@@ -802,12 +904,7 @@ class ScreenBackend:
         if not ok:
             return False, f"type_at: focus click failed ({click_method})"
         try:
-            subprocess.run(
-                ["cliclick", f"t:{text}"],
-                capture_output=True,
-                timeout=10,
-                check=True,
-            )
+            self._cliclick([f"t:{text}"], timeout=MAX_INPUT_SECONDS)
             return True, f"cliclick-c:{x},{y}+t:({len(text)} chars)"
         except FileNotFoundError:
             return False, "cliclick-missing (brew install cliclick)"
@@ -933,14 +1030,18 @@ class ScreenBackend:
         if self._workspace is None:
             self._load_frameworks()
         target_lower = (target or "").lower()
+        if not target_lower:
+            return None
+        partial = []
         for app in self._workspace.runningApplications():
             name = (app.localizedName() or "").lower()
             bundle = (app.bundleIdentifier() or "").lower()
             if name == target_lower or bundle == target_lower:
                 return app
-            if target_lower and (target_lower in name or target_lower in bundle):
-                return app
-        return None
+            if target_lower in name or target_lower in bundle:
+                partial.append(app)
+        # "Code" must not select Xcode just because it is listed first.
+        return partial[0] if len(partial) == 1 else None
 
     def is_running(self, target: str) -> Tuple[bool, Optional[int]]:
         """Is `target` (localised name or bundle id) currently running?"""

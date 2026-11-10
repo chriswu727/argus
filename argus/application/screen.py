@@ -660,6 +660,9 @@ async def screen_wait_for_stable(
     )
     s.steps.append(f"screen_wait_for_stable({target})")
 
+    # Resolved here: the worker thread below has no runtime context.
+    screenshot_dir = str(_screenshot_dir(s))
+    timeout_s = min(max(timeout_s, 0.1), 60.0)
     try:
         settled, reason, final_path, stats = await screen_safety.with_timeout(
             lambda: s.screen.wait_for_stable(
@@ -667,7 +670,7 @@ async def screen_wait_for_stable(
                 threshold_pct=threshold_pct,
                 stable_window_ms=stable_window_ms,
                 poll_ms=poll_ms,
-                screenshot_dir=str(_screenshot_dir(s)),
+                screenshot_dir=screenshot_dir,
             ),
             # Allow the wait itself to hit its own internal timeout, then
             # add a small grace before the safety wrapper trips.
@@ -723,6 +726,25 @@ async def screen_wait_for_stable(
     return f"screen_wait_for_stable: {reason}.\n  final: {final_path}"
 
 
+def _app_control_refusal() -> Optional[str]:
+    """Launching and quitting apps obey the same stop signals as input.
+
+    They work without a session, so the abort file is checked directly; inside
+    a screen session the session cap and aborted state apply as well.
+    """
+    from argus.screen import safety as screen_safety
+
+    s = current_runtime().session
+    if s.active and s.mode == "screen" and s._safety is not None:
+        return screen_safety.precheck(s._safety)
+    if screen_safety.abort_file_present():
+        return (
+            f"the abort file {screen_safety.abort_file_path()} is present, "
+            "so screen control is stopped."
+        )
+    return None
+
+
 def _adhoc_screen_backend():
     """Build a one-off ScreenBackend for lifecycle calls that don't need
     an active session (launch / quit / is_running can run before a
@@ -755,10 +777,13 @@ async def screen_launch(target: str, wait_s: float = 8.0) -> str:
     if missing:
         names = ", ".join(c.name for c in missing)
         return f"screen_launch: missing macOS grants: {names}. Run argus-mcp --doctor."
+    refused = _app_control_refusal()
+    if refused:
+        return f"screen_launch: {refused}"
 
     try:
         backend = _adhoc_screen_backend()
-        ok, method, pid = backend.launch(target, wait_s=wait_s)
+        ok, method, pid = backend.launch(target, wait_s=min(max(wait_s, 0.0), 30.0))
     except Exception as exc:
         return f"screen_launch failed: {exc}"
     if not ok:
@@ -782,9 +807,12 @@ async def screen_quit(target: str, force: bool = False, wait_s: float = 8.0) -> 
     """
     if not target:
         return "screen_quit: target is required."
+    refused = _app_control_refusal()
+    if refused:
+        return f"screen_quit: {refused}"
     try:
         backend = _adhoc_screen_backend()
-        ok, method = backend.quit(target, force=force, wait_s=wait_s)
+        ok, method = backend.quit(target, force=force, wait_s=min(max(wait_s, 0.0), 30.0))
     except Exception as exc:
         return f"screen_quit failed: {exc}"
 
