@@ -81,6 +81,10 @@ class InteractiveElement:
     # Structural CSS path for a form field with no id/name/placeholder/aria-label
     # attribute, whose aria_label may come from a nearby <label> instead.
     css_path: Optional[str] = None
+    # Reference to the exact DOM node this entry was read from; valid in the
+    # page it came from until that node is removed.
+    ref: Optional[str] = None
+    form: Optional[str] = None  # owning <form>, when the control is in one
 
 
 @dataclass

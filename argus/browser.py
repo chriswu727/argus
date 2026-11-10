@@ -119,6 +119,7 @@ _FIND_VISIBLE_ELEMENT_JS = (
 )
 
 _CHECK_LAYOUT_JS = files("argus.adapters.scripts").joinpath("check_layout_js.js").read_text()
+_REF_ENGINE_JS = files("argus.adapters.scripts").joinpath("ref_engine_js.js").read_text()
 
 # JS snippet for performance metrics (on-demand).
 _EXTRACT_PERFORMANCE_JS = (
@@ -173,6 +174,7 @@ class BrowserDriver:
     async def start(self):
         try:
             self._playwright = await async_playwright().start()
+            await self._playwright.selectors.register("argus", script=_REF_ENGINE_JS)
             self._browser = await self._playwright.chromium.launch(headless=self.headless)
             self._context = await self._browser.new_context(
                 viewport=self.viewport, accept_downloads=True
@@ -212,8 +214,16 @@ class BrowserDriver:
             return "[restricted tab]"
         return _redact(url)
 
-    def selector_for(self, element: InteractiveElement) -> str:
-        return self._build_selector(element)
+    def selector_for(self, element: InteractiveElement) -> "str | InteractiveElement":
+        # An element read from the page carries a reference to its node; hand it
+        # back so the selector-taking calls below act on that node. A rebuilt
+        # selector is ambiguous whenever two controls share a name or label.
+        return element if element.ref else self._build_selector(element)
+
+    def _target(self, target: "str | InteractiveElement"):
+        if isinstance(target, InteractiveElement):
+            return self._locator(0, [target])
+        return self._page.locator(target).first
 
     async def evaluate_js(self, code: str):
         return await self._page.evaluate(code)
@@ -225,11 +235,11 @@ class BrowserDriver:
     async def settle(self) -> None:
         await self._page.wait_for_load_state("networkidle", timeout=10_000)
 
-    async def fill_selector(self, selector: str, value: str, timeout: int = 5000) -> None:
-        await self._page.fill(selector, value, timeout=timeout)
+    async def fill_selector(self, selector, value: str, timeout: int = 5000) -> None:
+        await self._target(selector).fill(value, timeout=timeout)
 
-    async def select_selector(self, selector: str, value: str, timeout: int = 5000) -> None:
-        await self._page.select_option(selector, value, timeout=timeout)
+    async def select_selector(self, selector, value: str, timeout: int = 5000) -> None:
+        await self._target(selector).select_option(value, timeout=timeout)
 
     async def set_checked_resolved(
         self, index: int, elements: list[InteractiveElement], checked: bool
@@ -238,8 +248,8 @@ class BrowserDriver:
         # option; _locator keeps the resolved element's identity.
         await self._locator(index, elements).set_checked(checked, timeout=5000)
 
-    async def click_selector(self, selector: str, timeout: int = 5000) -> None:
-        await self._page.click(selector, timeout=timeout)
+    async def click_selector(self, selector, timeout: int = 5000) -> None:
+        await self._target(selector).click(timeout=timeout)
 
     async def keyboard_press(self, key: str) -> None:
         await self._page.keyboard.press(key)
@@ -999,7 +1009,7 @@ class BrowserDriver:
             viewport=content.get("viewport"),
         )
 
-    async def inspect_element(self, selector: str) -> Dict:
+    async def inspect_element(self, selector) -> Dict:
         """Return computed styles, ARIA metadata and outerHTML for one element.
 
         `selector` is a Playwright-flavoured selector built from a resolved
@@ -1009,11 +1019,10 @@ class BrowserDriver:
         ``button:has-text("Login")`` works.
         """
         try:
-            locator = self._page.locator(selector).first
-            handle = await locator.element_handle(timeout=2000)
+            handle = await self._target(selector).element_handle(timeout=2000)
             if handle is None:
                 return {"found": False}
-            return await self._page.evaluate(_INSPECT_ELEMENT_JS, handle)
+            return await handle.evaluate(_INSPECT_ELEMENT_JS)
         except Exception:
             return {"found": False}
 
@@ -1121,6 +1130,13 @@ class BrowserDriver:
         match order. For a unique selector nth==0, identical to the old path.
         """
         el = elements[element_index]
+        base = page or self._page
+        if el.ref:
+            scope = base
+            for part in (el.frame or "").split(" >>> "):
+                if part:
+                    scope = scope.frame_locator(part)
+            return scope.locator(f"argus={el.ref}")
         selector = self._build_selector(el)
         # nth must be scoped to the SAME frame — an identical selector in a
         # different frame is a different element, not an earlier duplicate.
@@ -1129,7 +1145,6 @@ class BrowserDriver:
             for other in elements[:element_index]
             if other.frame == el.frame and self._build_selector(other) == selector
         )
-        base = page or self._page
         # Extraction only lists visible elements, so count among visible DOM
         # matches too: otherwise a hidden duplicate (a hover-only Delete in
         # another row) takes the nth slot and the action lands on it.
@@ -1858,13 +1873,12 @@ class BrowserDriver:
         return path
 
     @timed("screenshot")
-    async def element_screenshot(self, selector: str, path: str) -> Optional[str]:
+    async def element_screenshot(self, selector, path: str) -> Optional[str]:
         """Capture just the bounds of one element (Playwright crops natively)."""
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         try:
             await self._settle_visual()
-            locator = self._page.locator(selector).first
-            handle = await locator.element_handle(timeout=2000)
+            handle = await self._target(selector).element_handle(timeout=2000)
             if handle is None:
                 return None
             await handle.screenshot(path=path)

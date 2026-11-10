@@ -5,6 +5,40 @@
     const out = [];
     const seen = new Set();
 
+    // Each listed element is remembered in its own window under a reference the
+    // "argus" selector engine resolves, so an action reaches this exact node
+    // rather than whatever a rebuilt selector happens to match first.
+    const GEN = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    const KEEP = 8;
+    // Which <form> owns a control, stable across extractions of the same page.
+    function formKey(el, frameSel) {
+        try {
+            const form = el.form || el.closest('form');
+            if (!form) return null;
+            const index = Array.prototype.indexOf.call(form.ownerDocument.forms, form);
+            return (frameSel || '') + '#' + index;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function remember(el) {
+        try {
+            const win = el.ownerDocument.defaultView;
+            if (!win.__argusRefs) {
+                Object.defineProperty(win, '__argusRefs', { value: new Map(), enumerable: false });
+            }
+            const store = win.__argusRefs;
+            if (!store.has(GEN)) {
+                store.set(GEN, []);
+                while (store.size > KEEP) store.delete(store.keys().next().value);
+            }
+            return GEN + ':' + (store.get(GEN).push(el) - 1);
+        } catch (e) {
+            return null;
+        }
+    }
+
     // Structural path for a form field with no identifying attribute. Its name
     // may come from a nearby <label> that no attribute selector can express, so
     // without this the field could be listed but never typed into.
@@ -65,6 +99,8 @@
         if (el.getAttribute('role') === 'gridcell' && style.cursor !== 'pointer') return;
         out.push({
             index: out.length,
+            ref: remember(el),
+            form: formKey(el, frameSel),
             tag: el.tagName.toLowerCase(),
             // Tag a contenteditable (rich-text editor) as a text-entry surface so
             // type_into (kind=input) can target it, not just click_what.
