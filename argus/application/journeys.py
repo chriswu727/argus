@@ -274,6 +274,7 @@ async def test_form(
 
     field_results = []
     partial = False
+    filled_forms: set[str] = set()
     for field_desc, value in form_fields.items():
         # Re-observe before each field; SPA re-renders shift element refs.
         state = await s.browser.get_state()
@@ -291,6 +292,8 @@ async def test_form(
         else:
             el = result.found
 
+        if el.form:
+            filled_forms.add(el.form)
         selector = s.browser.selector_for(el)
         try:
             if kind_of(el) in ("checkbox", "radio", "switch"):
@@ -377,12 +380,18 @@ async def test_form(
                     continue
                 if el.tag == "input" and el.type not in ("submit", "button"):
                     continue
+                # Submit the form that was filled, never a button elsewhere on
+                # the page (a row's Delete above the form).
+                if filled_forms and el.form not in filled_forms:
+                    continue
                 text = (el.text or "").lower()
                 score = 0
                 for kw in submit_keywords:
                     if kw in text:
                         score = max(score, 50 + len(kw))
-                if el.type == "submit":
+                # Every <button> reports type "submit" by default, but it only
+                # submits anything when it sits inside a form.
+                if el.type == "submit" and el.form:
                     score = max(score, 80)
                 if score > 0:
                     scored.append((score, el))

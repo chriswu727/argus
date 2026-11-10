@@ -31,6 +31,13 @@ Fixes from a full audit of 0.12.2. Regenerate nothing; journals stay compatible.
 - Observe forms that contain a control named `id`. Attach page listeners once.
   Accept unsaved-changes prompts so navigation proceeds. Recover after a failed
   navigation. Judge internal links by origin.
+- Act on the exact element that was listed. Each observed element keeps a
+  reference to its DOM node, so a click or fill no longer lands on an earlier
+  control that shares a label prefix, on a hidden hover-only control in another
+  row, or on a same-named field in another form. An element that has been
+  removed fails the action instead of redirecting it.
+- `test_form` with automatic submit only considers controls in the form that
+  was filled.
 - A start rejected after launch closes the browser; `end_session` always leaves
   the failed state. `test_form` no longer echoes a typed value when a fill fails.
 
