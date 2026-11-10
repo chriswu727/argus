@@ -20,6 +20,7 @@ backend so the user-facing error messages stay actionable.
 from __future__ import annotations
 
 import asyncio
+import math
 import os
 import time
 from dataclasses import dataclass, field
@@ -59,28 +60,39 @@ class SafetyState:
     trail: List[ActionRecord] = field(default_factory=list)
 
 
+def _finite(name: str, default: float) -> float:
+    try:
+        value = float(os.environ.get(name) or default)
+    except ValueError:
+        return default
+    return value if math.isfinite(value) else default
+
+
 def per_call_timeout_s() -> float:
-    raw = os.environ.get("ARGUS_SCREEN_PER_CALL_TIMEOUT_S")
-    if raw:
-        try:
-            return float(raw)
-        except ValueError:
-            pass
-    return DEFAULT_PER_CALL_TIMEOUT_S
+    # Below a second every action "times out" while it still runs, and the
+    # caller retries a click that already happened.
+    return min(
+        max(_finite("ARGUS_SCREEN_PER_CALL_TIMEOUT_S", DEFAULT_PER_CALL_TIMEOUT_S), 1.0), 120.0
+    )
 
 
 def session_max_seconds() -> float:
-    raw = os.environ.get("ARGUS_SCREEN_SESSION_MAX_SECONDS")
-    if raw:
-        try:
-            return float(raw)
-        except ValueError:
-            pass
-    return DEFAULT_SESSION_MAX_SECONDS
+    return _finite("ARGUS_SCREEN_SESSION_MAX_SECONDS", DEFAULT_SESSION_MAX_SECONDS)
 
 
 def abort_file_path() -> Path:
-    return Path(os.environ.get("ARGUS_SCREEN_ABORT_FILE", DEFAULT_ABORT_FILE))
+    # MCP configs pass "~/.argus/abort" literally; without expansion Argus would
+    # watch a file under the working directory that nobody creates.
+    raw = os.environ.get("ARGUS_SCREEN_ABORT_FILE") or DEFAULT_ABORT_FILE
+    return Path(raw).expanduser().absolute()
+
+
+def prepare_abort_location() -> None:
+    """Make sure `touch <abort file>` works the moment someone needs it."""
+    try:
+        abort_file_path().parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
 
 
 def abort_file_present() -> bool:
@@ -130,8 +142,8 @@ def precheck(state: SafetyState) -> Optional[str]:
     """
     if state.aborted:
         return (
-            "Argus screen-mode session is in aborted state. "
-            "Start a new session with start_screen_session() to continue."
+            "Argus screen-mode session is in aborted state. Tell the user; "
+            "only they can decide to start another session."
         )
     if abort_file_present():
         state.aborted = True

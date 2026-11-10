@@ -221,8 +221,11 @@ Don't record speculation, polish nits, or static a11y / SEO that
 - Session cap: 30 min default
   (`ARGUS_SCREEN_SESSION_MAX_SECONDS`).
 - Panic button: `touch ~/.argus/abort` blocks every subsequent screen
-  action in the current session
-  (`ARGUS_SCREEN_ABORT_FILE` to relocate).
+  action, including `screen_launch` and `screen_quit`, and no new screen
+  session starts while the file exists. Only the user removes it; never
+  delete it or work around it (`ARGUS_SCREEN_ABORT_FILE` to relocate).
+- Keyboard and coordinate input is sent only while the bound app is
+  frontmost. Argus brings it forward first and refuses if that fails.
 - Every `screen_click_what` / `screen_type_into` writes a
   before-and-after screenshot pair to the action trail.
 

@@ -38,6 +38,14 @@ Fixes from a full audit of 0.12.2. Regenerate nothing; journals stay compatible.
   removed fails the action instead of redirecting it.
 - `test_form` with automatic submit only considers controls in the form that
   was filled.
+- Screen mode: send keyboard and coordinate input only while the bound app is
+  frontmost; a session started without a target stays with its first app.
+  The abort file now also stops `screen_launch` and `screen_quit`, and a new
+  session no longer deletes it: only the user clears it. `screen_quit` needs an
+  exact or unique app match. Hold, drag and click counts are bounded, key
+  combinations apply modifiers per key and accept hyphenated key names, and
+  failed typing no longer echoes the text. `screen_wait_for_stable` works.
+  `ARGUS_SCREEN_ABORT_FILE` expands `~`, and its directory is created at start.
 - A start rejected after launch closes the browser; `end_session` always leaves
   the failed state. `test_form` no longer echoes a typed value when a fill fails.
 
