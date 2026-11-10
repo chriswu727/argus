@@ -573,7 +573,16 @@ class BrowserDriver:
                 except Exception:
                     pass
 
-        await self._page.route(pattern, _handler)
+        # Mocks live on the context so every tab sees the same set, and a
+        # pattern has exactly one handler: a replaced mock left registered
+        # would outlive suspend_mocks and answer a "clean" verification load.
+        previous = self._mock_handlers.get(pattern)
+        if previous is not None:
+            try:
+                await self._context.unroute(pattern, previous)
+            except Exception:
+                pass
+        await self._context.route(pattern, _handler)
         self._mock_routes[pattern] = {
             "status": status,
             "content_type": content_type,
@@ -586,7 +595,7 @@ class BrowserDriver:
         """Drop a previously-registered mock. Returns True if it existed."""
         if pattern in self._mock_routes:
             try:
-                await self._page.unroute(pattern)
+                await self._context.unroute(pattern)
             except Exception:
                 pass
             self._mock_routes.pop(pattern, None)
@@ -607,9 +616,9 @@ class BrowserDriver:
             handler = self._mock_handlers.get(pattern)
             try:
                 if handler is not None:
-                    await self._page.unroute(pattern, handler)
+                    await self._context.unroute(pattern, handler)
                 else:
-                    await self._page.unroute(pattern)
+                    await self._context.unroute(pattern)
             except Exception:
                 pass
         return suspended
@@ -620,7 +629,7 @@ class BrowserDriver:
             handler = self._mock_handlers.get(pattern)
             if handler is not None:
                 try:
-                    await self._page.route(pattern, handler)
+                    await self._context.route(pattern, handler)
                 except Exception:
                     pass
 
@@ -1701,6 +1710,9 @@ class BrowserDriver:
                 accept_downloads=True, storage_state=storage, **cfg
             )
             self._context.on("page", self._on_new_page)
+            # Active mocks belong to the session, not to the replaced context.
+            for pattern, handler in self._mock_handlers.items():
+                await self._context.route(pattern, handler)
             self._page = await self._context.new_page()
             self._attach_page_listeners(self._page)
             try:

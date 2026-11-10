@@ -251,3 +251,26 @@ def test_coverage_goal_matches_whole_words_only(isolated_runtime):
     assert _coverage_goal_index(session, "count")[0] is None
     assert _coverage_goal_index(session, "delete account")[0] == 1
     assert _coverage_goal_index(session, "credit card")[0] == 0
+
+
+async def test_replaced_mock_does_not_survive_suspension(isolated_runtime, site):
+    pages, base = site
+    pages["/api"] = "REAL"
+    try:
+        await start_session(base)
+        browser = isolated_runtime.session.browser
+        await browser.add_route("**/api", status=500, body="FIRST")
+        await browser.add_route("**/api", status=201, body="SECOND")
+
+        async def fetched():
+            return await browser._page.evaluate("fetch('/api').then(r => r.text())")
+
+        assert await fetched() == "SECOND"
+        suspended = await browser.suspend_mocks()
+        assert await fetched() == "REAL"
+        await browser.restore_mocks(suspended)
+        assert await fetched() == "SECOND"
+        assert await browser.remove_route("**/api")
+        assert await fetched() == "REAL"
+    finally:
+        await isolated_runtime.shutdown()

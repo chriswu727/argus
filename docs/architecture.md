@@ -1,4 +1,4 @@
-# Architecture: Argus 0.10
+# Architecture
 
 Argus is a local, single-session QA runtime with MCP and CLI entry points. It is
 a modular monolith, not a distributed service. The host model decides what to
