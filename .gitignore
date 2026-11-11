@@ -24,3 +24,4 @@ docs/*
 !docs/evaluation.md
 !docs/evaluation-0.8.md
 !docs/usage.md
+.claude/

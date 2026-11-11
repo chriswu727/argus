@@ -164,8 +164,9 @@ def test_app_lookup_needs_an_exact_or_unique_match(bound):
     match = bound.backend._running_app_matching
     assert match("Code").localizedName() == "Code"
     assert match("Notes").processIdentifier() == 7
-    assert match("com.apple") is None
-    assert match("e") is None
+    with pytest.raises(RuntimeError, match="several running apps"):
+        match("com.apple")
+    assert match("Safari") is None
 
 
 def test_abort_file_path_is_expanded(monkeypatch, tmp_path):
