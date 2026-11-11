@@ -33,9 +33,18 @@ async def test_monitor_health_status_assets_and_host_guards(monitor):
             await client.get("/healthz", headers={"Origin": "https://evil.example"})
         ).status_code == 403
         assert (await client.get("/healthz", headers={"Origin": "http://["})).status_code == 403
+        for site, status in [
+            ("cross-site", 403),
+            ("same-site", 403),
+            ("same-origin", 200),
+            ("none", 200),
+        ]:
+            response = await client.get("/healthz", headers={"Sec-Fetch-Site": site})
+            assert response.status_code == status, site
         assert (
-            await client.get("/healthz", headers={"Sec-Fetch-Site": "cross-site"})
+            await client.get("/api/events", headers={"Sec-Fetch-Site": "same-site"})
         ).status_code == 403
+        assert monitor.subscribers == 0
         assert (
             await client.get("/api/events", headers={"Last-Event-ID": "nope"})
         ).status_code == 400

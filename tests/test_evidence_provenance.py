@@ -356,6 +356,27 @@ async def test_late_finding_refreshes_closed_goal_without_polluting_active_goal(
     assert not s.coverage_goals[1]["evidence_refs"]["screenshots"]
 
 
+async def test_recheck_of_an_untagged_finding_refreshes_the_goal_window_holding_it(
+    isolated_runtime,
+):
+    s = coverage_session(isolated_runtime)
+    update(s, "profile")
+    first = await record_bug("Lost name", "high", {"screenshot": "skip"})
+    update(s, "profile", "exercised", "Saved then reloaded")
+    update(s, "newsletter")
+    update(s, "newsletter", "exercised", "Checked newsletter")
+    assert s.coverage_goals[0]["evidence_refs"]["findings"][0]["verified"] is False
+    isolated_runtime.verifiers.verify = AsyncMock(
+        return_value={"attempted": True, "reproduced": True}
+    )
+    result = await record_bug(
+        "Lost name", "high", verify={"expect": "absent"}, finding_id=first.data["finding_id"]
+    )
+    assert result.data["verdict"] == "verified"
+    assert s.coverage_goals[0]["evidence_refs"]["findings"][0]["verified"] is True
+    assert not s.coverage_goals[1]["evidence_refs"]["findings"]
+
+
 async def test_replay_start_url_is_not_used_as_finding_location(isolated_runtime):
     s = coverage_session(isolated_runtime)
     isolated_runtime.verifiers.verify = AsyncMock(

@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -16,6 +19,27 @@ async def test_core_observation_tool_is_exported_and_helpers_are_private():
     assert "observe" in names
     assert "screen_observe" in names
     assert not {name for name in names if name.startswith("_")}
+
+
+def test_tool_profile_environment_is_validated(tmp_path):
+    def list_tools(profile):
+        env = {**os.environ, "ARGUS_TOOL_PROFILE": profile, "ARGUS_OUTPUT_DIR": str(tmp_path)}
+        return subprocess.run(
+            [sys.executable, "-m", "argus.mcp_server", "--list-tools"],
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=Path(__file__).resolve().parents[1],
+            timeout=60,
+        )
+
+    empty = list_tools("")
+    assert empty.returncode == 0, empty.stderr
+    assert empty.stdout.startswith("Argus tool profile: web ")
+    invalid = list_tools("bogus")
+    assert invalid.returncode == 2
+    assert "Traceback" not in invalid.stderr
+    assert "'bogus'" in invalid.stderr and "web, advanced, screen, full" in invalid.stderr
 
 
 async def test_start_returns_observation_and_screenshot_returns_mcp_image(tmp_path, monkeypatch):

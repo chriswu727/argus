@@ -133,7 +133,12 @@ _NOT_REPLAYED = frozenset(
         "cookies_set",
         "cookies_clear",
         "tabs_switch",
+        "tabs_close",
         "eval_js",
+        "network_mock",
+        "network_unmock",
+        "network_clear_mocks",
+        "set_dialog_handler",
     }
 )
 

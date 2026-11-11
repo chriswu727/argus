@@ -61,11 +61,10 @@ class Monitor:
             )
         except ValueError:
             return False
-        return (
-            host in allowed
-            and valid_origin
-            and request.headers.get("sec-fetch-site") != "cross-site"
-        )
+        # Another port on localhost is same-site, and a page served there (usually
+        # the app under test) must not be able to hold the event stream slots.
+        fetch_site = request.headers.get("sec-fetch-site")
+        return host in allowed and valid_origin and fetch_site in (None, "same-origin", "none")
 
     async def health(self, request: Request) -> Response:
         return JSONResponse({"status": "ok", "schema_version": 1})

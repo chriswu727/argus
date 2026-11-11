@@ -5,6 +5,7 @@ from typing import List, Optional
 from urllib.parse import urljoin, urlparse
 
 from argus.domain.models import (
+    Bug,
     PageState,
 )
 
@@ -174,12 +175,19 @@ def _coverage_evidence_refs(
     }
 
 
-def _refresh_finding_coverage(s: Session, goals: list[str]) -> None:
+def _refresh_finding_coverage(s: Session, bug: Bug) -> None:
+    position = next((index for index, other in enumerate(s.bugs) if other is bug), None)
     for index, selected in enumerate(s.coverage_goals):
-        if selected["goal"] in goals and "evidence_refs" in selected:
-            selected["evidence_refs"] = _coverage_evidence_refs(
-                s, s._coverage_goal_cursors[index], s._coverage_goal_ends[index], selected["goal"]
-            )
+        if "evidence_refs" not in selected:
+            continue
+        cursor, end = s._coverage_goal_cursors[index], s._coverage_goal_ends[index]
+        in_window = (
+            not bug.coverage_goals
+            and position is not None
+            and cursor["bugs"] <= position < end["bugs"]
+        )
+        if selected["goal"] in bug.coverage_goals or in_window:
+            selected["evidence_refs"] = _coverage_evidence_refs(s, cursor, end, selected["goal"])
 
 
 def _update_coverage_from_state(s: Session, state: PageState) -> None:

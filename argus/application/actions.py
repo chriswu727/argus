@@ -682,6 +682,7 @@ async def set_dialog_handler(action: str = "accept", text: str = "") -> str:
         )
     s.browser.queue_dialog_response(action, text)
     s.steps.append(f"set_dialog_handler({action!r}, text=...)")
+    _record_action(s, "set_dialog_handler", action)
     return (
         f"Next dialog will be {action}ed"
         + (f" with text {text!r}" if text else "")
