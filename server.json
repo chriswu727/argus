@@ -3,7 +3,7 @@
   "name": "io.github.chriswu727/argus",
   "title": "Argus \u2014 Testing for Coding Agents",
   "description": "Testing MCP for coding agents: exercise real user journeys, find bugs, verify them with evidence.",
-  "version": "0.12.2",
+  "version": "0.12.3",
   "repository": {
     "url": "https://github.com/chriswu727/argus",
     "source": "github"
@@ -13,7 +13,7 @@
     {
       "registryType": "pypi",
       "identifier": "argus-testing",
-      "version": "0.12.2",
+      "version": "0.12.3",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"

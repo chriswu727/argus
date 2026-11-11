@@ -5,7 +5,7 @@ Available in 0.8.0 and newer.
 ## Response overhead
 
 Version 0.9 introduced an offline, deterministic encoding benchmark; the figures
-below are reproduced with 0.12.2:
+below are reproduced with 0.12.3:
 
 ```bash
 python -m argus_lab.evaluation.overhead

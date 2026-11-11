@@ -85,11 +85,13 @@ replaying a journey can repeat its writes.
 [Cursor, other MCP clients and troubleshooting](docs/usage.md#quick-start) ·
 [Claude plugin](plugins/claude) · [Codex plugin](plugins/codex)
 
-**0.12.2**: regression checks preserve complete verification conditions and treat
-intermittent results as inconclusive. Exported tests stop on missing or ambiguous
-row targets. Regenerate older tests and follow the [journal migration steps](docs/usage.md#regression-gates-in-ci).
-See the [releases](https://github.com/chriswu727/argus/releases) and
-[changelog](CHANGELOG.md#0122---2026-11-08).
+**0.12.3**: verification reads the whole page and loads a new document for
+hash routes, and no longer reports a symptom as gone behind a login page, a
+redirect or an unrelated error. Actions land on the exact element that was
+listed. Tests exported by 0.12.1 or earlier should still be regenerated; see the
+[journal migration steps](docs/usage.md#regression-gates-in-ci), the
+[releases](https://github.com/chriswu727/argus/releases) and the
+[changelog](CHANGELOG.md#0123---2026-11-10).
 
 ## Engineering
 
