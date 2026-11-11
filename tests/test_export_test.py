@@ -952,3 +952,54 @@ async def test_drags_and_storage_writes_make_an_export_incomplete(isolated_runti
     finally:
         await _fn("end_session")()
         server.shutdown()
+
+
+async def test_a_network_mock_makes_an_export_incomplete_without_leaking_its_body(
+    isolated_runtime, monkeypatch
+):
+    from argus.application import exports
+
+    async def must_not_run(*args, **kwargs):
+        pytest.fail("An export that cannot reproduce the journey must not run")
+
+    class _Server(socketserver.ThreadingTCPServer):
+        allow_reuse_address = True
+        daemon_threads = True
+
+    server = _Server(("127.0.0.1", 0), _BoardHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        try:
+            await _fn("start_session")(base + "/board")
+        except Exception as exc:
+            pytest.skip(f"Chromium/session unavailable: {exc}")
+        s = m.runtime.session
+        mocked = await _fn("network_mock")("**/api/cards", 500, '{"token": "mock-body-secret"}')
+        assert str(mocked).startswith("Mock registered")
+        assert str(await _fn("set_dialog_handler")("dismiss", "prompt-secret")).startswith("Next")
+        assert [a["tool"] for a in s.action_trace] == ["network_mock", "set_dialog_handler"]
+        assert "**/api/cards" in s.action_trace[0]["description"]
+        assert "500" in s.action_trace[0]["description"]
+        assert "mock-body-secret" not in repr(s.action_trace)
+        assert "prompt-secret" not in repr(s.action_trace)
+        replayed = await s.browser.replay(base + "/board", list(s.action_trace))
+        assert replayed["diverged"] and replayed["steps"][-1]["reason"] == "not replayed"
+
+        recorded = await _fn("record_bug")(
+            "Board hides the server error",
+            "medium",
+            {"expected": "An error message", "actual": "Board unchanged"},
+            verify={"expect": "present", "target_text": "Board", "at_url": base + "/board"},
+        )
+        monkeypatch.setattr(exports, "run_exported_test", must_not_run)
+        exported = await _fn("export_test")(recorded.data["finding_id"], run=True)
+        assert exported.data["run"]["outcome"] == "incomplete", exported
+        manual = exported.data["manual_steps"]
+        assert any("step 1: unsupported action" in note for note in manual), manual
+        source = open(exported.data["path"]).read()
+        assert "ARGUS_INCOMPLETE_TEST" in source
+        assert "mock-body-secret" not in source and "prompt-secret" not in source
+    finally:
+        await _fn("end_session")()
+        server.shutdown()

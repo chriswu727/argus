@@ -302,7 +302,7 @@ async def record_bug(
         verification_spec=retained_verification(verify, receipt),
     )
     s.bugs.append(bug)
-    _refresh_finding_coverage(s, coverage_goals)
+    _refresh_finding_coverage(s, bug)
     verdict = receipt_outcome(receipt)
     code = (
         "verified" if verdict is True else "not_reproduced" if verdict is False else "inconclusive"
@@ -547,7 +547,7 @@ async def _recheck_finding(
     history["receipt"] = receipt
     bug.reproduction_receipt = receipt
     bug.verification_spec = retained_verification(verify, receipt)
-    _refresh_finding_coverage(s, bug.coverage_goals)
+    _refresh_finding_coverage(s, bug)
     verdict = (receipt or {}).get("reproduced")
     code = _verdict_code(receipt)
     await runtime.progress(

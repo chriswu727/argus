@@ -76,6 +76,19 @@ Fixes from a full audit of 0.12.2. Regenerate nothing; journals stay compatible.
   incomplete and a replay through them reports that it cannot repeat them.
 - `crawl_site` stays on the origin it started from, skips a link that redirects
   elsewhere, returns to the start page, and counts only the event-bugs it captured.
+- `network_mock`, `network_unmock`, `network_clear_mocks`, `tabs_close` and
+  `set_dialog_handler` appear in the action trace, the mock without its body and
+  the dialog handler without its text, so an export after a mock is incomplete.
+- A recheck that verifies a finding recorded without a goal updates the coverage
+  evidence of every goal whose window holds it, not only of tagged goals.
+- Element descriptions hide the value of a text field whose name, id, label or
+  placeholder names a secret, such as `api_key`.
+- `wait_for_request` redacts credentials in the matched URL.
+- The monitor rejects same-site requests, such as an image on the app under test
+  pointing at the event stream; only same-origin, direct and non-browser
+  requests are accepted.
+- An empty `ARGUS_TOOL_PROFILE` means `web`, and an invalid one is reported as a
+  usage error naming the valid profiles instead of a traceback.
 
 ## Documentation and Glama deployment - 2026-11-09
 

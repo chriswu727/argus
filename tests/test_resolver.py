@@ -838,3 +838,17 @@ def test_cjk_description_matches_inside_cjk_label():
     assert r.reason == "unique"
     assert r.found is els[0]
     assert resolve_element("delete", [make_element(0, tag="button", text="undelete")]).found is None
+
+
+def test_a_secret_named_text_field_hides_its_value():
+    from argus.domain.models import InteractiveElement as E
+
+    key = make_element(0, tag="input", type="text", name="api_key", value="sk-live-SYNTHETIC")
+    assert "sk-live-SYNTHETIC" not in describe(key)
+    assert "(value hidden)" in describe(key)
+    labelled = E(index=1, tag="input", type="text", aria_label="Access token", value="tok-SYNTH")
+    assert "tok-SYNTH" not in describe(labelled)
+    by_id = make_element(2, tag="input", type="text", id="client-secret", value="cs-SYNTH")
+    assert "cs-SYNTH" not in describe(by_id)
+    author = make_element(3, tag="input", type="text", name="author", value="Morgan")
+    assert '= "Morgan"' in describe(author)

@@ -18,6 +18,7 @@ from typing import List, Optional, Tuple
 
 from .domain.models import InteractiveElement
 from .domain.wordchars import WORD_CHAR
+from .security import is_secret_key
 
 
 @dataclass
@@ -659,7 +660,11 @@ def describe(el: InteractiveElement) -> str:
     # checked state below is what matters). When there's no other label, the
     # value IS the label.
     _t = (el.type or "").lower()
-    if el.value and el.value != label and _t not in ("password", "checkbox", "radio"):
+    shown = el.value and _t not in ("password", "checkbox", "radio")
+    faces = " ".join(filter(None, [el.name, el.id, el.aria_label, el.placeholder]))
+    if shown and is_secret_key(faces):
+        parts.append("= (value hidden)")
+    elif shown and el.value != label:
         parts.append(f'= "{el.value[:40]}"' if label else f'"{el.value[:60]}"')
     # Live checked state — without it a checked and unchecked box look identical.
     if el.checked is not None:

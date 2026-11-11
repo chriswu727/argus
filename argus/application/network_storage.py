@@ -198,6 +198,7 @@ async def network_mock(
     except Exception as exc:
         return f"network_mock failed: {type(exc).__name__}: {exc}"
     s.steps.append(f"network_mock({url_pattern!r}) -> HTTP {status}")
+    _record_action(s, "network_mock", f"{url_pattern} -> HTTP {status} (body omitted)")
     return (
         f"Mock registered: {url_pattern} -> HTTP {status} "
         f"({content_type}, {len(body)}B body).\n"
@@ -217,6 +218,7 @@ async def network_unmock(url_pattern: str) -> str:
     except Exception as exc:
         return f"network_unmock failed: {exc}"
     if removed:
+        _record_action(s, "network_unmock", url_pattern)
         return f"Unmocked: {url_pattern}"
     return f"No mock registered for {url_pattern!r}."
 
@@ -228,6 +230,8 @@ async def network_clear_mocks() -> str:
     if err:
         return err
     n = await s.browser.clear_routes()
+    if n:
+        _record_action(s, "network_clear_mocks", f"{n} mock(s)")
     return f"Cleared {n} mock(s)."
 
 

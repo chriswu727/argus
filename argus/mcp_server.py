@@ -86,10 +86,11 @@ def main() -> None:
     parser.add_argument("--version", "-V", action="version", version=f"argus-testing {__version__}")
     parser.add_argument("--doctor", action="store_true")
     parser.add_argument("--unsafe", action="store_true", default=None)
+    profiles = (*PROFILES, *PROFILE_ALIASES)
     parser.add_argument(
         "--tool-profile",
-        choices=(*PROFILES, *PROFILE_ALIASES),
-        default=os.environ.get("ARGUS_TOOL_PROFILE", "web"),
+        choices=profiles,
+        default=os.environ.get("ARGUS_TOOL_PROFILE") or "web",
     )
     parser.add_argument("--list-tools", action="store_true")
     parser.add_argument("--response-mode", choices=("compatible", "compact", "delta"))
@@ -97,6 +98,12 @@ def main() -> None:
         "--monitor-port", type=int, help="Enable local monitoring; 0 chooses a free port"
     )
     args = parser.parse_args()
+    # argparse checks choices only for values given on the command line, not defaults.
+    if args.tool_profile not in profiles:
+        parser.error(
+            f"ARGUS_TOOL_PROFILE={args.tool_profile!r} is not a tool profile "
+            f"(choose from {', '.join(profiles)})"
+        )
     if args.doctor:
         from argus.doctor import main as doctor
 

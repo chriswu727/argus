@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from argus.domain.contracts import ErrorCode, Rejection
+from argus.security import _redact
 
 from .coverage import _coverage_reference_url
 from .evidence import _record_action
@@ -61,6 +62,7 @@ async def tabs_close(index: int) -> str:
     if not ok:
         return f"tabs_close: no tab at index {index}."
     s.steps.append(f"tabs_close({index})")
+    _record_action(s, "tabs_close", f"tab {index}")
     if not s.browser.has_page:
         return (
             "Closed the last tab — no open page remains. Call "
@@ -131,7 +133,7 @@ async def wait_for_request(
         if post and len(post) > 200:
             post = post[:197] + "..."
         return (
-            f"Matched: {snap['method']} {snap['url']}\n"
+            f"Matched: {snap['method']} {_redact(snap['url'])}\n"
             f"  resource_type: {snap['resource_type']}\n"
             f"  post_data: {post or '(none)'}"
         )

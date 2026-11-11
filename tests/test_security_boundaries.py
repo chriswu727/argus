@@ -221,6 +221,27 @@ async def test_sensitive_reads_require_startup_opt_in(isolated_runtime):
         assert "SYNTHETIC_SECRET" in await tool()
 
 
+async def test_wait_for_request_redacts_the_matched_url(isolated_runtime):
+    from argus.application.navigation import wait_for_request
+
+    class Browser:
+        has_page = True
+        current_url = "https://example.test/"
+
+        async def wait_for_request(self, url_substring, method, timeout_s):
+            return {
+                "url": "https://example.test/api/save?token=SYNTHETIC_SECRET",
+                "method": "POST",
+                "resource_type": "fetch",
+                "post_data": None,
+            }
+
+    isolated_runtime.session.browser = Browser()
+    isolated_runtime.session.mode = "web"
+    result = await wait_for_request("/api/save")
+    assert "/api/save" in result and "SYNTHETIC_SECRET" not in result
+
+
 async def test_runtime_blocks_operations_after_unapproved_navigation(isolated_runtime):
     runtime = isolated_runtime
     runtime.settings = replace(
