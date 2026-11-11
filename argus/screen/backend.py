@@ -156,6 +156,42 @@ class ScreenBackend:
         self._app_pid = None
         self._pinned_pid = None
 
+    def _frontmost_pid(self) -> Optional[int]:
+        """PID of the app that will receive keyboard input right now.
+
+        NSWorkspace.frontmostApplication() is only refreshed by a running main
+        run loop, which a long-lived server process does not spin, so it keeps
+        reporting the app that was frontmost at startup. Ask the accessibility
+        and window servers instead; both answer live.
+        """
+        AX = self._AX
+        if AX is not None:
+            try:
+                err, focused = AX.AXUIElementCopyAttributeValue(
+                    AX.AXUIElementCreateSystemWide(), AX.kAXFocusedApplicationAttribute, None
+                )
+                if err == 0:
+                    err, pid = AX.AXUIElementGetPid(focused, None)
+                    if err == 0:
+                        return int(pid)
+            except Exception:
+                pass
+            try:
+                import Quartz
+
+                windows = Quartz.CGWindowListCopyWindowInfo(
+                    Quartz.kCGWindowListOptionOnScreenOnly
+                    | Quartz.kCGWindowListExcludeDesktopElements,
+                    Quartz.kCGNullWindowID,
+                )
+                for window in windows or []:
+                    if window.get("kCGWindowLayer") == 0:
+                        return int(window["kCGWindowOwnerPID"])
+            except Exception:
+                pass
+        front = self._workspace.frontmostApplication() if self._workspace else None
+        return front.processIdentifier() if front is not None else None
+
     def _require_frontmost(self) -> None:
         """Refuse synthetic input unless the bound app will receive it.
 
@@ -168,8 +204,7 @@ class ScreenBackend:
             raise RuntimeError("no app is bound; call screen_observe first")
 
         def is_front() -> bool:
-            front = self._workspace.frontmostApplication()
-            return front is not None and front.processIdentifier() == pid
+            return self._frontmost_pid() == pid
 
         if is_front():
             return
@@ -333,6 +368,11 @@ class ScreenBackend:
                         AX.AXUIElementCreateApplication(pinned),
                     )
         front = self._workspace.frontmostApplication()
+        live = self._frontmost_pid()
+        for app in self._workspace.runningApplications():
+            if app.processIdentifier() == live:
+                front = app
+                break
         self._pinned_pid = front.processIdentifier()
         return (
             front.processIdentifier(),
@@ -1041,7 +1081,10 @@ class ScreenBackend:
             if target_lower in name or target_lower in bundle:
                 partial.append(app)
         # "Code" must not select Xcode just because it is listed first.
-        return partial[0] if len(partial) == 1 else None
+        if len(partial) > 1:
+            names = ", ".join(sorted((a.localizedName() or "?") for a in partial)[:5])
+            raise RuntimeError(f"{target!r} matches several running apps ({names}); be specific")
+        return partial[0] if partial else None
 
     def is_running(self, target: str) -> Tuple[bool, Optional[int]]:
         """Is `target` (localised name or bundle id) currently running?"""

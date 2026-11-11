@@ -59,6 +59,11 @@ Fixes from a full audit of 0.12.2. Regenerate nothing; journals stay compatible.
   pattern. Replacing a mock no longer leaves the first response active during
   a fresh-load verification, and mocks follow tab switches and device emulation.
 - CI also runs on Python 3.13 and 3.14.
+- Screen mode reads the frontmost app from the accessibility and window
+  servers. `NSWorkspace` is only refreshed by a running main run loop, so a
+  long-lived server kept seeing the app that was frontmost at startup and
+  refused all input. `screen_quit` and `screen_launch` report a name that
+  matches several running apps instead of "not running".
 - A start rejected after launch closes the browser; `end_session` always leaves
   the failed state. `test_form` no longer echoes a typed value when a fill fails.
 - Resolve "Last name" and "First name" to the fields with those labels instead
