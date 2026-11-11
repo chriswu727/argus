@@ -1,5 +1,10 @@
 # Changelog
 
+## Plugin updates - 2026-11-10
+
+- Claude plugin 0.12.4 and Codex plugin 0.12.3 pin the published Argus 0.12.3
+  runtime and refresh their dependency locks and setup commands.
+
 ## 0.12.3 - 2026-11-10
 
 Fixes from a full audit of 0.12.2. Journals and exported tests stay compatible.
