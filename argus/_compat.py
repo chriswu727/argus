@@ -92,7 +92,6 @@ from argus.application.text import _short as _short
 from argus.application.text import _text_in_state as _text_in_state
 from argus.application.text import _token_present as _token_present
 from argus.application.text import _visible_text_in_state as _visible_text_in_state
-from argus.application.verification import _LOGOUT_PHRASES as _LOGOUT_PHRASES
 from argus.application.verification import _looks_logged_out as _looks_logged_out
 from argus.application.verification import _minimize_replay as _minimize_replay
 from argus.application.verification import _receipt_verdict as _receipt_verdict
@@ -100,3 +99,6 @@ from argus.application.verification import _run_replay_receipt as _run_replay_re
 from argus.application.verification import (
     _run_reproduction_check as _run_reproduction_check,
 )
+from argus.domain.verdict import LOGIN_WALL_PHRASES
+
+_LOGOUT_PHRASES = LOGIN_WALL_PHRASES

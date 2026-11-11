@@ -3,18 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any, Mapping
 
-LOGIN_WALL_PHRASES = (
-    "please log in",
-    "please sign in",
-    "log in to",
-    "sign in to",
-    "session expired",
-    "session has expired",
-    "you have been logged out",
-    "you are logged out",
-    "log in to continue",
-    "sign in to continue",
-)
+from argus.domain.verdict import LOGIN_WALL_PHRASES as LOGIN_WALL_PHRASES
+from argus.domain.verdict import receipt_outcome as receipt_outcome
 
 
 @dataclass(frozen=True)
@@ -68,17 +58,6 @@ class VerificationSpec:
         if not isinstance(clear_storage, bool):
             raise ValueError("clear_storage must be a boolean")
         return cls(kind=kind, expect_status=status, clear_storage=clear_storage, **fields)
-
-
-def receipt_outcome(receipt: Mapping[str, Any] | None) -> bool | None:
-    """True reproduced, False not reproduced, None inconclusive.
-
-    A symptom seen on some fresh loads but not all is neither confirmed nor
-    refuted, whatever the receipt's own `reproduced` flag says.
-    """
-    if not receipt or receipt.get("flaky"):
-        return None
-    return receipt.get("reproduced")
 
 
 def retained_verification(clause: Mapping[str, Any] | None, receipt: Mapping | None) -> dict:

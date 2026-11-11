@@ -3,6 +3,7 @@ from __future__ import annotations
 from argus.access import canonical_origin
 from argus.application.context import current_runtime
 from argus.domain.contracts import Rejection, ToolText
+from argus.domain.verdict import persistence_check
 
 from .capture import _file_event_bugs
 from .coverage import _coverage_reference_url
@@ -10,8 +11,8 @@ from .evidence import _auto_screenshot
 from .payloads import observation_data
 from .progress import Stage
 from .session import _require_session
-from .text import _present_with_scroll, _resolve_url, _short, _text_in_state
-from .verification import _fresh_goto, _login_form, _looks_logged_out, _moved_from
+from .text import _present_with_scroll, _resolve_url, _short, _state_facts, _text_in_state
+from .verification import _fresh_goto, _looks_logged_out
 
 
 async def verify_persistence(
@@ -90,23 +91,18 @@ async def verify_persistence(
     s._last_elements = after_state.elements
 
     present = await _present_with_scroll(s, target_text, after_state)
-    text_matches = present == (expect_norm == "present")
     status = response.status if response is not None else None
-    moved = _moved_from(nav_url, s.browser.current_url)
-    status_matches = (status == expect_status) if expect_status else None
-    unreliable_page = (
-        _looks_logged_out(after_state)
-        or _login_form(after_state)
-        or moved
-        or after_state.text_truncated
-        or (status is not None and status >= 400 and not status_matches)
-    )
-    # Observed presence and an observed status mismatch are direct evidence;
-    # absence on an error or login page may have the wrong cause.
-    conclusive = present or not unreliable_page or status_matches is False
-    if expect_status and status is None:
-        conclusive = False
-    matches = (text_matches and status_matches is not False) if conclusive else None
+    load = {
+        "status": status,
+        "requested": nav_url,
+        "landed": s.browser.current_url,
+        "frames": [_state_facts(after_state)],
+        "settled": True,
+        "login_page": False,
+    }
+    check = persistence_check(expect_norm, present, load, expect_status)
+    conclusive, matches = check["conclusive"], check["matches"]
+    text_matches, status_matches = check["text_matches"], check["status_matches"]
     s.verification_checks.append(
         {
             "expect": expect_norm,
@@ -140,12 +136,12 @@ async def verify_persistence(
     if status_matches is False:
         verdict = f"HTTP {status}, expected {expect_status}. " + verdict
     if not conclusive:
-        if after_state.text_truncated:
+        if check["reason"] == "truncated":
             verdict = (
                 "Target not found, but the page text exceeds the inspection limit — "
                 "absence cannot establish persistence."
             )
-        elif moved:
+        elif check["reason"] == "moved":
             verdict = (
                 f"Target absent, but the load ended on {s.browser.current_url} instead of the "
                 "requested page — absence there cannot establish persistence. Check the "

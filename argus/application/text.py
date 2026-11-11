@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import re
 from urllib.parse import urljoin
 
 from argus.domain.models import (
     PageState,
 )
-from argus.domain.wordchars import WORD_CHAR as _WORD_CHAR
+from argus.domain.verdict import token_present as _token_present
 
 from .session import Session
 
@@ -27,25 +26,22 @@ def _resolve_url(s: "Session", url: str) -> str:
     return urljoin(base, url) if base else url
 
 
-def _token_present(needle: str, haystack: str) -> bool:
-    """Whitespace-normalised, word-boundary containment.
-
-    A bare substring scan lets a claimed symptom match incidentally — the
-    target living inside a longer word ('cat' in 'category', 'Delete' in
-    'Deleted') — which would stamp a VERIFIED receipt on a non-bug. Require
-    the needle to sit on word boundaries so only a token-level occurrence
-    counts. This does not prove the occurrence is *the* one claimed, but it
-    kills the mid-word / bleed-through false positives the receipt must avoid.
-    """
-    needle = " ".join(needle.lower().split())
-    haystack = " ".join(haystack.lower().split())
-    if not needle:
-        return False
-    # A boundary matters only on a word-character edge of the needle: "-50%"
-    # printed straight after a price ("$89.99-50%") is a real occurrence.
-    before = f"(?<!{_WORD_CHAR})" if re.match(_WORD_CHAR, needle) else ""
-    after = f"(?!{_WORD_CHAR})" if re.search(_WORD_CHAR + "$", needle) else ""
-    return re.search(before + re.escape(needle) + after, haystack) is not None
+def _state_facts(state: PageState) -> dict:
+    """Main-frame facts for the verdict rules, read from an extracted PageState."""
+    buttons = []
+    for el in state.elements:
+        if el.frame:
+            continue
+        if el.tag == "button" or el.role == "button" or el.type in {"submit", "button"}:
+            buttons.extend(filter(None, (el.text, el.value, el.aria_label)))
+    return {
+        "text": state.page_text or "",
+        "fields": [],
+        "headings": [str(heading.get("text", "")) for heading in state.headings],
+        "buttons": buttons,
+        "password": any(el.type == "password" and not el.frame for el in state.elements),
+        "truncated": bool(state.text_truncated),
+    }
 
 
 def _text_in_state(text: str, state: PageState) -> bool:
