@@ -91,7 +91,7 @@ claude mcp add argus -- argus-mcp
 </details>
 
 <details>
-<summary><b>Screen mode (macOS): test native apps, not just the web</b></summary>
+<summary><b>Screen mode (macOS, experimental): test native apps, not just the web</b></summary>
 
 ```bash
 pip install 'argus-testing[mac]'
@@ -203,7 +203,7 @@ synthetic sample does not establish general superiority.
 
 The no-model [response encoding benchmark](evaluation.md#response-overhead)
 compares identical synthetic evidence. Delta mode reduces aggregate result JSON
-by 48.25% versus compact mode across those 24 responses, reproduced with 0.12.2.
+by 48.25% versus compact mode across those 24 responses, reproduced with 0.12.3.
 This measures bytes, **not agent token usage or testing quality**.
 
 <details>
@@ -293,7 +293,9 @@ Earlier profile names still start the server: `agent` and `core` load the `web` 
 | `record_bug` · `record_observation` · `end_session` | Use the shared evidence, reporting, and teardown tools in screen mode. |
 | `screen_click_at` · `screen_hover_at` · `screen_drag` · `screen_keys` · `screen_type_at` | Only in `full`: absolute screen coordinates and multi-key sequences when a native app exposes no useful AX element. |
 
-**Safety:** per-call timeout, a 30-minute session cap, a `~/.argus/abort` panic file that halts every subsequent action, and an automatic before/after screenshot trail on every action.
+**Safety:** per-call timeout, a 30-minute session cap, a `~/.argus/abort` panic file that halts every subsequent action and blocks new screen sessions until the user removes it, input sent only while the bound app is frontmost, and a before/after screenshot trail on clicks and typing.
+
+**Experimental.** Screen mode controls the real desktop and is not covered by CI; its backend is tested with stand-ins plus a manual check against TextEdit. A call that times out reports the timeout while the underlying action may still complete, so do not retry a timed-out click or keystroke blindly. Use it on apps and data you can afford to disturb. No new screen capabilities are planned until it has real integration coverage.
 
 </details>
 

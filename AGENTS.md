@@ -98,7 +98,7 @@ result includes captured stages. See [the protocol](docs/agent-protocol.md).
 | `crawl_site()` | Page discovery: crawls internal links, auto-capturing only console/network events (tagged). Walk the surfaced pages and record_bug what you confirm. |
 | `end_session(coverage_updates=...)` | Optionally submit explicit final exercised/blocked goals with evidence, then close and export reports. The entire batch validates before shutdown; invalid updates keep the session open. |
 
-### Screen mode (macOS)
+### Screen mode (macOS, experimental)
 
 | Tool | Purpose |
 |------|---------|

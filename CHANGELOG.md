@@ -1,8 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.12.3 - 2026-11-10
 
-Fixes from a full audit of 0.12.2. Regenerate nothing; journals stay compatible.
+Fixes from a full audit of 0.12.2. Journals and exported tests stay compatible.
+Some checks that returned `FIXED` or `verified` on evidence that could not show
+the symptom now return inconclusive, and failed actions are reported as errors.
+Screen mode is experimental.
 
 - Check symptom text against the whole page instead of its first 5,000
   characters, so text further down is no longer reported as gone. Match targets
