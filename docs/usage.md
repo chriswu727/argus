@@ -40,7 +40,7 @@ which pins the published runtime and adds a `/argus-testing:test` skill. Run its
 one-time warm-up command first, then
 `/plugin install argus-testing --marketplace chriswu727/argus`. Use the plugin
 instead of, not alongside, the manual connection.
-Claude plugin 0.13.0 and Codex plugin 0.13.0 both run Argus 0.13.0.
+Claude plugin 0.13.1 and Codex plugin 0.13.1 both run Argus 0.13.1.
 
 </details>
 
