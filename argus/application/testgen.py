@@ -445,7 +445,9 @@ if __name__ == "__main__":
         {test_name}()
     except _ExportInconclusive as exc:
         print(exc, file=sys.stderr)
-        raise SystemExit(1) from None
+        # Same status argus-regression uses, so a gate can tell "could not
+        # decide" from "the symptom is present" (an uncaught failure, status 1).
+        raise SystemExit(3) from None
     print("PASS: the symptom is gone")
 """
 

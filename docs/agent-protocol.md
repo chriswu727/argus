@@ -258,8 +258,8 @@ supported language) replaced it, the load ended on another page, a frame could
 not be read or the text exceeded the inspection limit, or an absent target was
 read on a page whose network never settled. The file signals it with a final
 stderr line starting `ARGUS_INCONCLUSIVE`; under pytest the test fails, never
-passes or skips, and run as a script it exits with status 1, like any other
-failure. `errored` means it stopped before the check (a step failed or timed
+passes or skips, and run as a script it exits with status 3, the status
+`argus-regression` uses for inconclusive checks (a present symptom exits 1). `errored` means it stopped before the check (a step failed or timed
 out, a row target was missing or ambiguous, or the values were unusable).
 Tests exported by earlier versions keep their own rules, report these pages as
 `errored` (or, for a redirect, a non-English login form or text only in a shadow

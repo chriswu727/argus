@@ -130,7 +130,7 @@ async def test_inconclusive_check_fails_under_pytest_and_as_a_script(tmp_path, e
     script = subprocess.run(
         [sys.executable, str(path)], env=environment, capture_output=True, text=True, timeout=60
     )
-    assert script.returncode == 1
+    assert script.returncode == 3
     assert script.stderr.strip().splitlines()[-1].startswith("ARGUS_INCONCLUSIVE: http_error: ")
     assert "PASS" not in script.stdout
     under_pytest = subprocess.run(
