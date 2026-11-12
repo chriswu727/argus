@@ -4,6 +4,7 @@ import asyncio
 from typing import Optional
 
 from argus.application.context import current_runtime
+from argus.domain.contracts import ErrorCode, Rejection
 from argus.domain.models import (
     Screenshot,
 )
@@ -74,8 +75,12 @@ def _safety_or_error(s: Session) -> Optional[str]:
     from argus.screen import safety as screen_safety
 
     if s._safety is None:
-        return "Screen-mode session has no safety state — start_screen_session() first."
-    return screen_safety.precheck(s._safety)
+        return Rejection(
+            "Screen-mode session has no safety state — start_screen_session() first.",
+            ErrorCode.PERMISSION,
+        )
+    refused = screen_safety.precheck(s._safety)
+    return Rejection(refused, ErrorCode.PERMISSION) if refused else None
 
 
 async def _observe_screen(s: Session) -> str:
@@ -98,10 +103,11 @@ async def _observe_screen(s: Session) -> str:
             success=False,
             error="AX/observe timed out",
         )
-        return (
+        return Rejection(
             "screen_observe: AX query timed out. The target app may be "
             "unresponsive or AX-blind. Try `screen_observe()` again, or "
-            "switch target_app via start_screen_session()."
+            "switch target_app via start_screen_session().",
+            ErrorCode.TIMEOUT,
         )
     s._last_screen_elements = obs.elements
     if obs.screenshot_path:
@@ -139,7 +145,7 @@ async def screen_observe() -> str:
     """
     s = _require_session()
     if s.mode != "screen" or s.screen is None:
-        return (
+        return Rejection(
             "screen_observe: this session is in web mode "
             f"(mode={s.mode!r}). End this session and call "
             "start_screen_session() to switch."
@@ -165,7 +171,7 @@ def _resolve_screen_or_error(s, description: str, kind_filter=None, *, strict_ki
     # explicitly — this is the most common screen-mode failure mode
     # and the user shouldn't have to discover the workaround on their own.
     if not elements or len(elements) <= 1:
-        return None, (
+        return None, Rejection(
             "screen_click_what / screen_type_into can't help here — the "
             "target app exposes "
             f"{len(elements)} interactive AX element(s). It's effectively "
@@ -188,7 +194,7 @@ def _resolve_screen_or_error(s, description: str, kind_filter=None, *, strict_ki
     if result.reason == "unique" and result.found is not None:
         return result.found, None
     if result.reason == "no_match":
-        return None, (
+        return None, Rejection(
             f"No AX element matches {description!r}. Call screen_observe() "
             f"to see what's actually exposed; the AX tree changes when the "
             f"foreground app changes or new windows open. If this app "
@@ -203,7 +209,7 @@ def _resolve_screen_or_error(s, description: str, kind_filter=None, *, strict_ki
         "\nPick a more specific description (use the AX role, the "
         "containing window/section, or unique substring of the label)."
     )
-    return None, "\n".join(lines)
+    return None, Rejection("\n".join(lines))
 
 
 async def screen_click_what(description: str) -> str:
@@ -220,7 +226,7 @@ async def screen_click_what(description: str) -> str:
     """
     s = _require_session()
     if s.mode != "screen" or s.screen is None:
-        return (
+        return Rejection(
             "screen_click_what: this session is in web mode "
             "(use click_what for web). End and start a screen session first."
         )
@@ -254,7 +260,9 @@ async def screen_click_what(description: str) -> str:
             pre_screenshot=pre_path,
             error="click timed out",
         )
-        return f"screen_click_what({description!r}) — click timed out."
+        return Rejection(
+            f"screen_click_what({description!r}) — click timed out.", ErrorCode.TIMEOUT
+        )
 
     post_path = await _auto_screenshot(
         s,
@@ -272,10 +280,11 @@ async def screen_click_what(description: str) -> str:
         error=None if ok else method,
     )
     if not ok:
-        return (
+        return Rejection(
             f"screen_click_what({description!r}) — click failed via {method}.\n"
             f"The element may not implement the press action and cliclick "
-            f"isn't installed (brew install cliclick), or the element moved."
+            f"isn't installed (brew install cliclick), or the element moved.",
+            ErrorCode.BACKEND,
         )
     return (
         f'Clicked {el.role} "{label[:60]}" via {method}.\n'
@@ -294,7 +303,7 @@ async def screen_type_into(description: str, text: str) -> str:
     """
     s = _require_session()
     if s.mode != "screen" or s.screen is None:
-        return "screen_type_into: this session is in web mode (use type_into for web)."
+        return Rejection("screen_type_into: this session is in web mode (use type_into for web).")
     err = _safety_or_error(s)
     if err:
         return err
@@ -325,7 +334,9 @@ async def screen_type_into(description: str, text: str) -> str:
             pre_screenshot=pre_path,
             error="type timed out",
         )
-        return f"screen_type_into({description!r}) — typing timed out."
+        return Rejection(
+            f"screen_type_into({description!r}) — typing timed out.", ErrorCode.TIMEOUT
+        )
     post_path = await _auto_screenshot(s, "screen_type_post", f"post-type into {label[:30]}")
     screen_safety.record_action(
         s._safety,
@@ -338,9 +349,10 @@ async def screen_type_into(description: str, text: str) -> str:
         error=None if ok else method,
     )
     if not ok:
-        return (
+        return Rejection(
             f"screen_type_into({description!r}) — typing failed via {method}.\n"
-            f"The element may be read-only, or cliclick isn't installed."
+            f"The element may be read-only, or cliclick isn't installed.",
+            ErrorCode.BACKEND,
         )
     return f'Typed into "{label[:60]}" via {method}.'
 
@@ -354,7 +366,7 @@ async def screen_press_key(key: str) -> str:
     """
     s = _require_session()
     if s.mode != "screen" or s.screen is None:
-        return "screen_press_key: this session is in web mode."
+        return Rejection("screen_press_key: this session is in web mode.")
     err = _safety_or_error(s)
     if err:
         return err
@@ -373,7 +385,7 @@ async def screen_press_key(key: str) -> str:
             success=False,
             error="key press timed out",
         )
-        return f"screen_press_key({key!r}) timed out."
+        return Rejection(f"screen_press_key({key!r}) timed out.", ErrorCode.TIMEOUT)
     screen_safety.record_action(
         s._safety,
         "screen_press_key",
@@ -383,7 +395,7 @@ async def screen_press_key(key: str) -> str:
         error=None if ok else method,
     )
     if not ok:
-        return f"screen_press_key({key!r}) failed: {method}"
+        return Rejection(f"screen_press_key({key!r}) failed: {method}", ErrorCode.BACKEND)
     return f"Pressed {key} via {method}."
 
 
@@ -414,7 +426,7 @@ async def screen_click_at(
     """
     s = _require_session()
     if s.mode != "screen" or s.screen is None:
-        return "screen_click_at: this session is in web mode."
+        return Rejection("screen_click_at: this session is in web mode.")
     err = _safety_or_error(s)
     if err:
         return err
@@ -440,7 +452,7 @@ async def screen_click_at(
             pre_screenshot=pre_path,
             error="click timed out",
         )
-        return f"screen_click_at({target}) timed out."
+        return Rejection(f"screen_click_at({target}) timed out.", ErrorCode.TIMEOUT)
     post_path = await _auto_screenshot(s, "screen_click_at_post", f"post-click {target}")
     screen_safety.record_action(
         s._safety,
@@ -453,7 +465,7 @@ async def screen_click_at(
         error=None if ok else method,
     )
     if not ok:
-        return f"screen_click_at({target}) failed: {method}"
+        return Rejection(f"screen_click_at({target}) failed: {method}", ErrorCode.BACKEND)
     return (
         f"Clicked at ({x},{y}) via {method}.\n"
         f"  pre:  {pre_path}\n  post: {post_path}\n"
@@ -467,7 +479,7 @@ async def screen_hover_at(x: int, y: int) -> str:
     screenshots to see the hover effect)."""
     s = _require_session()
     if s.mode != "screen" or s.screen is None:
-        return "screen_hover_at: this session is in web mode."
+        return Rejection("screen_hover_at: this session is in web mode.")
     err = _safety_or_error(s)
     if err:
         return err
@@ -479,7 +491,7 @@ async def screen_hover_at(x: int, y: int) -> str:
             lambda: s.screen.hover_at(x, y),
         )
     except asyncio.TimeoutError:
-        return "screen_hover_at timed out."
+        return Rejection("screen_hover_at timed out.", ErrorCode.TIMEOUT)
     screen_safety.record_action(
         s._safety,
         "screen_hover_at",
@@ -489,7 +501,7 @@ async def screen_hover_at(x: int, y: int) -> str:
         error=None if ok else method,
     )
     if not ok:
-        return f"screen_hover_at failed: {method}"
+        return Rejection(f"screen_hover_at failed: {method}", ErrorCode.BACKEND)
     return f"Cursor at ({x},{y}) via {method}."
 
 
@@ -509,7 +521,7 @@ async def screen_drag(
     """
     s = _require_session()
     if s.mode != "screen" or s.screen is None:
-        return "screen_drag: this session is in web mode."
+        return Rejection("screen_drag: this session is in web mode.")
     err = _safety_or_error(s)
     if err:
         return err
@@ -526,7 +538,7 @@ async def screen_drag(
             timeout_s=max(5.0, duration_ms / 1000 + 5.0),
         )
     except asyncio.TimeoutError:
-        return f"screen_drag({target}) timed out."
+        return Rejection(f"screen_drag({target}) timed out.", ErrorCode.TIMEOUT)
     post_path = await _auto_screenshot(s, "screen_drag_post", f"post-drag {target}")
     screen_safety.record_action(
         s._safety,
@@ -539,7 +551,7 @@ async def screen_drag(
         error=None if ok else method,
     )
     if not ok:
-        return f"screen_drag failed: {method}"
+        return Rejection(f"screen_drag failed: {method}", ErrorCode.BACKEND)
     return f"Dragged {target} via {method}.\n  pre:  {pre_path}\n  post: {post_path}"
 
 
@@ -553,12 +565,12 @@ async def screen_keys(keys: list) -> str:
     """
     s = _require_session()
     if s.mode != "screen" or s.screen is None:
-        return "screen_keys: this session is in web mode."
+        return Rejection("screen_keys: this session is in web mode.")
     err = _safety_or_error(s)
     if err:
         return err
     if not isinstance(keys, list) or not keys:
-        return "screen_keys: pass a non-empty list of cliclick key names."
+        return Rejection("screen_keys: pass a non-empty list of cliclick key names.")
 
     from argus.screen import safety as screen_safety
 
@@ -569,7 +581,7 @@ async def screen_keys(keys: list) -> str:
             timeout_s=max(5.0, 0.3 * len(keys) + 3.0),
         )
     except asyncio.TimeoutError:
-        return "screen_keys timed out."
+        return Rejection("screen_keys timed out.", ErrorCode.TIMEOUT)
     screen_safety.record_action(
         s._safety,
         "screen_keys",
@@ -579,7 +591,7 @@ async def screen_keys(keys: list) -> str:
         error=None if ok else method,
     )
     if not ok:
-        return f"screen_keys failed: {method}"
+        return Rejection(f"screen_keys failed: {method}", ErrorCode.BACKEND)
     return f"Pressed {keys} via {method}."
 
 
@@ -589,7 +601,7 @@ async def screen_type_at(x: int, y: int, text: str) -> str:
     is unavailable)."""
     s = _require_session()
     if s.mode != "screen" or s.screen is None:
-        return "screen_type_at: this session is in web mode."
+        return Rejection("screen_type_at: this session is in web mode.")
     err = _safety_or_error(s)
     if err:
         return err
@@ -603,7 +615,7 @@ async def screen_type_at(x: int, y: int, text: str) -> str:
             timeout_s=max(10.0, 0.05 * len(text) + 5.0),
         )
     except asyncio.TimeoutError:
-        return "screen_type_at timed out."
+        return Rejection("screen_type_at timed out.", ErrorCode.TIMEOUT)
     post_path = await _auto_screenshot(s, "screen_type_at_post", f"post-type at ({x},{y})")
     screen_safety.record_action(
         s._safety,
@@ -616,7 +628,7 @@ async def screen_type_at(x: int, y: int, text: str) -> str:
         error=None if ok else method,
     )
     if not ok:
-        return f"screen_type_at failed: {method}"
+        return Rejection(f"screen_type_at failed: {method}", ErrorCode.BACKEND)
     return f"Typed {len(text)} chars at ({x},{y}) via {method}.\n  pre: {pre_path}\n  post: {post_path}"
 
 
@@ -647,7 +659,7 @@ async def screen_wait_for_stable(
     """
     s = _require_session()
     if s.mode != "screen" or s.screen is None:
-        return "screen_wait_for_stable: this session is in web mode."
+        return Rejection("screen_wait_for_stable: this session is in web mode.")
     err = _safety_or_error(s)
     if err:
         return err
@@ -685,7 +697,7 @@ async def screen_wait_for_stable(
             success=False,
             error="outer asyncio timeout fired",
         )
-        return "screen_wait_for_stable hit the outer safety timeout."
+        return Rejection("screen_wait_for_stable hit the outer safety timeout.", ErrorCode.TIMEOUT)
 
     screen_safety.record_action(
         s._safety,
@@ -714,16 +726,17 @@ async def screen_wait_for_stable(
             f"  final: {final_path}"
         )
     if reason == "timeout":
-        return (
+        return Rejection(
             f"screen_wait_for_stable: timed out after {timeout_s}s, "
             f"page still moving (last diff {stats.get('last_diff_pct', '?')}%, "
             f"stable streak {stats.get('stable_for_ms', 0)}ms / "
             f"required {stable_window_ms}ms).\n"
             f"  final: {final_path}\n"
             f"  Either bump timeout_s, lower stable_window_ms, or accept that "
-            f"this surface is intentionally animated."
+            f"this surface is intentionally animated.",
+            ErrorCode.TIMEOUT,
         )
-    return f"screen_wait_for_stable: {reason}.\n  final: {final_path}"
+    return Rejection(f"screen_wait_for_stable: {reason}.\n  final: {final_path}", ErrorCode.BACKEND)
 
 
 def _app_control_refusal() -> Optional[str]:
@@ -768,26 +781,32 @@ async def screen_launch(target: str, wait_s: float = 8.0) -> str:
     survived.
     """
     if not target:
-        return "screen_launch: target is required (app name / bundle id / path)."
+        return Rejection("screen_launch: target is required (app name / bundle id / path).")
     try:
         from argus.screen.permissions import gate_screen_mode
     except ImportError as exc:
-        return f"screen_launch: screen-mode deps missing — pip install argus-testing[mac]. ({exc})"
+        return Rejection(
+            f"screen_launch: screen-mode deps missing — pip install argus-testing[mac]. ({exc})",
+            ErrorCode.BACKEND,
+        )
     missing = gate_screen_mode()
     if missing:
         names = ", ".join(c.name for c in missing)
-        return f"screen_launch: missing macOS grants: {names}. Run argus-mcp --doctor."
+        return Rejection(
+            f"screen_launch: missing macOS grants: {names}. Run argus-mcp --doctor.",
+            ErrorCode.PERMISSION,
+        )
     refused = _app_control_refusal()
     if refused:
-        return f"screen_launch: {refused}"
+        return Rejection(f"screen_launch: {refused}", ErrorCode.PERMISSION)
 
     try:
         backend = _adhoc_screen_backend()
         ok, method, pid = backend.launch(target, wait_s=min(max(wait_s, 0.0), 30.0))
     except Exception as exc:
-        return f"screen_launch failed: {exc}"
+        return Rejection(f"screen_launch failed: {exc}", ErrorCode.BACKEND)
     if not ok:
-        return f"screen_launch({target!r}): {method}"
+        return Rejection(f"screen_launch({target!r}): {method}", ErrorCode.BACKEND)
 
     # If a screen session is currently bound to the same app and we just
     # re-launched it, the old AX refs are stale — force the session to
@@ -806,15 +825,15 @@ async def screen_quit(target: str, force: bool = False, wait_s: float = 8.0) -> 
     the app is hung or you're explicitly testing crash recovery.
     """
     if not target:
-        return "screen_quit: target is required."
+        return Rejection("screen_quit: target is required.")
     refused = _app_control_refusal()
     if refused:
-        return f"screen_quit: {refused}"
+        return Rejection(f"screen_quit: {refused}", ErrorCode.PERMISSION)
     try:
         backend = _adhoc_screen_backend()
         ok, method = backend.quit(target, force=force, wait_s=min(max(wait_s, 0.0), 30.0))
     except Exception as exc:
-        return f"screen_quit failed: {exc}"
+        return Rejection(f"screen_quit failed: {exc}", ErrorCode.BACKEND)
 
     # If the current session was bound to the app we just killed, the
     # bound state is no longer valid — the agent should call
@@ -830,7 +849,7 @@ async def screen_quit(target: str, force: bool = False, wait_s: float = 8.0) -> 
         s.screen.invalidate_target()
 
     if not ok:
-        return f"screen_quit({target!r}): {method}"
+        return Rejection(f"screen_quit({target!r}): {method}", ErrorCode.BACKEND)
     return f"Quit {target!r} via {method}."
 
 
@@ -840,12 +859,12 @@ async def screen_is_running(target: str) -> str:
     screen_quit, or to verify a relaunch actually replaced the old
     process."""
     if not target:
-        return "screen_is_running: target is required."
+        return Rejection("screen_is_running: target is required.")
     try:
         backend = _adhoc_screen_backend()
         running, pid = backend.is_running(target)
     except Exception as exc:
-        return f"screen_is_running failed: {exc}"
+        return Rejection(f"screen_is_running failed: {exc}", ErrorCode.BACKEND)
     if running:
         return f"{target!r} is running (pid {pid})."
     return f"{target!r} is not running."
@@ -874,21 +893,22 @@ async def screen_screenshot_region(
     """
     s = _require_session()
     if s.mode != "screen" or s.screen is None:
-        return "screen_screenshot_region: this session is in web mode."
+        return Rejection("screen_screenshot_region: this session is in web mode.")
     err = _safety_or_error(s)
     if err:
         return err
     if width <= 0 or height <= 0:
-        return f"screen_screenshot_region: invalid dimensions {width}x{height}."
+        return Rejection(f"screen_screenshot_region: invalid dimensions {width}x{height}.")
 
     s.steps.append(f"screen_screenshot_region({x},{y},{width}x{height})")
     out_dir = str(_screenshot_dir(s))
     path = s.screen.capture_region(x, y, width, height, screenshot_dir=out_dir)
     if path is None:
-        return (
+        return Rejection(
             f"screen_screenshot_region: capture failed. "
             f"Check that ({x},{y}) + {width}x{height} stays inside the screen "
-            f"({s.screen.app_pid and 'screen size from start_screen_session output'})."
+            f"({s.screen.app_pid and 'screen size from start_screen_session output'}).",
+            ErrorCode.BACKEND,
         )
     s._screenshot_counter += 1
     s.screenshots.append(
@@ -911,7 +931,7 @@ async def screen_session_status() -> str:
     """
     s = _require_session()
     if s.mode != "screen" or s.screen is None:
-        return "screen_session_status: this session is in web mode."
+        return Rejection("screen_session_status: this session is in web mode.")
 
     import time as _time
 
@@ -919,7 +939,10 @@ async def screen_session_status() -> str:
 
     state = s._safety
     if state is None:
-        return "screen_session_status: no safety state — bug in session bootstrap."
+        return Rejection(
+            "screen_session_status: no safety state — bug in session bootstrap.",
+            ErrorCode.BACKEND,
+        )
 
     elapsed = int(_time.time() - state.started_at)
     remaining = int(screen_safety.session_remaining_seconds(state))

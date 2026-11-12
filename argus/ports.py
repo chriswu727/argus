@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Protocol
 
-from argus.domain.models import PageState
+from argus.domain.models import InteractiveElement, PageState
 
 
 class LifecyclePort(Protocol):
@@ -17,6 +17,7 @@ class ObservationPort(Protocol):
     @property
     def has_page(self) -> bool: ...
     async def get_state(self) -> PageState: ...
+    async def get_elements(self) -> list[InteractiveElement]: ...
 
 
 class VerificationPort(ObservationPort, Protocol):

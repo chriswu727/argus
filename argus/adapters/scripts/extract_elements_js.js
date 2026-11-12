@@ -111,7 +111,9 @@
             // SELECTED option's visible text in value below. Result:
             // labelled -> `select "Sort" = "Name Z-A"`, unlabelled -> the
             // selection is the label: `select "Name (A to Z)"`.
-            text: (el.tagName === 'SELECT') ? null
+            // A <textarea>'s textContent is its initial content, not a label;
+            // the content is reported (or hidden) as its value.
+            text: (el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') ? null
                   : ((el.textContent || '').trim().slice(0, 100) || null),
             // aria-placeholder / data-placeholder cover contenteditable rich-text
             // editors (Quill, ProseMirror, Draft) whose empty-state hint isn't a
@@ -165,7 +167,9 @@
                 if (t !== 'input' && t !== 'select' && t !== 'textarea') return null;
                 var pick = function(n){ var s = n && n.textContent ? n.textContent.trim() : ''; return s ? s.slice(0,100) : null; };
                 if (el.id) { try { var lf = doc.querySelector('label[for="' + (window.CSS && CSS.escape ? CSS.escape(el.id) : el.id) + '"]'); if (pick(lf)) return pick(lf); } catch (e) {} }
-                var w = el.closest('label'); if (pick(w)) return pick(w);
+                var w = el.closest('label');
+                if (w && t === 'textarea') { var wt = (w.textContent || '').replace(el.textContent || '', '').trim(); if (wt) return wt.slice(0, 100); }
+                else if (pick(w)) return pick(w);
                 var lb = el.getAttribute('aria-labelledby'); if (lb) { var t2 = doc.getElementById(lb); if (pick(t2)) return pick(t2); }
                 var p = el.previousElementSibling;
                 while (p) { if (p.tagName === 'LABEL' && pick(p)) return pick(p); if (p.tagName === 'INPUT' || p.tagName === 'SELECT' || p.tagName === 'TEXTAREA') break; p = p.previousElementSibling; }
