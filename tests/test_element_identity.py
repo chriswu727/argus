@@ -31,6 +31,13 @@ PAGES = {
     + "<ul><li>Buy milk <button onclick=\"log('DELETE')\">Delete</button></li></ul>"
     + "<form onsubmit=\"log('NEWS '+this.email.value);return false\"><input name='email' aria-label='Newsletter email'><button name='action'>Subscribe</button></form>"
     + "<form onsubmit=\"log('ACCOUNT '+this.email.value);return false\"><input name='email' aria-label='Account email'><button name='action'>Save account</button></form>",
+    "/glued": LOG
+    + "<ul>"
+    + "".join(
+        f"<li><span>{name}</span><button onclick=\"log('{name}')\">Delete</button></li>"
+        for name in ("Buy groceries", "Pay rent")
+    )
+    + "</ul><p>Total<b>2</b> ta<i>sk</i>s</p>",
     "/moving": LOG
     + "<ul id='list'>"
     + "".join(
@@ -131,5 +138,17 @@ async def test_reference_follows_its_node_and_fails_once_the_node_is_gone(isolat
         gone = next(i for i, el in enumerate(stale.elements) if el.text == "Delete")
         await browser._page.click("text=Clear")
         assert not await browser.click(gone, stale.elements)
+    finally:
+        await isolated_runtime.shutdown()
+
+
+async def test_row_text_separates_elements_written_without_whitespace(isolated_runtime, base):
+    try:
+        await start_session(base + "/glued")
+        state = await isolated_runtime.session.browser.get_state()
+        rows = {" ".join(el.parent_context.split()) for el in state.elements if el.text == "Delete"}
+        assert rows == {"Buy groceries Delete", "Pay rent Delete"}
+        await click_what("Delete near Pay rent")
+        assert await _log(isolated_runtime) == "Pay rent;"
     finally:
         await isolated_runtime.shutdown()

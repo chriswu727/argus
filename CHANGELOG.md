@@ -29,6 +29,9 @@ unselected `<option>` text and closed `<details>` content no longer count.
 - A `<textarea>` is named by its aria-label, `<label>`, placeholder or name, and
   its initial content is reported only as its value, so a secret-named field's
   content is hidden as `(value hidden)` instead of shown as its label.
+- Row text separates adjacent elements that the markup writes without
+  whitespace, as frameworks usually do. `<span>Buy groceries</span><button>Delete</button>`
+  read as "Buy groceriesDelete", so "Delete near Buy groceries" matched nothing.
 - A row's text (the `near:` context, repeating item lists and exported tests'
   row matching) leaves out `<textarea>` content, so a secret in a textarea no
   longer shows through the row of every control beside it. Dialog previews,
