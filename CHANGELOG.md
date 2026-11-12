@@ -5,7 +5,17 @@
 - Claude plugin 0.12.4 and Codex plugin 0.12.3 pin the published Argus 0.12.3
   runtime and refresh their dependency locks and setup commands.
 
-## Unreleased
+## 0.13.0 - 2026-11-12
+
+One set of verdict rules. Live verification, `verify_persistence` and exported
+tests decided "is the symptom present?" with three separate implementations
+that had drifted apart; they now run the same code. No new tools.
+
+Upgrading: regenerate exported tests to get the shared rules (earlier files
+keep working with their old rules). "Present" now means text a user can see or
+the value of a visible field, so text reachable only through `aria-label`,
+unselected `<option>` text and closed `<details>` content no longer count.
+
 
 - Description-driven web tools (`click_what`, `type_into`, `test_action`,
   `inspect_element` and the rest) resolve the description against the page as
@@ -39,8 +49,8 @@
 - `export_test(run=True)` reports a new outcome, `inconclusive`, with a reason
   code, for an error page, login wall, redirect, unsettled or unreadable page;
   these were `errored` before. The file's last stderr line starts with
-  `ARGUS_INCONCLUSIVE`, and the test fails under pytest. Earlier exports keep
-  their old rules until regenerated.
+  `ARGUS_INCONCLUSIVE`; the test fails under pytest and the file exits 3 when
+  run as a script. Earlier exports keep their old rules until regenerated.
 - A child frame that cannot be read now gives its own inconclusive reason
   instead of claiming the page text exceeded the inspection limit.
 - Capsule liveness markers, `test_action`'s `text_present`/`text_absent` and the
