@@ -85,13 +85,14 @@ replaying a journey can repeat its writes.
 [Cursor, other MCP clients and troubleshooting](docs/usage.md#quick-start) ·
 [Claude plugin](plugins/claude) · [Codex plugin](plugins/codex)
 
-**0.12.3**: verification reads the whole page and loads a new document for
-hash routes, and no longer reports a symptom as gone behind a login page, a
-redirect or an unrelated error. Actions land on the exact element that was
-listed. Tests exported by 0.12.1 or earlier should still be regenerated; see the
+**0.13.0**: live verification, `verify_persistence` and exported tests now
+decide with the same rules, checked against each other on every change. They
+read what a user can see, in every frame and open shadow root, and an exported
+test reports an inconclusive check instead of a false failure. Regenerate
+exported tests to get the shared rules; see the
 [journal migration steps](docs/usage.md#regression-gates-in-ci), the
 [releases](https://github.com/chriswu727/argus/releases) and the
-[changelog](CHANGELOG.md#0123---2026-11-10).
+[changelog](CHANGELOG.md#0130---2026-11-12).
 
 ## Engineering
 

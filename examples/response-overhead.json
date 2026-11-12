@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "argus_version": "0.12.3",
+  "argus_version": "0.13.0",
   "mcp_sdk_version": "1.30.0",
   "python_version": "3.12.13",
   "method": "synthetic-identical-input-encoding-v1",
@@ -38,9 +38,9 @@
     },
     "full": {
       "tools": 78,
-      "tools_json_bytes": 118251,
+      "tools_json_bytes": 118417,
       "instructions_utf8_bytes": 223,
-      "description_utf8_bytes": 37768,
+      "description_utf8_bytes": 37931,
       "input_schema_json_bytes": 11044,
       "output_schema_json_bytes": 52026
     }
