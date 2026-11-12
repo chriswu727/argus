@@ -10,7 +10,8 @@ status codes, URLs and flags.
 A frame's facts are a dict with the collector's keys: "text" (visible text,
 open shadow roots included), "fields" (values of visible form fields),
 "headings", "buttons" (labels of visible button controls), "password"
-(a visible password field exists) and "truncated". The main frame comes first.
+(a visible password field exists) and "truncated". A frame Playwright could
+not read carries "unread": true instead. The main frame comes first.
 """
 
 import re
@@ -71,7 +72,15 @@ LOGIN_WORDS = (
 MAX_SCROLLS = 20
 SCROLL_STEP = 1000
 
-REASON_CODES = ("http_error", "login_wall", "login_form", "moved", "truncated", "unsettled")
+REASON_CODES = (
+    "http_error",
+    "login_wall",
+    "login_form",
+    "moved",
+    "unread",
+    "truncated",
+    "unsettled",
+)
 
 
 def token_present(needle: str, haystack: str) -> bool:
@@ -244,6 +253,8 @@ def text_observation(
         return None, "login_form"
     if moved_from(load.get("requested") or "", load.get("landed") or ""):
         return None, "moved"
+    if any(frame.get("unread") for frame in frames):
+        return None, "unread"
     if any(frame.get("truncated") for frame in frames):
         return None, "truncated"
     if not load.get("settled", True):
@@ -265,6 +276,8 @@ def reason_text(code: str, status: int | None = None, landed: str = "") -> str:
             "cannot confirm an application symptom; verify at the page that actually shows "
             "the content"
         )
+    if code == "unread":
+        return "a frame's text could not be read — absence is not reliable evidence"
     if code == "truncated":
         return "page text exceeds the inspection limit — absence is not reliable evidence"
     if code == "unsettled":

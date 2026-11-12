@@ -18,6 +18,21 @@
   and restores them afterwards, so it can no longer confirm a response the agent
   injected, and reports an absent target on a page whose network never settles
   as inconclusive.
+- Exported regression tests embed Argus's verdict rules and visible-text
+  collector verbatim (the docstring names the rules version), so they decide a
+  symptom exactly as fresh-load verification and `verify_persistence` do:
+  unspaced scripts such as CJK match, hidden field values do not count, open
+  shadow roots are read, and a redirect elsewhere or a non-English login form
+  makes an absent symptom inconclusive.
+- `export_test(run=True)` reports a new outcome, `inconclusive`, with a reason
+  code, for an error page, login wall, redirect, unsettled or unreadable page;
+  these were `errored` before. The file's last stderr line starts with
+  `ARGUS_INCONCLUSIVE`, and the test fails under pytest. Earlier exports keep
+  their old rules until regenerated.
+- A child frame that cannot be read now gives its own inconclusive reason
+  instead of claiming the page text exceeded the inspection limit.
+- Capsule liveness markers, `test_action`'s `text_present`/`text_absent` and the
+  action diff read the same visible frame text.
 
 ## 0.12.3 - 2026-11-10
 

@@ -5,8 +5,7 @@ inconclusive. For both claims (expect=present, expect=absent) every checker
 must reach the same three-way verdict: reproduced, not_reproduced or
 inconclusive. verify_persistence keeps two documented policies; a row that
 relies on one names it in `b_policy`, which changes B's expected verdict
-explicitly instead of skipping B. Known disagreements are strict xfails
-carrying the disagreement number they belong to.
+explicitly instead of skipping B.
 """
 
 from __future__ import annotations
@@ -218,30 +217,6 @@ CASES = {
     ),
 }
 
-_D1 = "disagreement 1: \\w boundaries never match inside unspaced scripts"
-_D4 = "disagreement 4: hidden input values count as present"
-_D5 = "disagreement 5: open shadow roots are not read"
-_D6 = "disagreement 6: a load that ends on another page still decides the symptom"
-_D7 = "disagreement 7: only English login headings are recognised"
-_D10 = "disagreement 10: login phrases are scanned in the full text"
-_D11 = "disagreement 11: no distinct inconclusive outcome"
-
-# (case, checker) -> reason, for both claims unless the key also names a claim.
-KNOWN = {
-    ("cjk_target", "C"): _D1,
-    ("hidden_input_value", "C"): _D4,
-    ("shadow_root_button", "C"): _D5,
-    ("redirect_elsewhere", "C"): _D6,
-    ("login_wall_german", "C"): _D7,
-    ("login_wall_in_shadow_root", "C"): _D5,
-    ("login_phrase_beyond_5000_chars", "C"): _D10,
-    ("login_wall_english", "C"): _D11,
-    ("http_500", "C"): _D11,
-    ("http_500_showing_target", "C"): _D11,
-    ("login_wall_unexpected_status", "C"): _D11,
-    ("never_settles", "C"): _D11,
-}
-
 
 def _fn(name):
     tool = getattr(m, name)
@@ -354,15 +329,10 @@ def _params():
     for name in CASES:
         for expect in ("present", "absent"):
             for checker in ("A", "B", "C"):
-                reason = KNOWN.get((name, checker)) or KNOWN.get((name, checker, expect))
-                marks = [pytest.mark.xfail(strict=True, reason=reason)] if reason else []
-                yield pytest.param(
-                    name, expect, checker, marks=marks, id=f"{name}-{expect}-{checker}"
-                )
+                yield pytest.param(name, expect, checker, id=f"{name}-{expect}-{checker}")
 
 
-def test_known_disagreements_name_real_cases():
-    assert {key[0] for key in KNOWN} <= set(CASES)
+def test_cases_name_real_policies():
     assert all(not case.b_policy or case.b_policy in B_POLICIES for case in CASES.values())
 
 
@@ -380,11 +350,6 @@ LATER = {
     "redirect_later": REDIRECT,
     "english_login_wall_later": {"/t": (200, ENGLISH_LOGIN, None)},
     "german_login_wall_later": {"/t": (200, GERMAN_LOGIN, None)},
-}
-KNOWN_LATER = {
-    "redirect_later": _D6,
-    "english_login_wall_later": _D11,
-    "german_login_wall_later": _D7,
 }
 _LATER_VERDICTS: dict = {}
 
@@ -430,9 +395,7 @@ async def _later_verdicts(change, sites, tmp_path):
 def _later_params():
     for change in LATER:
         for checker in ("regression", "exported"):
-            reason = KNOWN_LATER[change] if checker == "exported" else None
-            marks = [pytest.mark.xfail(strict=True, reason=reason)] if reason else []
-            yield pytest.param(change, checker, marks=marks, id=f"{change}-{checker}")
+            yield pytest.param(change, checker, id=f"{change}-{checker}")
 
 
 @pytest.mark.parametrize("change,checker", list(_later_params()))

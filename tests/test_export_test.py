@@ -102,7 +102,7 @@ async def test_exported_test_fails_while_the_bug_exists_and_passes_once_fixed(
         source = open(exported.data["path"]).read()
         assert "_in_row(page, values[" in source
         assert task not in source
-        assert "_present(values[" in source
+        assert "_check(page, response, check_url, values[" in source
 
         _TasksHandler.fixed = True
         _TasksHandler.tasks = ["Buy groceries", "Walk dog"]
@@ -1003,3 +1003,47 @@ async def test_a_network_mock_makes_an_export_incomplete_without_leaking_its_bod
     finally:
         await _fn("end_session")()
         server.shutdown()
+
+
+def test_exported_file_embeds_the_package_verdict_rules_and_collector_verbatim():
+    import ast
+    from importlib.resources import files
+
+    from argus.domain.verdict import VERDICT_VERSION
+
+    source, _ = generate_test(
+        finding_id="run:1",
+        title="t",
+        expected="",
+        receipt={"expect": "absent", "target_text": "x", "at_url": "http://h/t"},
+        journey=[],
+        start_url="http://h/",
+        resolve_input=lambda action: None,
+        filename="t.py",
+    )
+    rules = files("argus.domain").joinpath("verdict.py").read_bytes()
+    collector = files("argus.adapters.scripts").joinpath("collect_text_js.js").read_bytes()
+    encoded = source.encode("utf-8")
+    assert encoded.count(rules) == 1
+    assert encoded.count(b"COLLECT_TEXT_JS = r'''" + collector + b"'''") == 1
+    namespace = {"__name__": "generated"}
+    exec(compile(source, "t.py", "exec"), namespace)
+    assert namespace["COLLECT_TEXT_JS"].encode("utf-8") == collector
+    assert namespace["VERDICT_VERSION"] == VERDICT_VERSION
+    docstring = ast.get_docstring(ast.parse(source)) or ""
+    assert f"Argus verdict rules version {VERDICT_VERSION}" in docstring
+    tree = ast.parse(source)
+    imported = {
+        alias.name.split(".")[0]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    } | {
+        (node.module or "").split(".")[0]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+    }
+    assert imported == {"json", "os", "re", "sys", "urllib", "playwright"}
+    for retired in ("def _matches", "def _check_page", "def _login_form"):
+        assert retired not in source
+    assert source.count("LOGIN_WALL_PHRASES = ") == 1

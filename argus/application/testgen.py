@@ -17,11 +17,12 @@ import re
 import signal
 import sys
 import uuid
+from importlib.resources import files
 from pathlib import Path
 from typing import List, Optional
 
 from argus.domain.models import InteractiveElement
-from argus.domain.verification import LOGIN_WALL_PHRASES
+from argus.domain.verdict import REASON_CODES, VERDICT_VERSION, reason_text
 from argus.resolver import kind_of
 from argus.security import is_secret_key
 
@@ -181,6 +182,18 @@ def is_sensitive(el: InteractiveElement, description: str) -> bool:
     return is_secret_key(faces)
 
 
+def verdict_source() -> str:
+    """The installed argus/domain/verdict.py, embedded verbatim in every export."""
+    return files("argus.domain").joinpath("verdict.py").read_text(encoding="utf-8")
+
+
+def collector_source() -> str:
+    """The installed in-page text collector, embedded verbatim in every export."""
+    return (
+        files("argus.adapters.scripts").joinpath("collect_text_js.js").read_text(encoding="utf-8")
+    )
+
+
 def _doc(text: str) -> str:
     """Text safe inside the generated module's triple-quoted docstring."""
     return text.replace("\\", "\\\\").replace('"""', "'''")
@@ -194,7 +207,13 @@ Argus verified this symptom on a fresh load ({runs}): {symptom}.
 Expected behavior: {expected}
 
 The test replays the recorded journey and asserts the opposite of the symptom,
-so it fails while the bug is present and passes once the bug is fixed.
+so it fails while the bug is present and passes once the bug is fixed. When the
+fresh load cannot show the symptom either way (an HTTP error, a login wall, a
+redirect to another page, a page that never settles or cannot be fully read),
+it fails with ARGUS_INCONCLUSIVE instead: neither a pass nor a reproduction.
+It decides with Argus verdict rules version {verdict_version}, copied below from
+argus/domain/verdict.py together with Argus's page-text collector; export the
+test again to pick up newer rules.
 Run this file with Python or pytest, with Playwright and Chromium installed
 (the interpreter that runs Argus has both). Set ARGUS_BASE_URL to
 test another origin. Supply values through environment variables or a private
@@ -205,14 +224,20 @@ Never commit or publish the values file.{notes}
 import json
 import os
 import re
+import sys
 from urllib.parse import urljoin, urlparse
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, sync_playwright
 
-LOGIN_WALL_PHRASES = {login_wall_phrases}
 REQUIRED_ENV = {required_env}
 EXPORT_ID = {export_id}
 
+'''
+
+_VERDICT_BEGIN = "# Argus verdict rules (argus/domain/verdict.py), copied verbatim.\n"
+_VERDICT_END = "# End of argus/domain/verdict.py.\n"
+
+_BODY = '''
 
 def _values():
     values = {{}}
@@ -256,16 +281,7 @@ def _url(path, values):
     return urljoin(os.environ.get("ARGUS_BASE_URL", _origin(values)), path)
 
 
-{row_helper}def _matches(text, haystack):
-    """Argus's word-boundary rule on whitespace-normalised text."""
-    haystack = " ".join(haystack.lower().split())
-    needle = " ".join(text.lower().split())
-    before = r"(?<!\\w)" if re.match(r"\\w", needle) else ""
-    after = r"(?!\\w)" if re.search(r"\\w$", needle) else ""
-    return re.search(before + re.escape(needle) + after, haystack) is not None
-
-
-def _settle(page):
+{row_helper}def _settle(page):
     try:
         page.wait_for_load_state("networkidle", timeout=6000)
         return True
@@ -273,56 +289,87 @@ def _settle(page):
         return False
 
 
-def _check_page(page, response, allow_login=False, expected_url=None):
-    if response is not None and response.status >= 400:
-        raise _ExportFailure("fresh-load check returned an HTTP error")
-    settled = _settle(page)
-    text = page.inner_text("body").lower()
-    login_heading = page.get_by_role(
-        "heading", name=re.compile(r"^(sign in|log in|login)$", re.IGNORECASE)
-    )
-    password_login = page.locator('input[type="password"]:visible').count() and login_heading.count()
-    parsed = urlparse(page.url)
-    actual_url = parsed._replace(path=parsed.path or "/").geturl()
-    parsed = urlparse(expected_url or page.url)
-    expected_url = parsed._replace(path=parsed.path or "/").geturl()
-    if (password_login and (not allow_login or actual_url != expected_url)) or any(
-        phrase in text for phrase in LOGIN_WALL_PHRASES
-    ):
-        raise _ExportFailure("fresh-load check hit a login wall")
-    return settled
+def _frames(page):
+    """Visible text facts of every rendered frame, main frame first, read with
+    Argus's collector; a hidden iframe is skipped with everything inside it."""
+    frames = []
 
-
-def _login_form(page):
-    return bool(page.locator('input[type="password"]:visible').count() and page.get_by_role(
-        "heading", name=re.compile(r"^(sign in|log in|login)$", re.IGNORECASE)
-    ).count())
-
-
-def _present(text, page, max_scrolls=20):
-    """Text and field values, scrolling (bounded) like Argus's fresh-load check
-    so a row a virtualized or lazy list renders further down is still found."""
-    last_y = None
-    for scrolls in range(max_scrolls + 1):
-        for frame in page.frames:
+    def visit(frame, main):
+        try:
+            facts = frame.evaluate(COLLECT_TEXT_JS)
+        except Exception:
+            if main:
+                raise
             if frame.is_detached():
-                continue
-            body = frame.locator("body")
-            if not body.count():
-                continue
-            values = frame.eval_on_selector_all("input, textarea", "els => els.map(e => e.value)")
-            if _matches(text, body.inner_text() + " " + " ".join(values)):
-                return True
+                return
+            facts = {{"text": "", "fields": [], "headings": [], "buttons": []}}
+            facts.update(password=False, truncated=False, unread=True)
+        frames.append(facts)
+        for child in frame.child_frames:
+            try:
+                shown = child.frame_element().is_visible()
+            except Exception:
+                shown = not child.is_detached()
+            if shown:
+                visit(child, False)
+
+    try:
+        visit(page.main_frame, True)
+    except Exception as exc:
+        # A navigation still in flight destroys the document mid-read; read the new one.
+        if "execution context was destroyed" not in str(exc).lower():
+            raise
+        try:
+            page.wait_for_load_state("domcontentloaded", timeout=8000)
+        except PlaywrightTimeoutError:
+            pass
+        frames.clear()
+        visit(page.main_frame, True)
+    return frames
+
+
+def _present(target, page, frames):
+    """Scroll (bounded) like Argus's fresh-load check, so a row a virtualized
+    or lazy list renders further down is still found."""
+    if frames_present(target, frames):
+        return True
+    last_y = None
+    for scrolls in range(1, MAX_SCROLLS + 1):
+        page.evaluate("(step) => window.scrollBy(0, step)", SCROLL_STEP)
+        page.wait_for_timeout(400)
+        if frames_present(target, _frames(page)):
+            return True
         y, at_bottom = page.evaluate(
             "() => [window.scrollY, "
             "window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2]"
         )
-        if scrolls == max_scrolls or at_bottom or y == last_y:
+        if scroll_exhausted(scrolls, at_bottom, y, last_y):
             return False
         last_y = y
-        page.evaluate("() => window.scrollBy(0, 1000)")
-        page.wait_for_timeout(400)
     return False
+
+
+def _check(page, response, requested, target, expect, login_page):
+    """Decide one fresh load as Argus's fresh-load verification does."""
+    settled = _settle(page)
+    frames = _frames(page)
+    status = response.status if response is not None else None
+    load = {{
+        "status": status,
+        "requested": requested,
+        "landed": page.url,
+        "frames": frames,
+        "settled": settled,
+        "login_page": login_page,
+        "login_page_recorded": login_page,
+    }}
+    observed, code = None, load_gate(load)
+    if code is None:
+        observed, code = text_observation(load, _present(target, page, frames))
+    if code is not None:
+        raise _ExportInconclusive(f"ARGUS_INCONCLUSIVE: {{code}}: {{reason_text(code, status)}}")
+    if observed == (expect == "present"):
+        raise _ExportSymptom()
 
 
 def _replay():
@@ -374,11 +421,19 @@ class _ExportSymptom(AssertionError):
     pass
 
 
+class _ExportInconclusive(AssertionError):
+    pass
+
+
 def {test_name}():
+    # Each failure is raised afresh so no traceback frame (and its locals,
+    # application values among them) is shown.
     try:
         _replay()
     except _ExportSymptom:
         raise AssertionError("ARGUS_SYMPTOM_PRESENT") from None
+    except _ExportInconclusive as exc:
+        raise _ExportInconclusive(str(exc)) from None
     except _ExportFailure as exc:
         raise RuntimeError(str(exc)) from None
     except Exception:
@@ -386,7 +441,13 @@ def {test_name}():
 
 
 if __name__ == "__main__":
-    {test_name}()
+    try:
+        {test_name}()
+    except _ExportInconclusive as exc:
+        print(exc, file=sys.stderr)
+        # Same status argus-regression uses, so a gate can tell "could not
+        # decide" from "the symptom is present" (an uncaught failure, status 1).
+        raise SystemExit(3) from None
     print("PASS: the symptom is gone")
 """
 
@@ -536,20 +597,11 @@ def generate_test(
     final_url = binding(at_url, "URL", "fresh-load verification URL")
     lines.append(f"check_url = _url({final_url}, values)")
     lines.append('response = page.goto(check_url, wait_until="domcontentloaded")')
-    lines.append(
-        f"settled = _check_page(page, response, allow_login={bool(receipt.get('login_page'))}, expected_url=check_url)"
-    )
     target_expr = binding(target, "TEXT", "fresh-load assertion text")
-    lines.append(f"present = _present({target_expr}, page)")
-    lines.append(f"if not present and _login_form(page) and not {bool(receipt.get('login_page'))}:")
-    lines.append('    raise _ExportFailure("fresh-load check hit a login wall")')
-    lines.append("if not present and not settled:")
     lines.append(
-        '    raise _ExportFailure("fresh-load check did not settle; absence is inconclusive")'
+        f"_check(page, response, check_url, {target_expr}, {_q(expect)}, "
+        f"login_page={bool(receipt.get('login_page'))})"
     )
-    condition = "" if expect == "present" else "not "
-    lines.append(f"if {condition}present:")
-    lines.append("    raise _ExportSymptom()")
 
     note_text = "\n\nRequired environment variables (values are not stored):\n"
     note_text += "\n".join(f"  {name}: {purpose}" for name, purpose in purposes.items())
@@ -569,21 +621,27 @@ def generate_test(
         runs="verified",
         symptom="the recorded text-presence symptom",
         expected="the symptom does not occur",
-        preflight=preflight,
         notes=_doc(note_text),
-        login_wall_phrases=json.dumps(LOGIN_WALL_PHRASES),
+        verdict_version=VERDICT_VERSION,
         required_env=repr(list(purposes)),
         export_id=_q(export_id),
+    )
+    rules = _VERDICT_BEGIN + verdict_source() + _VERDICT_END
+    collector = collector_source()
+    if "'''" in collector or collector.endswith("\\"):
+        raise ValueError("the text collector cannot be embedded as a raw string")
+    rules += f"\nCOLLECT_TEXT_JS = r'''{collector}'''\n"
+    body_start = _BODY.format(
+        preflight=preflight,
         row_helper=(
             _ROW_HELPER.format(row_selector=_q(_ROW_SELECTOR))
             if any("_in_row(" in line for line in lines)
             else ""
         ),
         dialog_setup=_DIALOG_SETUP if any("accept_dialog[" in line for line in lines) else "",
-        test_name=test_name,
     )
     body = "".join(f"            {line}\n" for line in lines)
-    return header + body + _FOOTER.format(test_name=test_name), notes
+    return header + rules + body_start + body + _FOOTER.format(test_name=test_name), notes
 
 
 def _kill_tree(proc) -> None:
@@ -640,14 +698,21 @@ async def run_exported_test(path: Path, timeout: float, secrets: Optional[dict] 
         return {"outcome": "incomplete", "detail": "Translate every manual step before running."}
     if last == "AssertionError: ARGUS_SYMPTOM_PRESENT":
         return {"outcome": "fails_on_symptom", "detail": "the verified symptom is still present"}
+    inconclusive = re.match(r"ARGUS_INCONCLUSIVE: ([a-z_]+): ", last)
+    if inconclusive and inconclusive.group(1) in REASON_CODES:
+        # The detail is rebuilt from the reason code, never copied from the output.
+        code = inconclusive.group(1)
+        status = re.search(r"HTTP ([1-5][0-9]{2})\b", last) if code == "http_error" else None
+        return {
+            "outcome": "inconclusive",
+            "reason": code,
+            "detail": reason_text(code, int(status.group(1)) if status else None),
+        }
     if re.fullmatch(
         r"RuntimeError: Missing required environment variable: ARGUS_[A-Z]+_[0-9]+", last
     ):
         return {"outcome": "errored", "detail": last.removeprefix("RuntimeError: ")}
     for diagnostic in (
-        "fresh-load check returned an HTTP error",
-        "fresh-load check hit a login wall",
-        "fresh-load check did not settle; absence is inconclusive",
         "replay target is missing or ambiguous; no row was selected",
         "ARGUS_URL_1 must be an absolute http(s) URL",
         "ARGUS_VALUES_FILE could not be read as a values object",

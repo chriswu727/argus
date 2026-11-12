@@ -119,6 +119,14 @@ class PageState:
     def searchable_text(self) -> str:
         return self.full_text or self.page_text
 
+    @property
+    def visible_text(self) -> str:
+        """Visible text of every collected frame, without field values; a state
+        built without the collector falls back to its extracted page text."""
+        if self.frames:
+            return "\n".join(frame.get("text") or "" for frame in self.frames)
+        return self.searchable_text
+
 
 @dataclass
 class Action:

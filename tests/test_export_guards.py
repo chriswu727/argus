@@ -113,8 +113,38 @@ async def test_exported_checks_reject_error_pages_and_login_walls(
     handler.mode = mode
     path, _, secrets = _export(tmp_path, base, expect=expect)
     result = await run_exported_test(path, 30, secrets=secrets)
-    assert result["outcome"] == "errored", result
-    assert "fresh-load check" in result["detail"]
+    assert result["outcome"] == "inconclusive", result
+    assert result["reason"] == ("http_error" if mode in ("404", "500") else "login_wall")
+    assert result["detail"].startswith("clean load")
+
+
+async def test_inconclusive_check_fails_under_pytest_and_as_a_script(tmp_path, export_app):
+    import os
+    import subprocess
+    import sys
+
+    handler, base = export_app
+    handler.mode = "500"
+    path, _, secrets = _export(tmp_path, base, expect="absent")
+    environment = {**os.environ, **secrets}
+    script = subprocess.run(
+        [sys.executable, str(path)], env=environment, capture_output=True, text=True, timeout=60
+    )
+    assert script.returncode == 3
+    assert script.stderr.strip().splitlines()[-1].startswith("ARGUS_INCONCLUSIVE: http_error: ")
+    assert "PASS" not in script.stdout
+    under_pytest = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", str(path)],
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        cwd=tmp_path,
+    )
+    assert under_pytest.returncode == 1
+    assert "1 failed" in under_pytest.stdout
+    assert "skipped" not in under_pytest.stdout and "passed" not in under_pytest.stdout
+    assert "ARGUS_INCONCLUSIVE: http_error" in under_pytest.stdout
 
 
 @pytest.mark.parametrize(

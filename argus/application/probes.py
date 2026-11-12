@@ -143,7 +143,12 @@ async def verify_persistence(
     if status_matches is False:
         verdict = f"HTTP {status}, expected {expect_status}. " + verdict
     if not conclusive:
-        if check["reason"] == "truncated":
+        if check["reason"] == "unread":
+            verdict = (
+                "Target not found, but a frame's text could not be read — absence cannot "
+                "establish persistence."
+            )
+        elif check["reason"] == "truncated":
             verdict = (
                 "Target not found, but the page text exceeds the inspection limit — "
                 "absence cannot establish persistence."
