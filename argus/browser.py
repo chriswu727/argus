@@ -119,6 +119,7 @@ _FIND_VISIBLE_ELEMENT_JS = (
 )
 
 _CHECK_LAYOUT_JS = files("argus.adapters.scripts").joinpath("check_layout_js.js").read_text()
+_COLLECT_TEXT_JS = files("argus.adapters.scripts").joinpath("collect_text_js.js").read_text()
 _REF_ENGINE_JS = files("argus.adapters.scripts").joinpath("ref_engine_js.js").read_text()
 
 # Traced steps that replay does not repeat; a journey through one diverges
@@ -1018,6 +1019,7 @@ class BrowserDriver:
             try:
                 elements = await self._extract_elements(page)
                 content = await self._extract_page_content(page)
+                frames = await self._collect_text(page)
                 break
             except Exception as e:
                 if attempt == 0 and "execution context was destroyed" in str(e).lower():
@@ -1050,6 +1052,7 @@ class BrowserDriver:
             canvases=content.get("canvases", []),
             focused=content.get("focused"),
             viewport=content.get("viewport"),
+            frames=frames,
         )
 
     async def inspect_element(self, selector) -> Dict:
@@ -1159,6 +1162,38 @@ class BrowserDriver:
         main = pg.main_frame
         await visit(main, origin(main.url, None), [])
         return extra, covered
+
+    async def _collect_text(self, page) -> List[Dict]:
+        """Visible text facts of every rendered frame, main frame first.
+
+        Each frame is read through Playwright, so a cross-origin frame's text
+        counts like the page's own. A frame whose iframe element is not visible
+        is skipped with everything inside it.
+        """
+        frames: List[Dict] = []
+
+        async def visit(frame, main: bool) -> None:
+            try:
+                facts = await frame.evaluate(_COLLECT_TEXT_JS)
+            except Exception:
+                if main:
+                    raise
+                if frame.is_detached():
+                    return
+                # Unread text must not let an absence count as conclusive.
+                facts = {"text": "", "fields": [], "headings": [], "buttons": []}
+                facts.update(password=False, truncated=True)
+            frames.append(facts)
+            for child in frame.child_frames:
+                try:
+                    shown = await (await child.frame_element()).is_visible()
+                except Exception:
+                    shown = not child.is_detached()
+                if shown:
+                    await visit(child, False)
+
+        await visit(page.main_frame, True)
+        return frames
 
     async def _extract_page_content(self, page=None) -> Dict:
         try:

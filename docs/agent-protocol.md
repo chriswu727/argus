@@ -111,6 +111,19 @@ text retains each tool's disclosure policy, including explicitly enabled sensiti
 reads. Screenshots and arbitrary application prose may still contain private data.
 No payload is permission to expand the operator's configured access policy.
 
+## What a text check reads
+
+Fresh-load text checks (`record_bug(verify=...)`, automatic regression and
+`verify_persistence`) count a target as present when it occurs, on word
+boundaries, in the visible text of the page or of any visible frame, including
+cross-origin frames and open shadow roots, or in the value of a visible text
+field or the selected option of a visible select. Text inside a `display:none`
+or `visibility:hidden` subtree, hidden and password input values, unselected
+options, closed `<details>` content and an element's `aria-label` do not count.
+Replay receipts read visible text only, never field values. Login-wall phrases
+are searched in the first 5,000 characters of the main frame's visible text;
+the password-field and login-heading checks also read the main frame.
+
 ## Bounded verification recovery
 
 `verify_persistence` reports whether the expected state held before reload,

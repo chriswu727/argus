@@ -44,6 +44,11 @@ HASH_APP = (
     "window.saved||''}window.onhashchange=render;render()</script>"
 )
 ENGLISH_LOGIN = "<h1>Account</h1><p>Please sign in to continue</p>"
+SHADOW_LOGIN = (
+    "<h1>Account</h1><x-wall></x-wall><script>customElements.define('x-wall', class extends "
+    "HTMLElement{connectedCallback(){this.attachShadow({mode:'open'}).innerHTML="
+    "'<p>Please sign in to continue</p>'}})</script>"
+)
 GERMAN_LOGIN = (
     "<h2>Willkommen</h2><form><input name='u'><input type='password' name='p'>"
     "<button type='submit'>Anmelden</button></form>"
@@ -187,6 +192,7 @@ CASES = {
     ),
     "login_wall_english": Case({"/t": (200, ENGLISH_LOGIN, None)}, INCONCLUSIVE),
     "login_wall_german": Case({"/t": (200, GERMAN_LOGIN, None)}, INCONCLUSIVE),
+    "login_wall_in_shadow_root": Case({"/t": (200, SHADOW_LOGIN, None)}, INCONCLUSIVE),
     "redirect_elsewhere": Case(REDIRECT, INCONCLUSIVE),
     "http_500": Case({"/t": (500, "<h1>Application unavailable</h1>", None)}, INCONCLUSIVE),
     "http_500_showing_target": Case(
@@ -213,8 +219,6 @@ CASES = {
 }
 
 _D1 = "disagreement 1: \\w boundaries never match inside unspaced scripts"
-_D2 = "disagreement 2: text only inside an iframe is not read"
-_D3 = "disagreement 3: list-row textContent leaks hidden text"
 _D4 = "disagreement 4: hidden input values count as present"
 _D5 = "disagreement 5: open shadow roots are not read"
 _D6 = "disagreement 6: a load that ends on another page still decides the symptom"
@@ -227,16 +231,11 @@ _D11 = "disagreement 11: no distinct inconclusive outcome"
 # (case, checker) -> reason, for both claims unless the key also names a claim.
 KNOWN = {
     ("cjk_target", "C"): _D1,
-    ("iframe_only", "A"): _D2,
-    ("iframe_only", "B"): _D2,
-    ("cross_origin_iframe", "A"): _D2,
-    ("cross_origin_iframe", "B"): _D2,
-    ("hidden_text_in_visible_row", "A"): _D3,
-    ("hidden_text_in_visible_row", "B"): _D3,
     ("hidden_input_value", "C"): _D4,
     ("shadow_root_button", "C"): _D5,
     ("redirect_elsewhere", "C"): _D6,
     ("login_wall_german", "C"): _D7,
+    ("login_wall_in_shadow_root", "C"): _D5,
     ("never_settles", "B"): _D8,
     ("agent_mock_active", "B"): _D9,
     ("login_phrase_beyond_5000_chars", "C"): _D10,

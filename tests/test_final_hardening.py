@@ -188,8 +188,12 @@ async def test_get_state_retries_on_execution_context_destroyed():
     async def _content(page):
         return {}
 
+    async def _frames(page):
+        return []
+
     d._extract_elements = _elts
     d._extract_page_content = _content
+    d._collect_text = _frames
     st = await d.get_state()
     assert calls["n"] == 2 and st.url == "http://x/after-nav"  # retried once past the nav race
 

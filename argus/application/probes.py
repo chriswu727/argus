@@ -11,7 +11,7 @@ from .evidence import _auto_screenshot
 from .payloads import observation_data
 from .progress import Stage
 from .session import _require_session
-from .text import _present_with_scroll, _resolve_url, _short, _state_facts, _text_in_state
+from .text import _present_with_scroll, _resolve_url, _short, _state_frames, _text_in_state
 from .verification import _fresh_goto, _looks_logged_out
 
 
@@ -96,7 +96,7 @@ async def verify_persistence(
         "status": status,
         "requested": nav_url,
         "landed": s.browser.current_url,
-        "frames": [_state_facts(after_state)],
+        "frames": _state_frames(after_state),
         "settled": True,
         "login_page": False,
     }

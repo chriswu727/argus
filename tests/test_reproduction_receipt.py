@@ -57,14 +57,16 @@ def test_text_in_state_does_not_match_incidental_substrings():
     from tests.conftest import make_element, make_page_state
 
     st = make_page_state(
-        page_text="Browse by category. Recently deleted: none.",
+        page_text="Browse by category. Recently deleted: none. Buy groceries supplies",
         elements=[make_element(text="Deleted")],
-        item_lists={"tasks": ["Buy groceries supplies"]},
+        item_lists={"tasks": ["Walk dog later"]},
     )
     assert m._text_in_state("cat", st) is False
     assert m._text_in_state("delete", st) is False
     assert m._text_in_state("category", st) is True
     assert m._text_in_state("Buy groceries", st) is True  # token run, even inside a longer item
+    # Only visible text counts: a row's textContent can hold hidden children.
+    assert m._text_in_state("Walk dog", st) is False
 
 
 # ── relative-URL resolution ──────────────────────────────────────────

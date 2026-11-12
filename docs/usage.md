@@ -269,7 +269,7 @@ Earlier profile names still start the server: `agent` and `core` load the `web` 
 | `screenshot` · `screenshot_diff` | Capture viewport, full-page, or element evidence and produce a red-tint pixel-diff overlay. |
 | `get_errors` | Drain correlated console errors and HTTP 4xx/5xx events captured since the previous read. |
 | `capsule_save` · `capsule_restore` | Save and restore a named authenticated or seeded browser state, with an optional liveness check. |
-| `verify_persistence` | Force a fresh load and return target presence plus the page observation. This checks persistence, not semantic correctness. |
+| `verify_persistence` | Force a fresh load and return target presence plus the page observation. The target counts as present in the visible text of the page and its frames (open shadow roots included) or a visible field's value, as in `record_bug` verification. This checks persistence, not semantic correctness. |
 | `test_action` · `test_form` | Perform a description-keyed action or form submission and return the resulting state diff in one round trip. |
 | `regression_check` | Re-test journaled findings for the current origin without requiring another discovery pass. |
 | `record_bug` · `record_observation` | Record a finding with evidence and its recheck outcome, or keep a qualitative review note separate. Inspect the receipt rather than treating recording as confirmation. |

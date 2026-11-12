@@ -20,9 +20,10 @@ from argus.domain.verdict import moved_from as _moved_from
 from .evidence import _auto_screenshot
 from .session import Session
 from .text import (
+    _main_facts,
     _present_with_scroll,
     _resolve_url,
-    _state_facts,
+    _state_frames,
     _visible_text_in_state,
 )
 
@@ -31,11 +32,11 @@ _receipt_verdict = receipt_verdict
 
 
 def _looks_logged_out(state: PageState) -> bool:
-    return looks_logged_out(_state_facts(state))
+    return looks_logged_out(_main_facts(state))
 
 
 def _login_form(state: PageState) -> bool:
-    return login_form(_state_facts(state))
+    return login_form(_main_facts(state))
 
 
 async def _fresh_goto(browser, url: str):
@@ -133,7 +134,7 @@ async def _run_reproduction_check(
     try:
         baseline = await s.browser.get_state()
         login_page = verify.get(
-            "_login_page", baseline.url == nav_url and is_login_page(_state_facts(baseline))
+            "_login_page", baseline.url == nav_url and is_login_page(_main_facts(baseline))
         )
         evidence["login_page"] = bool(login_page)
         if verify.get("clear_storage"):
@@ -148,7 +149,8 @@ async def _run_reproduction_check(
             state = await s.browser.get_state()
             landed = s.browser.current_url
             moved = _moved_from(nav_url, landed)
-            facts = _state_facts(state)
+            frames = _state_frames(state)
+            facts = frames[0]
             if expected_status is not None:
                 matched, inconclusive = status_observation(
                     expected_status,
@@ -165,7 +167,7 @@ async def _run_reproduction_check(
                 "status": status,
                 "requested": nav_url,
                 "landed": landed,
-                "frames": [facts],
+                "frames": frames,
                 "settled": getattr(s.browser, "last_navigation_settled", True),
                 "login_page": bool(login_page),
                 "login_page_recorded": verify.get("_login_page") is True,
