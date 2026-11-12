@@ -240,16 +240,30 @@ Returned fields:
 | `required_env` | Since 0.12.1: environment variable names mapped to fixed step/purpose descriptions, never values. Configure these privately for standalone or CI runs. |
 | `private_values_path` | Since 0.12.1: `null` by default; path to a local raw-values JSON file only when `save_private_values=true`. Never publish this file. |
 | `manual_steps` | Steps that could not be translated; each is also a `TODO(argus)` line in the file. Since 0.12.1, exports with manual steps stop before browser actions until completed. An empty list means every recorded step was exported. |
-| `run` | `null` unless `run=true`; otherwise `{"outcome", "detail"}` with outcome `fails_on_symptom`, `passes`, `errored` or `incomplete`. |
+| `run` | `null` unless `run=true`; otherwise `{"outcome", "detail"}` with outcome `fails_on_symptom`, `passes`, `inconclusive`, `errored` or `incomplete`. An `inconclusive` run also carries `reason`, one of `http_error`, `login_wall`, `login_form`, `moved`, `unread`, `truncated`, `unsettled`. |
 
 The file replays the actions recorded up to the finding with locators captured
-from the resolved elements, then loads the checked URL afresh and asserts the
-opposite of the symptom with the verifier's word-boundary text rule and bounded
-scrolling. `fails_on_symptom` means the test failed on that assertion, as it
-should while the bug is present. `passes` means it did not reproduce the
-symptom and must not be relied on as a regression test. `errored` means it
-stopped before the assertion (a step failed or timed out, the checked page
-returned HTTP 4xx/5xx, or a login wall prevented the check). Exported control
+from the resolved elements, then loads the checked URL afresh and decides the
+symptom with the same rules as fresh-load verification and
+`verify_persistence`: the generated file embeds Argus's verdict module
+(`argus/domain/verdict.py`) and its in-page text collector verbatim, and its
+docstring names the verdict rules version. It reads the visible text of the page
+and every visible frame (open shadow roots included) plus visible field values,
+with bounded scrolling. `fails_on_symptom` means the test failed on that
+assertion, as it should while the bug is present. `passes` means it did not
+reproduce the symptom and must not be relied on as a regression test.
+`inconclusive` means the fresh load could not show the symptom
+either way: the page returned HTTP 4xx/5xx, a login wall or a login form (in any
+supported language) replaced it, the load ended on another page, a frame could
+not be read or the text exceeded the inspection limit, or an absent target was
+read on a page whose network never settled. The file signals it with a final
+stderr line starting `ARGUS_INCONCLUSIVE`; under pytest the test fails, never
+passes or skips, and run as a script it exits with status 1, like any other
+failure. `errored` means it stopped before the check (a step failed or timed
+out, a row target was missing or ambiguous, or the values were unusable).
+Tests exported by earlier versions keep their own rules, report these pages as
+`errored` (or, for a redirect, a non-English login form or text only in a shadow
+root, as a symptom verdict) and should be exported again. Exported control
 locators preserve iframe chains and scope duplicate matching to the same frame;
 text checks include nested frame content. A capsule restore
 cannot be replayed and is reported as a manual step. Uploaded files are not

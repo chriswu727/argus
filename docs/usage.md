@@ -119,6 +119,17 @@ standalone Playwright test that replays the recorded journey and asserts the
 opposite of the symptom. Confirm that the exported test fails on the symptom before relying on it in CI.
 An export that already passes is not a useful regression check.
 
+- **Same rules as Argus.** The file embeds Argus's verdict module and in-page
+  text collector verbatim and names the verdict rules version in its docstring,
+  so it decides the symptom exactly as fresh-load verification and
+  `verify_persistence` do. When the fresh load cannot show the symptom either
+  way (an HTTP error, a login wall or login form, a redirect to another page, a
+  page that never settles or cannot be fully read), `run=true` reports the
+  outcome `inconclusive`; the file's last stderr line starts with
+  `ARGUS_INCONCLUSIVE`, and under pytest the test fails rather than passing or
+  skipping. Tests exported by earlier versions keep their old rules (and report
+  such pages as errors) until you export them again.
+
 - **Stable locators.** They are captured from the elements Argus actually
   resolved. A repeated control is scoped to its row, and iframe scope is preserved.
   Since 0.12.2, ambiguous row matches stop before that action; positional
