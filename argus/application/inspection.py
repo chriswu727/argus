@@ -101,7 +101,7 @@ async def inspect_element(description: str) -> str:
     mode_error = _require_web_session(s, "inspect_element")
     if mode_error:
         return mode_error
-    el, err = _resolve_or_error(s, description)
+    el, err = await _resolve_or_error(s, description)
     if el is not None:
         selector = s.browser.selector_for(el)
         info = await s.browser.inspect_element(selector)

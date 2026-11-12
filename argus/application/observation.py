@@ -404,23 +404,30 @@ def _nearest_labels(description: str, elements, k: int = 4) -> List[str]:
     return [d for _, d in scored[:k]]
 
 
-def _resolve_or_error(
+async def _resolve_or_error(
     s: Session,
     description: str,
     kind_filter: Optional[str] = None,
     *,
     strict_kind: bool = False,
+    refresh: bool = True,
 ) -> tuple[Optional[InteractiveElement], Optional[str]]:
-    """Resolve a description to a single element or return an error string.
+    """Resolve a description against the page as it is now, or return an error.
 
-    Returns (element, None) on success, (None, error_message) on
-    no_match / ambiguous / no_elements.
+    Re-extracts the elements first and stores them as `s._last_elements`, so
+    the index the caller acts on refers to the current page, never to the
+    list of an earlier observation. `refresh=False` resolves a second
+    description of the same action against the list the first one just took,
+    so both indices refer to one list. Returns (element, None) on success,
+    (None, error_message) on no_match / ambiguous / no_elements.
 
     Set `strict_kind=True` from tools that *cannot* gracefully handle a
     cross-kind match (e.g. type_into pointed at a link gives the user
     a Playwright stack-trace). With strict_kind, the resolver refuses
     to fall back to the full element pool.
     """
+    if refresh and s.mode == "web" and s.browser is not None and s.browser.has_page:
+        s._last_elements = await s.browser.get_elements()
     result = resolve_element(
         description,
         s._last_elements,
@@ -433,8 +440,8 @@ def _resolve_or_error(
 
     if result.reason == "no_elements":
         return None, Rejection(
-            "No interactive elements visible. Call observe() first, or scroll_down "
-            "if you expect content below the fold."
+            "No interactive elements visible on the current page. Call observe() to "
+            "see the page, or scroll_down if you expect content below the fold."
         )
 
     if result.reason == "no_match":

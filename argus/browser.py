@@ -1003,24 +1003,23 @@ class BrowserDriver:
 
     # -- state extraction --
 
-    @timed("observation")
-    async def get_state(self, page=None) -> PageState:
+    def _open_page(self, page=None):
         page = page or self._page
         if page is None:
             raise RuntimeError(
                 "No open page — all tabs were closed. Call navigate(url) or "
                 "start_session(url) to recover."
             )
+        return page
+
+    async def _across_navigation(self, page, read):
         # A click can trigger a navigation that's still in flight; extracting the
         # DOM mid-navigation raises "Execution context was destroyed". Wait for the
         # new document and retry once, so a nav-causing click reads the NEW page
         # instead of surfacing a raw Playwright error to the agent.
         for attempt in range(2):
             try:
-                elements = await self._extract_elements(page)
-                content = await self._extract_page_content(page)
-                frames = await self._collect_text(page)
-                break
+                return await read()
             except Exception as e:
                 if attempt == 0 and "execution context was destroyed" in str(e).lower():
                     try:
@@ -1029,6 +1028,24 @@ class BrowserDriver:
                         pass
                     continue
                 raise
+
+    @timed("observation")
+    async def get_elements(self) -> List[InteractiveElement]:
+        page = self._open_page()
+        return await self._across_navigation(page, lambda: self._extract_elements(page))
+
+    @timed("observation")
+    async def get_state(self, page=None) -> PageState:
+        page = self._open_page(page)
+
+        async def read():
+            return (
+                await self._extract_elements(page),
+                await self._extract_page_content(page),
+                await self._collect_text(page),
+            )
+
+        elements, content, frames = await self._across_navigation(page, read)
         return PageState(
             url=page.url,
             title=await page.title(),

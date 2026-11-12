@@ -72,7 +72,7 @@ async def test_action(
     el = None
     target_locator = None
     if text_target is None:
-        el, err = _resolve_or_error(s, target)
+        el, err = await _resolve_or_error(s, target)
         if err:
             return err
         target_locator = locator_expr(el, s._last_elements)

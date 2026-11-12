@@ -38,7 +38,7 @@ async def screenshot(
     last_step = s.steps[-1] if s.steps else "Initial state"
 
     if element:
-        el, err = _resolve_or_error(s, element)
+        el, err = await _resolve_or_error(s, element)
         if err:
             return err
         s._screenshot_counter += 1

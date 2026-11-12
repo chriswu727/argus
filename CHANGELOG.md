@@ -7,6 +7,12 @@
 
 ## Unreleased
 
+- Description-driven web tools (`click_what`, `type_into`, `test_action`,
+  `inspect_element` and the rest) resolve the description against the page as
+  it is when the action runs, not against the last observation: a row that
+  re-rendered in place is found by its current text, and a description that has
+  become ambiguous or no longer matches returns candidates or a no-match error
+  instead of acting.
 - Fresh-load verification and `verify_persistence` read the same visible text:
   the page and every visible frame (cross-origin frames and open shadow roots
   included) plus the values of visible fields. Text that is only inside an

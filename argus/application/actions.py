@@ -65,7 +65,7 @@ async def click_what(
             result.data["dialogs"] = dialogs
             return result
         _finish_dialogs(s, mark)
-    el, err = _resolve_or_error(s, description)
+    el, err = await _resolve_or_error(s, description)
     if err:
         return err
 
@@ -131,7 +131,7 @@ async def type_into(description: str, text: str) -> str:
     rules are the same as click_what — see that tool for ambiguity behaviour.
     """
     s = _require_session()
-    el, err = _resolve_or_error(
+    el, err = await _resolve_or_error(
         s,
         description,
         kind_filter="input",
@@ -177,7 +177,7 @@ async def paste_into(description: str, text: str) -> str:
     err = _require_web_session(s, "paste_into")
     if err:
         return err
-    el, err = _resolve_or_error(s, description)
+    el, err = await _resolve_or_error(s, description)
     if err:
         return err
     idx = s._last_elements.index(el)
@@ -195,7 +195,7 @@ async def paste_into(description: str, text: str) -> str:
 async def select_into(description: str, value: str) -> str:
     """Select `value` in the dropdown best matching `description`."""
     s = _require_session()
-    el, err = _resolve_or_error(
+    el, err = await _resolve_or_error(
         s,
         description,
         kind_filter="select",
@@ -232,7 +232,7 @@ async def hover_what(description: str) -> str:
     err = _require_web_session(s, "hover_what")
     if err:
         return err
-    el, err = _resolve_or_error(s, description)
+    el, err = await _resolve_or_error(s, description)
     if err:
         # A list row is usually plain text, not an interactive element, yet
         # hovering it is how its hover-only controls appear.
@@ -277,7 +277,7 @@ async def right_click(description: str) -> str:
     err = _require_web_session(s, "right_click")
     if err:
         return err
-    el, err = _resolve_or_error(s, description)
+    el, err = await _resolve_or_error(s, description)
     if err:
         return err
     label = el.text or el.aria_label or el.placeholder or el.id or el.tag
@@ -312,7 +312,7 @@ async def press_key(key: str, description: str = "") -> str:
     target = ""
     locator = None
     if description:
-        el, err = _resolve_or_error(s, description)
+        el, err = await _resolve_or_error(s, description)
         if err:
             return err
         idx = s._last_elements.index(el)
@@ -552,10 +552,10 @@ async def drag_what(from_description: str, to_description: str) -> str:
     err = _require_web_session(s, "drag_what")
     if err:
         return err
-    src, err = _resolve_or_error(s, from_description)
+    src, err = await _resolve_or_error(s, from_description)
     if err:
         return Rejection(f"drag_what(from): {err}", ErrorCode.INVALID_ARGUMENT)
-    tgt, err = _resolve_or_error(s, to_description)
+    tgt, err = await _resolve_or_error(s, to_description, refresh=False)
     if err:
         return Rejection(f"drag_what(to): {err}", ErrorCode.INVALID_ARGUMENT)
     src_label = src.text or src.id or src.tag
@@ -595,7 +595,7 @@ async def upload_file(description: str, paths: list) -> str:
         return err
     if not paths:
         return Rejection("upload_file: paths is empty.", ErrorCode.INVALID_ARGUMENT)
-    el, err = _resolve_or_error(s, description, kind_filter="input")
+    el, err = await _resolve_or_error(s, description, kind_filter="input")
     if err:
         return err
     if (el.type or "").lower() != "file":
@@ -639,7 +639,7 @@ async def drop_file(description: str, path: str) -> str:
 
     if not os.path.exists(path):
         return Rejection(f"drop_file: file not found: {path}", ErrorCode.INVALID_ARGUMENT)
-    el, err = _resolve_or_error(s, description)
+    el, err = await _resolve_or_error(s, description)
     if err:
         return err
     idx = s._last_elements.index(el)
