@@ -16,6 +16,9 @@
 - Screen-mode tools report failures and refusals as errors with a code
   (`permission_denied` for safety refusals and missing macOS grants, `timeout`,
   `invalid_argument`, `backend_error`) instead of completed calls.
+- A `<textarea>` is named by its aria-label, `<label>`, placeholder or name, and
+  its initial content is reported only as its value, so a secret-named field's
+  content is hidden as `(value hidden)` instead of shown as its label.
 - Fresh-load verification and `verify_persistence` read the same visible text:
   the page and every visible frame (cross-origin frames and open shadow roots
   included) plus the values of visible fields. Text that is only inside an
