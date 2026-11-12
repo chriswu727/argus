@@ -59,15 +59,8 @@ browser state and other unsupported steps require manual translation.
 
 ## Quick start
 
-Requires **Python 3.11+**, Chromium and an MCP-capable coding agent.
-With [`uv`](https://docs.astral.sh/uv/):
-
-```bash
-uvx --from argus-testing python -m playwright install chromium
-uvx --from argus-testing argus-mcp --doctor
-```
-
-Connect it to **Claude Code**:
+Requires **Python 3.11+**, [`uv`](https://docs.astral.sh/uv/) and an MCP-capable
+coding agent. Connect it to **Claude Code**:
 
 ```bash
 claude mcp add argus -- uvx --from argus-testing argus-mcp
@@ -79,20 +72,23 @@ Or **Codex**:
 codex mcp add argus -- uvx --from argus-testing argus-mcp
 ```
 
-Then ask your agent to test your app. Use test accounts and data you can change:
+Then ask your agent to test your app. The first session downloads Chromium
+once (about 150 MB); `uvx --from argus-testing argus-mcp --doctor` checks the
+setup ahead of time. Use test accounts and data you can change:
 replaying a journey can repeat its writes.
 
 [Cursor, other MCP clients and troubleshooting](docs/usage.md#quick-start) ·
 [Claude plugin](plugins/claude) · [Codex plugin](plugins/codex)
 
-**0.13.0**: live verification, `verify_persistence` and exported tests now
+**0.13.1**: the first session downloads Chromium by itself, so connecting
+Argus is the only setup step. Since 0.13.0, live verification, `verify_persistence` and exported tests
 decide with the same rules, checked against each other on every change. They
 read what a user can see, in every frame and open shadow root, and an exported
 test reports an inconclusive check instead of a false failure. Regenerate
 exported tests to get the shared rules; see the
 [journal migration steps](docs/usage.md#regression-gates-in-ci), the
 [releases](https://github.com/chriswu727/argus/releases) and the
-[changelog](CHANGELOG.md#0130---2026-11-12).
+[changelog](CHANGELOG.md#0131---2026-11-12).
 
 ## Engineering
 

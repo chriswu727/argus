@@ -5,7 +5,12 @@ from typing import List, Optional
 from urllib.parse import urlparse
 
 from argus.application.context import current_runtime
-from argus.doctor import launch_failure_hint
+from argus.doctor import (
+    auto_install_enabled,
+    browser_missing,
+    install_chromium,
+    launch_failure_hint,
+)
 from argus.domain.contracts import ErrorCode, OperationError, Rejection, SessionState, ToolText
 
 from .coverage import _contract_items, _session_protocol, _update_coverage_from_state
@@ -82,12 +87,36 @@ async def start_session(
         viewport_width=viewport_width,
         viewport_height=viewport_height,
     )
+    installed_browser = False
+    still_downloading = False
     try:
         await current_runtime().progress(Stage.LAUNCHING)
-        await new_session.browser.start()
+        try:
+            await new_session.browser.start()
+        except Exception as exc:
+            if not (browser_missing(exc) and auto_install_enabled()):
+                raise
+            # A new user has no Chromium yet. Fetch it here instead of failing
+            # their first request with an install command to run by hand.
+            await current_runtime().progress(Stage.INSTALLING)
+            outcome = await install_chromium(
+                headless, min(90.0, current_runtime().settings.operation_timeout * 0.7)
+            )
+            still_downloading = outcome == "downloading"
+            if outcome != "installed":
+                raise
+            await new_session.browser.start()
+            installed_browser = True
     except Exception as exc:
         await current_runtime().close_backends()
         current_runtime().transition(SessionState.FAILED)
+        if still_downloading:
+            raise OperationError(
+                ErrorCode.BACKEND,
+                "Chromium is being downloaded for first use (one time, about 150 MB) and "
+                "is not finished yet. The download continues in the background; call "
+                "start_session again in a minute.",
+            )
         raise OperationError(
             ErrorCode.BACKEND,
             f"failed to launch the browser — "
@@ -141,6 +170,8 @@ async def start_session(
         f"Review mode: {review_mode}\n"
         f"Found {element_count} interactive elements.{hint}"
     )
+    if installed_browser:
+        summary = "Chromium was downloaded for first use (one time).\n" + summary
     introduction = summary + "\n\n" + _session_protocol(current_runtime().session)
     payload = observation_data(current_runtime().session, state)
     payload["protocol"] = _session_protocol(current_runtime().session)

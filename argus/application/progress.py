@@ -11,6 +11,7 @@ from typing import Awaitable, Callable
 class Stage(str, Enum):
     STARTED = "Operation started"
     LAUNCHING = "Launching the browser"
+    INSTALLING = "Downloading Chromium for first use (one time)"
     NAVIGATING = "Loading the target page"
     OBSERVING = "Inspecting the current page"
     VERIFYING = "Rechecking the observable symptom"

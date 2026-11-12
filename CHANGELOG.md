@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.13.1 - 2026-11-12
+
+- The first session downloads the Chromium build it needs instead of failing
+  with an install command, so connecting Argus is the only setup step. A
+  download that outlasts the call keeps running and `start_session` asks for a
+  retry. `ARGUS_AUTO_INSTALL_BROWSER=0` restores the old behaviour.
+
 ## Plugin updates - 2026-11-12
 
 - Claude plugin 0.13.0 and Codex plugin 0.13.0 pin the published Argus 0.13.0

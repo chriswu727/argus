@@ -9,11 +9,16 @@ that exercises real user journeys, finds bugs and verifies them with evidence. I
 - Python 3.11 or newer
 - [`uv`](https://docs.astral.sh/uv/) so the client can launch `uvx`
 
-Install the Playwright Chromium browser once:
+The first session downloads the Playwright Chromium browser by itself (about
+150 MB, once). To fetch it ahead of time instead:
 
 ```bash
 uvx --from argus-testing python -m playwright install chromium
 ```
+
+If the download is still running when the first `start_session` reaches its
+deadline, the tool says so; call `start_session` again a minute later. Set
+`ARGUS_AUTO_INSTALL_BROWSER=0` to turn the download off.
 
 After an upgrade, a missing browser executable can mean the installed Chromium
 does not match Argus's resolved Playwright version. Install the matching browser
@@ -49,8 +54,8 @@ For Cursor, use the standard JSON above or the one-click button in the
 
 ## Verify the installation
 
-The current release is 0.13.0. For reproducible setup, replace `argus-testing`
-with `argus-testing==0.13.0` in both installation and launch commands. Restart the MCP host after
+The current release is 0.13.1. For reproducible setup, replace `argus-testing`
+with `argus-testing==0.13.1` in both installation and launch commands. Restart the MCP host after
 upgrading; a running server retains its loaded version and tool schema.
 
 Regenerate previously exported tests after upgrading. Journals from 0.12.1 and
