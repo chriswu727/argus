@@ -54,8 +54,8 @@ For Cursor, use the standard JSON above or the one-click button in the
 
 ## Verify the installation
 
-The current release is 0.13.0. For reproducible setup, replace `argus-testing`
-with `argus-testing==0.13.0` in both installation and launch commands. Restart the MCP host after
+The current release is 0.13.1. For reproducible setup, replace `argus-testing`
+with `argus-testing==0.13.1` in both installation and launch commands. Restart the MCP host after
 upgrading; a running server retains its loaded version and tool schema.
 
 Regenerate previously exported tests after upgrading. Journals from 0.12.1 and

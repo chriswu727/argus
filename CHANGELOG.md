@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.13.1 - 2026-11-12
 
 - The first session downloads the Chromium build it needs instead of failing
   with an install command, so connecting Argus is the only setup step. A

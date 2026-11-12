@@ -80,14 +80,15 @@ replaying a journey can repeat its writes.
 [Cursor, other MCP clients and troubleshooting](docs/usage.md#quick-start) ·
 [Claude plugin](plugins/claude) · [Codex plugin](plugins/codex)
 
-**0.13.0**: live verification, `verify_persistence` and exported tests now
+**0.13.1**: the first session downloads Chromium by itself, so connecting
+Argus is the only setup step. Since 0.13.0, live verification, `verify_persistence` and exported tests
 decide with the same rules, checked against each other on every change. They
 read what a user can see, in every frame and open shadow root, and an exported
 test reports an inconclusive check instead of a false failure. Regenerate
 exported tests to get the shared rules; see the
 [journal migration steps](docs/usage.md#regression-gates-in-ci), the
 [releases](https://github.com/chriswu727/argus/releases) and the
-[changelog](CHANGELOG.md#0130---2026-11-12).
+[changelog](CHANGELOG.md#0131---2026-11-12).
 
 ## Engineering
 
