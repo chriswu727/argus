@@ -9,6 +9,7 @@ they install into the same environment that runs Argus.
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 import tempfile
 from dataclasses import dataclass
@@ -30,6 +31,54 @@ def install_command() -> str:
 
 def system_deps_command() -> str:
     return f"{sys.executable} -m playwright install-deps chromium"
+
+
+def browser_missing(exc: BaseException) -> bool:
+    return "executable doesn't exist" in str(exc).lower()
+
+
+def auto_install_enabled() -> bool:
+    value = os.environ.get("ARGUS_AUTO_INSTALL_BROWSER", "1").strip().lower()
+    return value not in {"0", "false", "no", "off"}
+
+
+_install: asyncio.subprocess.Process | None = None
+
+
+async def install_chromium(headless: bool, wait_seconds: float) -> str:
+    """Download the Chromium this Playwright expects.
+
+    Returns "installed", "failed", or "downloading" when it is still running
+    after `wait_seconds`. The download is never cancelled: it keeps going in the
+    background and the next call waits on the same process, so a slow connection
+    costs a retry, not a restart. Its output is discarded because the server's
+    stdout is the MCP channel.
+    """
+    global _install
+    deadline = asyncio.get_running_loop().time() + wait_seconds
+    # A headless session only needs the smaller headless shell. Playwright
+    # releases without that option reject it, so fall back to the full browser.
+    for only_shell in [True, False] if headless else [False]:
+        if _install is None or _install.returncode is not None:
+            command = [sys.executable, "-m", "playwright", "install", "chromium"]
+            if only_shell:
+                command.append("--only-shell")
+            _install = await asyncio.create_subprocess_exec(
+                *command,
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+        process = _install
+        remaining = max(0.1, deadline - asyncio.get_running_loop().time())
+        try:
+            await asyncio.wait_for(asyncio.shield(process.wait()), remaining)
+        except asyncio.TimeoutError:
+            return "downloading"
+        _install = None
+        if process.returncode == 0:
+            return "installed"
+    return "failed"
 
 
 def launch_failure_hint(exc: BaseException) -> str:

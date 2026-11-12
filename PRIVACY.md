@@ -79,6 +79,9 @@ does not sanitize the separate application evidence described above.
   an Argus-operated model service.
 - Installing or upgrading through PyPI, `pip`, or `uvx` contacts those package
   distribution services under their own policies.
+- When the Chromium build Argus needs is missing, the first session downloads it
+  from Playwright's distribution hosts. Nothing about the tested app is sent.
+  `ARGUS_AUTO_INSTALL_BROWSER=0` turns this off.
 - The optional `argus_lab.evaluation.codex_runner` sends synthetic testing prompts
   and tool evidence to the operator's ChatGPT-backed Codex session only after
   explicit subscription-usage opt-in. It stores local answers, usage, tool traces

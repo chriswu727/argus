@@ -83,6 +83,7 @@ async def test_start_session_launch_failure_names_the_install_command(
     isolated_runtime, monkeypatch, tmp_path
 ):
     monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path / "no-browsers"))
+    monkeypatch.setenv("ARGUS_AUTO_INSTALL_BROWSER", "0")
     result = await isolated_runtime.execute("start_session", start_session, "https://example.test/")
     assert result.error is not None
     text = str(result.value)

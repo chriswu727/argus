@@ -4,13 +4,18 @@
 
 ## Quick start
 
-Argus needs **Python 3.11+** and Chromium. With [`uv`](https://docs.astral.sh/uv/)
-there is nothing to install globally:
+Argus needs **Python 3.11+**. With [`uv`](https://docs.astral.sh/uv/) there is
+nothing to install globally, and the first session downloads the Chromium build
+it needs (about 150 MB, once; the same happens after an upgrade that expects a
+newer build). To fetch it ahead of time, or to check the setup:
 
 ```bash
-uvx --from argus-testing python -m playwright install chromium
+uvx --from argus-testing python -m playwright install chromium   # optional
 uvx --from argus-testing argus-mcp --doctor     # checks Chromium, a real launch and the report directory
 ```
+
+Set `ARGUS_AUTO_INSTALL_BROWSER=0` where downloads are not allowed; a missing
+browser is then reported with the command to run.
 
 Each failed `--doctor` check prints the exact fix. If your default interpreter is
 older than 3.11, use `uvx --python 3.12 --from argus-testing argus-mcp`. If an
@@ -438,6 +443,7 @@ Explicit command-line options override environment variables, which override def
 | `ARGUS_CLEANUP_TIMEOUT_S` | 10 seconds per backend |
 | `ARGUS_EVENT_CAPACITY` | 512 events |
 | `ARGUS_OUTPUT_DIR` | `./argus-reports` |
+| `ARGUS_AUTO_INSTALL_BROWSER` | on; `0` reports a missing Chromium instead of downloading it |
 
 One runtime owns one active session. Actions and lifecycle changes are
 serialized; an operation timeout cancels the action and closes the backend.
