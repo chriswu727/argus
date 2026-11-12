@@ -62,6 +62,8 @@ async def test_persistence_suggestions_require_observed_transition(
             side_effect=[page_factory(page_text=before), page_factory(page_text=after)]
         ),
         goto=AsyncMock(return_value=SimpleNamespace(status=status)),
+        suspend_mocks=AsyncMock(return_value=[]),
+        restore_mocks=AsyncMock(),
     )
     isolated_runtime.session.browser = browser
     isolated_runtime.session.mode = "web"
@@ -99,6 +101,8 @@ async def test_only_absence_on_error_or_login_pages_is_inconclusive(
         get_state=AsyncMock(return_value=page_factory(page_text=page)),
         goto=AsyncMock(return_value=SimpleNamespace(status=status)),
         scroll_by=AsyncMock(),
+        suspend_mocks=AsyncMock(return_value=[]),
+        restore_mocks=AsyncMock(),
     )
     result = await verify_persistence(expect, target, expect_status=expect_status)
     check = result.data["verification"]
@@ -125,10 +129,39 @@ async def test_before_state_scrolls_for_a_just_saved_row(isolated_runtime, page_
         get_state=AsyncMock(side_effect=states + [page_factory()] * 25),
         goto=AsyncMock(return_value=SimpleNamespace(status=200)),
         scroll_by=AsyncMock(),
+        suspend_mocks=AsyncMock(return_value=[]),
+        restore_mocks=AsyncMock(),
     )
     result = await verify_persistence("present", "Morgan")
     assert result.data["verification"]["before_matches"] is True
     assert result.data["suggested_verify"]["expect"] == "absent"
+
+
+async def test_persistence_load_runs_without_mocks_and_needs_a_settled_page(
+    isolated_runtime, page_factory
+):
+    isolated_runtime.session.mode = "web"
+    browser = SimpleNamespace(
+        current_url="https://example.test/",
+        has_page=True,
+        last_navigation_settled=False,
+        get_state=AsyncMock(return_value=page_factory(page_text="Loading")),
+        goto=AsyncMock(return_value=SimpleNamespace(status=200)),
+        scroll_by=AsyncMock(),
+        suspend_mocks=AsyncMock(return_value=["**/api/items"]),
+        restore_mocks=AsyncMock(),
+    )
+    isolated_runtime.session.browser = browser
+    result = await verify_persistence("absent", "Buy milk")
+    assert result.data["verification"]["matches"] is None
+    assert "did not settle" in result and "Mocks suspended" in result
+    browser.restore_mocks.assert_awaited_once_with(["**/api/items"])
+
+    browser.restore_mocks.reset_mock()
+    browser.goto = AsyncMock(side_effect=RuntimeError("navigation failed"))
+    with pytest.raises(RuntimeError):
+        await verify_persistence("absent", "Buy milk")
+    browser.restore_mocks.assert_awaited_once_with(["**/api/items"])
 
 
 async def test_recheck_uses_id_preserves_history_and_never_adds_duplicate(isolated_runtime):

@@ -223,8 +223,6 @@ _D4 = "disagreement 4: hidden input values count as present"
 _D5 = "disagreement 5: open shadow roots are not read"
 _D6 = "disagreement 6: a load that ends on another page still decides the symptom"
 _D7 = "disagreement 7: only English login headings are recognised"
-_D8 = "disagreement 8: absence on an unsettled load is conclusive"
-_D9 = "disagreement 9: the agent's own mocks stay live"
 _D10 = "disagreement 10: login phrases are scanned in the full text"
 _D11 = "disagreement 11: no distinct inconclusive outcome"
 
@@ -236,8 +234,6 @@ KNOWN = {
     ("redirect_elsewhere", "C"): _D6,
     ("login_wall_german", "C"): _D7,
     ("login_wall_in_shadow_root", "C"): _D5,
-    ("never_settles", "B"): _D8,
-    ("agent_mock_active", "B"): _D9,
     ("login_phrase_beyond_5000_chars", "C"): _D10,
     ("login_wall_english", "C"): _D11,
     ("http_500", "C"): _D11,

@@ -83,21 +83,28 @@ async def verify_persistence(
         # A just-saved row can sit below the fold or outside a virtualized window.
         before_present = await _present_with_scroll(s, target_text, before_state)
     before_matches = before_present == (expect_norm == "present")
-    if clear_storage:
-        await s.browser.goto(nav_url)  # land on the right origin
-        await s.browser.clear_client_storage()  # then wipe client storage
-    response = await _fresh_goto(s.browser, nav_url)
-    after_state = await s.browser.get_state()
-    s._last_elements = after_state.elements
-
-    present = await _present_with_scroll(s, target_text, after_state)
+    # The agent's own forced responses would otherwise answer the fresh load
+    # and confirm themselves.
+    suspended_mocks = await s.browser.suspend_mocks()
+    try:
+        if clear_storage:
+            await s.browser.goto(nav_url)  # land on the right origin
+            await s.browser.clear_client_storage()  # then wipe client storage
+        response = await _fresh_goto(s.browser, nav_url)
+        settled = getattr(s.browser, "last_navigation_settled", True)
+        after_state = await s.browser.get_state()
+        s._last_elements = after_state.elements
+        present = await _present_with_scroll(s, target_text, after_state)
+        landed = s.browser.current_url
+    finally:
+        await s.browser.restore_mocks(suspended_mocks)
     status = response.status if response is not None else None
     load = {
         "status": status,
         "requested": nav_url,
-        "landed": s.browser.current_url,
+        "landed": landed,
         "frames": _state_frames(after_state),
-        "settled": True,
+        "settled": settled,
         "login_page": False,
     }
     check = persistence_check(expect_norm, present, load, expect_status)
@@ -141,9 +148,14 @@ async def verify_persistence(
                 "Target not found, but the page text exceeds the inspection limit — "
                 "absence cannot establish persistence."
             )
+        elif check["reason"] == "unsettled":
+            verdict = (
+                "Target absent, but the page's network did not settle — absence cannot "
+                "establish persistence. Re-check once the page finishes loading."
+            )
         elif check["reason"] == "moved":
             verdict = (
-                f"Target absent, but the load ended on {s.browser.current_url} instead of the "
+                f"Target absent, but the load ended on {landed} instead of the "
                 "requested page — absence there cannot establish persistence. Check the "
                 "page that actually shows the content."
             )
@@ -169,10 +181,15 @@ async def verify_persistence(
         "Do not repeat writes just to obtain a receipt."
     )
     outcome = "INCONCLUSIVE" if matches is None else "MATCH" if matches else "MISMATCH"
+    mocks_note = (
+        f"  Mocks suspended for the load and restored: {len(suspended_mocks)}\n"
+        if suspended_mocks
+        else ""
+    )
     return ToolText(
         f"verify_persistence(expect={expect_norm!r}, target={target_text[:60]!r}) "
         f"on {nav_url}\n"
-        f"  Result: {outcome} — {verdict}\n"
+        f"  Result: {outcome} — {verdict}\n{mocks_note}"
         f"  Decide: {guidance}\n  suggested_verify: {suggested_verify}",
         {
             "verification": dict(s.verification_checks[-1]),

@@ -128,9 +128,11 @@ the password-field and login-heading checks also read the main frame.
 
 `verify_persistence` reports whether the expected state held before reload,
 the loaded page's HTTP `status`, and whether the check is conclusive. Observed
-presence is always conclusive. Absence on an HTTP error page or login wall is
-inconclusive (`matches: null`), because the target may be missing for the wrong
-reason. Pass `expect_status` when that status is the intended outcome, such as
+presence is always conclusive. Absence on an HTTP error page or login wall, or
+on a load whose network did not settle, is inconclusive (`matches: null`),
+because the target may be missing for the wrong reason. Like `record_bug`
+verification, the load runs with the session's network mocks suspended; they
+are restored afterwards, also when the load fails. Pass `expect_status` when that status is the intended outcome, such as
 404 for a deleted item's own page; a different status is a conclusive mismatch.
 Each check records `expect_status` (or `null`), `text_matches` and
 `status_matches` (`null` without an expected status), so an exported mismatch

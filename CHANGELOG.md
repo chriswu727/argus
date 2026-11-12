@@ -14,6 +14,10 @@
   longer counts as present.
 - Login-wall phrases are searched in the main frame's visible text, so a sign-in
   banner rendered in a shadow root makes an absent symptom inconclusive.
+- `verify_persistence` suspends the session's network mocks for its fresh load
+  and restores them afterwards, so it can no longer confirm a response the agent
+  injected, and reports an absent target on a page whose network never settles
+  as inconclusive.
 
 ## 0.12.3 - 2026-11-10
 
