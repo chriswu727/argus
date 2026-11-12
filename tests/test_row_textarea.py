@@ -105,3 +105,23 @@ async def test_exported_row_ignores_textarea_content(isolated_runtime, row_app, 
             assert "missing or ambiguous" in str(exported.data["run"]), exported
     finally:
         await isolated_runtime.shutdown()
+
+
+async def test_textarea_content_stays_out_of_dialogs_and_focus(isolated_runtime, row_app):
+    _, base = row_app
+    try:
+        await start_session(base)
+        page = isolated_runtime.session.browser._page
+        await page.evaluate(
+            """() => document.body.insertAdjacentHTML('beforeend',
+            '<div role="dialog" class="modal" style="display:block">Rotate key'
+            + '<textarea id="dialog-token" name="token">tok-dialog-777</textarea></div>')"""
+        )
+        await page.focus("#dialog-token")
+        state = await isolated_runtime.session.browser.get_state()
+        assert "Rotate key" in str(state.open_modals)
+        assert "tok-dialog-777" not in str(state.open_modals)
+        assert "tok-dialog-777" not in str(state.focused)
+        assert "tok-dialog-777" not in str(await observe())
+    finally:
+        await isolated_runtime.shutdown()
