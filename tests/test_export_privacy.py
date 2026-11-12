@@ -78,6 +78,26 @@ async def test_subprocess_output_is_never_reflected(tmp_path, channel):
     assert quote(private, safe="") not in json.dumps(result)
 
 
+@pytest.mark.parametrize(
+    "line,outcome,reason",
+    [
+        ("ARGUS_INCONCLUSIVE: moved: ended on /SYNTHETIC_PRIVATE", "inconclusive", "moved"),
+        ("ARGUS_INCONCLUSIVE: http_error: HTTP 503 at SYNTHETIC_PRIVATE", "inconclusive", None),
+        ("ARGUS_INCONCLUSIVE: SYNTHETIC_PRIVATE: made up", "errored", None),
+    ],
+)
+async def test_inconclusive_marker_maps_to_fixed_reason_text(tmp_path, line, outcome, reason):
+    script = tmp_path / "inconclusive.py"
+    script.write_text(f"import sys\nprint({line!r}, file=sys.stderr)\nsys.exit(1)\n")
+    result = await run_exported_test(script, 10)
+    assert result["outcome"] == outcome
+    assert "SYNTHETIC_PRIVATE" not in json.dumps(result)
+    if reason:
+        assert result["reason"] == reason
+    if "http_error" in line:
+        assert result["reason"] == "http_error" and "HTTP 503" in result["detail"]
+
+
 async def test_real_browser_navigation_errors_hide_url_in_tool_and_standalone_output(tmp_path):
     private = "SYNTHETIC_NAV_ERROR"
     secrets = {}

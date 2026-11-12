@@ -232,8 +232,8 @@ async def test_polling_does_not_hide_observed_symptom(isolated_runtime, contract
         assert exported.data["run"]["outcome"] == "fails_on_symptom", exported
         handler.body = '<h1>Tasks</h1><script>fetch("/poll")</script>'
         exported = await export_test(recorded.data["finding_id"], run=True)
-        assert exported.data["run"]["outcome"] == "errored", exported
-        assert "absence is inconclusive" in exported.data["run"]["detail"]
+        assert exported.data["run"]["outcome"] == "inconclusive", exported
+        assert exported.data["run"]["reason"] == "unsettled"
         _write_journal(isolated_runtime.session)
         entries = _journal_entries(urlparse(base).netloc)
         results = await check_entries(isolated_runtime.session, entries, base)

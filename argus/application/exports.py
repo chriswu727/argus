@@ -47,6 +47,9 @@ async def export_test(finding_id: str, run: bool = False, save_private_values: b
         run: Run the test once now to show that it fails on the symptom. This
             repeats the journey's writes against the app, so use it only when
             the user authorized repeating them (for example throwaway data).
+            The run's outcome is fails_on_symptom, passes, inconclusive (the
+            fresh load could not show the symptom either way), incomplete or
+            errored.
     """
     s = _require_session()
     err = _require_web_session(s, "export_test")
@@ -162,6 +165,13 @@ async def export_test(finding_id: str, run: bool = False, save_private_values: b
             lines.append(
                 "  Ran once: PASSES now, so it does not reproduce the bug. Do not rely on it "
                 "as a regression check until the journey or the check is fixed."
+            )
+        elif outcome == "inconclusive":
+            lines.append(
+                f"  Ran once: INCONCLUSIVE ({result['detail']}). The fresh load could not show "
+                "the symptom either way, so this run neither reproduces the bug nor shows it "
+                "fixed. Under pytest an inconclusive check fails; re-run it once the page "
+                "loads as it did when the finding was verified."
             )
         else:
             lines.append(f"  Ran once: errored before the check ({result['detail']}).")
