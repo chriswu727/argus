@@ -88,14 +88,7 @@ def _marker_visible(text: str, state: PageState) -> bool:
     `value`. A liveness marker (a user's name/email) is commonly pre-filled into
     a logged-out login form's value, which would falsely read as 'logged in'.
     """
-    if not text.strip():
-        return False
-    if _token_present(text, state.searchable_text):
-        return True
-    for el in state.elements:
-        if el.text and _token_present(text, el.text):
-            return True
-    return False
+    return _visible_text_in_state(text, state)
 
 
 def _visible_text_in_state(text: str, state: PageState) -> bool:

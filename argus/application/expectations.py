@@ -5,7 +5,7 @@ from argus.domain.models import (
 )
 from argus.security import _redact
 
-from .text import _token_present
+from .text import _token_present, _visible_text_in_state
 
 _EXPECT_KEYS = {"count", "gains", "removes", "text_present", "text_absent", "toast", "url_changed"}
 
@@ -107,6 +107,8 @@ def _evaluate_expectation(before: PageState, after: PageState, expect: dict) -> 
                     return True
         return False
 
+    _shown = _visible_text_in_state
+
     c = expect.get("count")
     if c is not None:
         if not (isinstance(c, dict) and c.get("label")):
@@ -161,16 +163,16 @@ def _evaluate_expectation(before: PageState, after: PageState, expect: dict) -> 
 
     if "text_present" in expect:
         t = expect["text_present"]
-        ok = _in(t, after) and not _in(t, before)
+        ok = _shown(t, after) and not _shown(t, before)
         detail = (
             "appeared"
             if ok
-            else ("already there before action" if _in(t, before) else "not visible after")
+            else ("already there before action" if _shown(t, before) else "not visible after")
         )
         results.append((f"text appears {t!r}", ok, detail))
     if "text_absent" in expect:
         t = expect["text_absent"]
-        ok = not _in(t, after)
+        ok = not _shown(t, after)
         results.append((f"text absent {t!r}", ok, "absent" if ok else "STILL visible"))
     if "toast" in expect:
         t = expect["toast"]
