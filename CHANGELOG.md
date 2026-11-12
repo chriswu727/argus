@@ -5,6 +5,20 @@
 - Claude plugin 0.12.4 and Codex plugin 0.12.3 pin the published Argus 0.12.3
   runtime and refresh their dependency locks and setup commands.
 
+## Unreleased
+
+- Fresh-load verification and `verify_persistence` read the same visible text:
+  the page and every visible frame (cross-origin frames and open shadow roots
+  included) plus the values of visible fields. Text that is only inside an
+  iframe is now found, and hidden text inside a visible list row or element no
+  longer counts as present.
+- Login-wall phrases are searched in the main frame's visible text, so a sign-in
+  banner rendered in a shadow root makes an absent symptom inconclusive.
+- `verify_persistence` suspends the session's network mocks for its fresh load
+  and restores them afterwards, so it can no longer confirm a response the agent
+  injected, and reports an absent target on a page whose network never settles
+  as inconclusive.
+
 ## 0.12.3 - 2026-11-10
 
 Fixes from a full audit of 0.12.2. Journals and exported tests stay compatible.

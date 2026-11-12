@@ -110,6 +110,9 @@ class PageState:
     canvases: List[Dict] = field(default_factory=list)  # pixel-drawn regions (canvas/WebGL)
     focused: Optional[Dict] = None
     viewport: Optional[Dict] = None
+    # Per-frame visible text facts (collect_text_js.js), main frame first; what
+    # fresh-load verification reads to decide whether a symptom is present.
+    frames: List[Dict] = field(default_factory=list)
     timestamp: datetime = field(default_factory=datetime.now)
 
     @property

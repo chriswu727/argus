@@ -1,82 +1,42 @@
 from __future__ import annotations
 
-from urllib.parse import urldefrag, urlparse, urlsplit
+from urllib.parse import urldefrag, urlparse
 
 from argus.domain.models import (
     PageState,
 )
-from argus.domain.verification import LOGIN_WALL_PHRASES as _LOGOUT_PHRASES
+from argus.domain.verdict import (
+    is_login_page,
+    load_gate,
+    login_form,
+    looks_logged_out,
+    reason_text,
+    receipt_verdict,
+    status_observation,
+    text_observation,
+)
+from argus.domain.verdict import moved_from as _moved_from
 
 from .evidence import _auto_screenshot
 from .session import Session
-from .text import _present_with_scroll, _resolve_url, _token_present, _visible_text_in_state
+from .text import (
+    _main_facts,
+    _present_with_scroll,
+    _resolve_url,
+    _state_frames,
+    _visible_text_in_state,
+)
+
+_status_observation = status_observation
+_receipt_verdict = receipt_verdict
 
 
 def _looks_logged_out(state: PageState) -> bool:
-    t = (state.page_text or "").lower()
-    login_heading = any(
-        str(heading.get("text", "")).strip().lower() in {"sign in", "log in", "login"}
-        for heading in state.headings
-    )
-    password = any(el.type == "password" and not el.frame for el in state.elements)
-    return (login_heading and password) or any(p in t for p in _LOGOUT_PHRASES)
-
-
-_LOGIN_WORDS = (
-    "sign in",
-    "signin",
-    "log in",
-    "login",
-    "log on",
-    "anmelden",
-    "einloggen",
-    "connexion",
-    "se connecter",
-    "iniciar sesión",
-    "iniciar sesion",
-    "acceder",
-    "accedi",
-    "entrar",
-    "войти",
-    "вход",
-    "登录",
-    "登入",
-    "登錄",
-    "ログイン",
-    "로그인",
-)
+    return looks_logged_out(_main_facts(state))
 
 
 def _login_form(state: PageState) -> bool:
-    """A password form whose heading or submit control names a login action.
-
-    Wider than _looks_logged_out (any wording, common UI languages), so it only
-    decides whether an ABSENT symptom can be trusted, never a present one.
-    """
-    if not any(el.type == "password" and not el.frame for el in state.elements):
-        return False
-    labels = [str(heading.get("text", "")) for heading in state.headings]
-    for el in state.elements:
-        if el.frame:
-            continue
-        if el.tag == "button" or el.role == "button" or el.type in {"submit", "button"}:
-            labels.extend(filter(None, (el.text, el.value, el.aria_label)))
-    return any(_token_present(word, label) for label in labels for word in _LOGIN_WORDS)
-
-
-def _moved_from(requested: str, landed: str) -> bool:
-    """True when the load ended on a different page than the one requested."""
-    if not landed:
-        return False
-    want, got = urlsplit(requested), urlsplit(landed)
-    if (want.scheme, want.netloc.lower(), want.path.rstrip("/")) != (
-        got.scheme,
-        got.netloc.lower(),
-        got.path.rstrip("/"),
-    ):
-        return True
-    # A hash route is part of the page identity; a plain anchor is not.
-    return want.fragment.startswith(("/", "!")) and want.fragment != got.fragment
+    return login_form(_main_facts(state))
 
 
 async def _fresh_goto(browser, url: str):
@@ -105,46 +65,6 @@ async def _requested_status(response) -> int | None:
         return first.status if first is not None else response.status
     except Exception:
         return response.status
-
-
-def _status_observation(
-    expected: int, direct: int | None, final: int | None, moved: bool, login: bool
-) -> tuple[bool | None, str | None]:
-    """Compare one fresh load against an expected HTTP status.
-
-    Returns (matched, reason); matched None means the load cannot tell whether
-    the recorded response is still served.
-    """
-    if final is None or direct is None:
-        return None, "clean load returned no HTTP response — can't compare the status"
-    if expected >= 400:
-        if expected in (direct, final):
-            return True, None
-        if final >= 400:
-            return None, (
-                f"clean load returned HTTP {final}, not the recorded {expected} — "
-                "a different failure doesn't show the recorded one is fixed"
-            )
-        if moved or login:
-            return None, (
-                "clean load was redirected or hit a login page — "
-                f"can't tell whether HTTP {expected} is still returned"
-            )
-        return False, None
-    if direct == expected and not moved:
-        if login:
-            return (
-                None,
-                f"clean load returned HTTP {direct} for a login page — not the recorded page",
-            )
-        return True, None
-    if moved or direct in (401, 403, 407, 429) or direct >= 500:
-        return None, (
-            f"clean load answered HTTP {direct}"
-            + (" and ended on another page" if moved else "")
-            + f" — access or availability, not necessarily a fix of the recorded HTTP {expected}"
-        )
-    return False, None
 
 
 async def _run_reproduction_check(
@@ -214,12 +134,7 @@ async def _run_reproduction_check(
     try:
         baseline = await s.browser.get_state()
         login_page = verify.get(
-            "_login_page",
-            (
-                baseline.url == nav_url
-                and _looks_logged_out(baseline)
-                and not any(p in baseline.page_text.lower() for p in _LOGOUT_PHRASES)
-            ),
+            "_login_page", baseline.url == nav_url and is_login_page(_main_facts(baseline))
         )
         evidence["login_page"] = bool(login_page)
         if verify.get("clear_storage"):
@@ -234,58 +149,39 @@ async def _run_reproduction_check(
             state = await s.browser.get_state()
             landed = s.browser.current_url
             moved = _moved_from(nav_url, landed)
+            frames = _state_frames(state)
+            facts = frames[0]
             if expected_status is not None:
-                matched, inconclusive = _status_observation(
+                matched, inconclusive = status_observation(
                     expected_status,
                     await _requested_status(resp),
                     status,
                     moved,
-                    login_page is not True and (_looks_logged_out(state) or _login_form(state)),
+                    login_page is not True and (looks_logged_out(facts) or login_form(facts)),
                 )
                 if matched is None:
                     break
                 observations.append(matched)
                 continue
+            load = {
+                "status": status,
+                "requested": nav_url,
+                "landed": landed,
+                "frames": frames,
+                "settled": getattr(s.browser, "last_navigation_settled", True),
+                "login_page": bool(login_page),
+                "login_page_recorded": verify.get("_login_page") is True,
+            }
             # A 4xx/5xx page or a login wall makes the symptom absent for the
             # wrong reason — never certify (esp. expect=absent) off that.
-            if resp is not None and resp.status >= 400:
-                inconclusive = (
-                    f"clean load returned HTTP {resp.status} — can't attribute the symptom"
-                )
+            code = load_gate(load)
+            if code is None:
+                present = await _present_with_scroll(s, target, state)
+                observed, code = text_observation(load, present)
+            if code is not None:
+                inconclusive = reason_text(code, status, landed)
                 break
-            if _looks_logged_out(state) and (
-                not login_page
-                or state.url != nav_url
-                or any(p in state.page_text.lower() for p in _LOGOUT_PHRASES)
-            ):
-                inconclusive = "clean load hit a login wall — the session may have expired"
-                break
-            present = await _present_with_scroll(s, target, state)
-            if (
-                not present
-                and (_looks_logged_out(state) or _login_form(state))
-                and verify.get("_login_page") is not True
-            ):
-                inconclusive = (
-                    "clean load hit a login wall — absence cannot confirm an application symptom"
-                )
-                break
-            if not present and moved:
-                inconclusive = (
-                    f"clean load ended on {urlsplit(landed).path or '/'} instead of the "
-                    "requested page — absence there cannot confirm an application symptom; "
-                    "verify at the page that actually shows the content"
-                )
-                break
-            if not present and state.text_truncated:
-                inconclusive = (
-                    "page text exceeds the inspection limit — absence is not reliable evidence"
-                )
-                break
-            if not present and not getattr(s.browser, "last_navigation_settled", True):
-                inconclusive = "clean load did not settle — absence is not reliable evidence"
-                break
-            observations.append(present)
+            observations.append(observed)
         evidence["evidence_url"] = s.browser.current_url
         if verify.get("_screenshot_label"):
             try:
@@ -352,7 +248,7 @@ async def _run_reproduction_check(
             receipt["mocks_suspended"] = suspended_mocks
         return receipt
 
-    receipt = _receipt_verdict(observations, expect)
+    receipt = receipt_verdict(observations, expect)
     receipt.update(
         {
             "method": "fresh-load symptom re-check (server truth, no fixture reset)",
@@ -365,22 +261,6 @@ async def _run_reproduction_check(
     if suspended_mocks:
         receipt["mocks_suspended"] = suspended_mocks
     return receipt
-
-
-def _receipt_verdict(observations: list, expect: str) -> dict:
-    """Pure verdict from a list of present/absent observations vs the claim.
-
-    reproduced = every run matched the claim; flaky = some but not all did.
-    """
-    matches = [(p and expect == "present") or (not p and expect == "absent") for p in observations]
-    hits = sum(1 for m in matches if m)
-    return {
-        "attempted": True,
-        "reproduced": bool(matches) and all(matches),
-        "flaky": 0 < hits < len(matches),
-        "runs": f"{hits}/{len(matches)}",
-        "expect": expect,
-    }
 
 
 async def _run_replay_receipt(s: "Session", verify: dict, actions: list) -> dict:

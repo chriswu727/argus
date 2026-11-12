@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import re
 from urllib.parse import urljoin
 
 from argus.domain.models import (
     PageState,
 )
-from argus.domain.wordchars import WORD_CHAR as _WORD_CHAR
+from argus.domain.verdict import frames_present
+from argus.domain.verdict import token_present as _token_present
 
 from .session import Session
 
@@ -27,43 +27,60 @@ def _resolve_url(s: "Session", url: str) -> str:
     return urljoin(base, url) if base else url
 
 
-def _token_present(needle: str, haystack: str) -> bool:
-    """Whitespace-normalised, word-boundary containment.
+_NOT_TEXT_FIELDS = {
+    "hidden",
+    "password",
+    "checkbox",
+    "radio",
+    "file",
+    "image",
+    "submit",
+    "button",
+    "reset",
+    "range",
+    "color",
+}
 
-    A bare substring scan lets a claimed symptom match incidentally — the
-    target living inside a longer word ('cat' in 'category', 'Delete' in
-    'Deleted') — which would stamp a VERIFIED receipt on a non-bug. Require
-    the needle to sit on word boundaries so only a token-level occurrence
-    counts. This does not prove the occurrence is *the* one claimed, but it
-    kills the mid-word / bleed-through false positives the receipt must avoid.
+
+def _state_frames(state: PageState) -> list[dict]:
+    """Per-frame facts for the verdict rules, main frame first.
+
+    A browser-extracted state carries them; a state built without the
+    collector falls back to its main-document text and extracted controls.
     """
-    needle = " ".join(needle.lower().split())
-    haystack = " ".join(haystack.lower().split())
-    if not needle:
-        return False
-    # A boundary matters only on a word-character edge of the needle: "-50%"
-    # printed straight after a price ("$89.99-50%") is a real occurrence.
-    before = f"(?<!{_WORD_CHAR})" if re.match(_WORD_CHAR, needle) else ""
-    after = f"(?!{_WORD_CHAR})" if re.search(_WORD_CHAR + "$", needle) else ""
-    return re.search(before + re.escape(needle) + after, haystack) is not None
+    if state.frames:
+        return state.frames
+    buttons = []
+    fields = []
+    for el in state.elements:
+        if el.frame:
+            continue
+        if el.tag == "button" or el.role == "button" or el.type in {"submit", "button"}:
+            buttons.extend(filter(None, (el.text, el.value, el.aria_label)))
+        elif el.tag in {"input", "textarea", "select"} and el.value:
+            if (el.type or "text") not in _NOT_TEXT_FIELDS:
+                fields.append(el.value)
+    return [
+        {
+            "text": state.searchable_text or "",
+            "fields": fields,
+            "headings": [str(heading.get("text", "")) for heading in state.headings],
+            "buttons": buttons,
+            "password": any(el.type == "password" and not el.frame for el in state.elements),
+            "truncated": bool(state.text_truncated),
+        }
+    ]
+
+
+def _main_facts(state: PageState) -> dict:
+    return _state_frames(state)[0]
 
 
 def _text_in_state(text: str, state: PageState) -> bool:
-    """Check if text is present as a token in page_text, elements, or item_lists."""
+    """The target is in some frame's visible text or a visible field's value."""
     if not text.strip():
         return False
-    if _token_present(text, state.searchable_text):
-        return True
-    for el in state.elements:
-        if el.text and _token_present(text, el.text):
-            return True
-        if el.value and _token_present(text, el.value):
-            return True
-    for items in state.item_lists.values():
-        for item in items:
-            if _token_present(text, item):
-                return True
-    return False
+    return frames_present(text, _state_frames(state))
 
 
 def _marker_visible(text: str, state: PageState) -> bool:
@@ -82,21 +99,12 @@ def _marker_visible(text: str, state: PageState) -> bool:
 
 
 def _visible_text_in_state(text: str, state: PageState) -> bool:
-    """Visible-content match: page text, element text, and list rows — but NOT
-    input `value` (the replay just typed into those; matching them would certify
-    a symptom off the text the replay itself entered)."""
+    """Visible text of any frame — but NOT field values (the replay just typed
+    into those; matching them would certify a symptom off the text the replay
+    itself entered)."""
     if not text.strip() or state is None:
         return False
-    if _token_present(text, state.searchable_text):
-        return True
-    for el in state.elements:
-        if el.text and _token_present(text, el.text):
-            return True
-    for items in state.item_lists.values():
-        for row in items:
-            if _token_present(text, row):
-                return True
-    return False
+    return any(_token_present(text, frame.get("text") or "") for frame in _state_frames(state))
 
 
 def _short(text: str, n: int = 60) -> str:
