@@ -21,10 +21,10 @@ VERDICT_VERSION = "1"
 # Scripts written without spaces between words have no word boundary to test:
 # "已完成" inside "任务已完成" is a real occurrence, not a mid-word match.
 UNSPACED = (
-    "฀-໿က-႟ក-៿"  # Thai, Lao, Myanmar, Khmer
-    "぀-ヿㇰ-ㇿ"  # Hiragana, Katakana
-    "㐀-䶿一-鿿豈-﫿"  # CJK ideographs
-    "가-힯"  # Hangul syllables (particles attach without a space)
+    "\u0e00-\u0eff\u1000-\u109f\u1780-\u17ff"  # Thai, Lao, Myanmar, Khmer
+    "\u3040-\u30ff\u31f0-\u31ff"  # Hiragana, Katakana
+    "\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff"  # CJK ideographs
+    "\uac00-\ud7af"  # Hangul syllables (particles attach without a space)
     "\U00020000-\U0003134f"  # CJK extensions
 )
 WORD_CHAR = f"[^\\W{UNSPACED}]"
