@@ -194,6 +194,15 @@ def collector_source() -> str:
     )
 
 
+def row_text_source() -> str:
+    """The installed row-text rule (parent_context), embedded verbatim in exports
+    that locate a control by its row."""
+    source = files("argus.adapters.scripts").joinpath("row_text_js.js").read_text(encoding="utf-8")
+    if '"""' in source or "\\" in source:
+        raise ValueError("the row-text rule cannot be embedded as a raw string")
+    return source.strip()
+
+
 def _doc(text: str) -> str:
     """Text safe inside the generated module's triple-quoted docstring."""
     return text.replace("\\", "\\\\").replace('"""', "'''")
@@ -380,15 +389,34 @@ def _replay():
 '''
 
 _ROW_HELPER = '''ROW_SELECTOR = {row_selector}
+ROW_TEXT_JS = r"""{row_text}"""
+# Each row's text, and which other rows enclose it (across open shadow roots,
+# which Playwright's locators also reach).
+ROWS_JS = (
+    "(rows) => {{ const rowText = " + ROW_TEXT_JS + ";"
+    " const index = new Map(rows.map((row, i) => [row, i]));"
+    " return rows.map((row) => {{ const outer = [];"
+    " for (let n = row.parentNode || row.host; n; n = n.parentNode || n.host)"
+    " if (index.has(n)) outer.push(index.get(n));"
+    " return {{ text: rowText(row), outer }}; }}); }}"
+)
 
 
 def _in_row(page, text, find):
     """`find(scope)` within the row showing `text`: the innermost row holding
-    the text and the control, not a list container that also matches."""
-    pattern = re.compile(r"^\\s*" + r"\\s+".join(re.escape(word) for word in text.split()) + r"\\s*$", re.IGNORECASE)
-    rows = page.locator(ROW_SELECTOR).filter(has_text=pattern).filter(has=find(page))
-    controls = find(rows.filter(has_not=rows))
-    if controls.count() != 1:
+    the text and the control, not a list container that also matches. A row's
+    text leaves out textarea content, as when Argus recorded it."""
+    key = " ".join(text.split()).lower()
+    rows = page.locator(ROW_SELECTOR)
+    facts = rows.evaluate_all(ROWS_JS)
+    held = {{
+        i
+        for i, fact in enumerate(facts)
+        if " ".join(fact["text"].split()).lower() == key and find(rows.nth(i)).count()
+    }}
+    innermost = [i for i in held if not any(i in facts[j]["outer"] for j in held)]
+    controls = find(rows.nth(innermost[0])) if len(innermost) == 1 else None
+    if controls is None or controls.count() != 1:
         raise _ExportFailure("replay target is missing or ambiguous; no row was selected")
     return controls
 
@@ -634,7 +662,7 @@ def generate_test(
     body_start = _BODY.format(
         preflight=preflight,
         row_helper=(
-            _ROW_HELPER.format(row_selector=_q(_ROW_SELECTOR))
+            _ROW_HELPER.format(row_selector=_q(_ROW_SELECTOR), row_text=row_text_source())
             if any("_in_row(" in line for line in lines)
             else ""
         ),

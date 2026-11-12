@@ -29,6 +29,9 @@ unselected `<option>` text and closed `<details>` content no longer count.
 - A `<textarea>` is named by its aria-label, `<label>`, placeholder or name, and
   its initial content is reported only as its value, so a secret-named field's
   content is hidden as `(value hidden)` instead of shown as its label.
+- A row's text (the `near:` context, repeating item lists and exported tests'
+  row matching) leaves out `<textarea>` content, so a secret in a textarea no
+  longer shows through the row of every control beside it.
 - Fresh-load verification and `verify_persistence` read the same visible text:
   the page and every visible frame (cross-origin frames and open shadow roots
   included) plus the values of visible fields. Text that is only inside an

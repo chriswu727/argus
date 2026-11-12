@@ -3,6 +3,8 @@
     const result = { pageText: '', fullText: '', textTruncated: false, toasts: [], counts: {}, cssIndicators: [], itemLists: {},
                      links: [], images: [], metaTags: {}, headings: [], a11yIssues: [], mixedContent: [],
                      openModals: [], focused: null, viewport: null, canvases: [] };
+    // Replaced with row_text_js.js when the script is loaded.
+    const rowText = ARGUS_ROW_TEXT_JS;
 
     // Canvas regions — pixel-drawn UI (charts/dashboards, maps, whiteboards,
     // PDF.js, WebGL games) is invisible to DOM extraction. Surface each visible
@@ -142,7 +144,7 @@
                 // Lists sharing a class or tag must not overwrite each other.
                 let key = base;
                 for (let n = 2; key in result.itemLists; n++) key = base + ' #' + n;
-                result.itemLists[key] = items.map(it => it.textContent.trim().slice(0, 200));
+                result.itemLists[key] = items.map(it => rowText(it).trim().slice(0, 200));
             }
         });
     } catch(e) {}
