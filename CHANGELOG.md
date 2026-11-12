@@ -1,5 +1,11 @@
 # Changelog
 
+## Plugin updates - 2026-11-12
+
+- Claude plugin 0.13.0 and Codex plugin 0.13.0 pin the published Argus 0.13.0
+  runtime and refresh their dependency locks and setup commands. The two
+  plugins now share the runtime's version number.
+
 ## Plugin updates - 2026-11-10
 
 - Claude plugin 0.12.4 and Codex plugin 0.12.3 pin the published Argus 0.12.3
