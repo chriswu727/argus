@@ -7,13 +7,13 @@ verification, findings, reports, regression checks, and Playwright test export.
 
 This is a project-maintained plugin, not an Anthropic product. Providing this
 package does not mean it has been accepted into Anthropic's directory.
-Plugin 0.13.0 includes Argus 0.13.0 and its shared verdict rules.
+Plugin 0.13.1 includes Argus 0.13.1, which downloads Chromium on first use.
 
 ## Requirements and setup
 
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and make
 `uv` available to the application that starts Claude. The launcher selects Python
-3.12 and runs the exact published `argus-testing==0.13.0` release from the bundled
+3.12 and runs the exact published `argus-testing==0.13.1` release from the bundled
 `uv.lock`, which pins dependency versions, sources, and hashes. It refuses to run
 if the project and lockfile disagree. `uv run --isolated` creates a temporary
 environment for each server process and removes it on normal exit. Downloads
@@ -26,7 +26,7 @@ Before starting Claude with the plugin for the first time, warm uv's cache and
 install the matching Chromium browser. This works from any directory:
 
 ```bash
-uvx --python 3.12 --from argus-testing==0.13.0 --with playwright==1.64.1 python -m playwright install chromium
+uvx --python 3.12 --from argus-testing==0.13.1 --with playwright==1.64.1 python -m playwright install chromium
 ```
 
 The first plugin start otherwise downloads Python 3.12 and the locked

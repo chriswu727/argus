@@ -1,5 +1,10 @@
 # Changelog
 
+## Plugin updates - 2026-11-12 (0.13.1)
+
+- Claude plugin 0.13.1 and Codex plugin 0.13.1 pin the published Argus 0.13.1
+  runtime and refresh their dependency locks and setup commands.
+
 ## 0.13.1 - 2026-11-12
 
 - The first session downloads the Chromium build it needs instead of failing
