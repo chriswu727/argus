@@ -108,6 +108,8 @@ def test_moved_from_compares_pages_not_anchors():
         ({"landed": "http://a.test/home"}, False, (None, "moved")),
         ({"frames": [frame(truncated=True)]}, False, (None, "truncated")),
         ({"frames": [frame(), frame(truncated=True)]}, False, (None, "truncated")),
+        ({"frames": [frame(), frame(unread=True)]}, False, (None, "unread")),
+        ({"frames": [frame(), frame(unread=True)]}, True, (True, None)),
         ({"settled": False}, True, (True, None)),
         ({"settled": False}, False, (None, "unsettled")),
         ({"frames": [frame(password=True, buttons=["Anmelden"])]}, False, (None, "login_form")),

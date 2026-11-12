@@ -1182,7 +1182,7 @@ class BrowserDriver:
                     return
                 # Unread text must not let an absence count as conclusive.
                 facts = {"text": "", "fields": [], "headings": [], "buttons": []}
-                facts.update(password=False, truncated=True)
+                facts.update(password=False, truncated=False, unread=True)
             frames.append(facts)
             for child in frame.child_frames:
                 try:
