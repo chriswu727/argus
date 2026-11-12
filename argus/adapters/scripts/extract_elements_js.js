@@ -5,6 +5,9 @@
     const out = [];
     const seen = new Set();
 
+    // Replaced with row_text_js.js when the script is loaded.
+    const rowText = ARGUS_ROW_TEXT_JS;
+
     // Each listed element is remembered in its own window under a reference the
     // "argus" selector engine resolves, so an action reaches this exact node
     // rather than whatever a rebuilt selector happens to match first.
@@ -186,7 +189,10 @@
             })() || el.getAttribute('title') || null,
             name: el.name || null,
             id: el.id || null,
-            parent_context: (el.closest('li, tr, .card, .list-item, [class*="item"], [class*="row"]') || {}).textContent?.trim()?.slice(0, 200) || null,
+            parent_context: (function(){
+                var row = el.closest('li, tr, .card, .list-item, [class*="item"], [class*="row"]');
+                return row ? (rowText(row).trim().slice(0, 200) || null) : null;
+            })(),
             shadow: inShadow,
             frame: frameSel || null,
             css_path: (!inShadow && ['input', 'select', 'textarea'].includes(el.tagName.toLowerCase()) &&

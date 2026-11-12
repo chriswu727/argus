@@ -92,6 +92,8 @@ def _response_body_capture_reason(
     return None
 
 
+_ROW_TEXT_JS = files("argus.adapters.scripts").joinpath("row_text_js.js").read_text().strip()
+
 # JS snippet to extract visible interactive elements from the page.
 # Walks open shadow roots too: querySelectorAll does not cross shadow
 # boundaries, so a plain document query is blind to Web Components. We
@@ -99,12 +101,18 @@ def _response_body_capture_reason(
 # with shadow:true (the resolver/selector layer needs to know, because
 # Playwright's :has-text engine doesn't pierce shadow — see _build_selector).
 _EXTRACT_ELEMENTS_JS = (
-    files("argus.adapters.scripts").joinpath("extract_elements_js.js").read_text()
+    files("argus.adapters.scripts")
+    .joinpath("extract_elements_js.js")
+    .read_text()
+    .replace("ARGUS_ROW_TEXT_JS", _ROW_TEXT_JS, 1)
 )
 
 # JS snippet to extract full page content for smart detection.
 _EXTRACT_PAGE_CONTENT_JS = (
-    files("argus.adapters.scripts").joinpath("extract_page_content_js.js").read_text()
+    files("argus.adapters.scripts")
+    .joinpath("extract_page_content_js.js")
+    .read_text()
+    .replace("ARGUS_ROW_TEXT_JS", _ROW_TEXT_JS, 1)
 )
 
 # JS snippet to deeply inspect one element. Returns rendered styles (the

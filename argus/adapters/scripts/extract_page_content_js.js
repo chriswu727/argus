@@ -3,6 +3,8 @@
     const result = { pageText: '', fullText: '', textTruncated: false, toasts: [], counts: {}, cssIndicators: [], itemLists: {},
                      links: [], images: [], metaTags: {}, headings: [], a11yIssues: [], mixedContent: [],
                      openModals: [], focused: null, viewport: null, canvases: [] };
+    // Replaced with row_text_js.js when the script is loaded.
+    const rowText = ARGUS_ROW_TEXT_JS;
 
     // Canvas regions — pixel-drawn UI (charts/dashboards, maps, whiteboards,
     // PDF.js, WebGL games) is invisible to DOM extraction. Surface each visible
@@ -39,7 +41,7 @@
         document.querySelectorAll(modalSels).forEach(el => {
             const s = window.getComputedStyle(el);
             if (s.display === 'none' || s.visibility === 'hidden') return;
-            const text = (el.textContent || '').trim().slice(0, 300);
+            const text = rowText(el).trim().slice(0, 300);
             if (!text) return;
             result.openModals.push({
                 role: el.getAttribute('role') || el.tagName.toLowerCase(),
@@ -61,9 +63,8 @@
                 id: f.id || null,
                 name: f.name || null,
                 ariaLabel: f.getAttribute('aria-label') || null,
-                text: (f.textContent || '').trim().slice(0, 80) || null,
-                placeholder: f.placeholder || null,
-                value: (typeof f.value === 'string' ? f.value.slice(0, 80) : null)
+                text: rowText(f).trim().slice(0, 80) || null,
+                placeholder: f.placeholder || null
             };
         }
     } catch(e) {}
@@ -86,7 +87,7 @@
     try {
         const sels = '.toast, [role="alert"], .alert-success, .alert-error, .alert-warning, [class*="toast"]';
         document.querySelectorAll(sels).forEach(el => {
-            const text = el.textContent.trim();
+            const text = rowText(el).trim();
             if (text) {
                 const s = window.getComputedStyle(el);
                 result.toasts.push({
@@ -101,7 +102,7 @@
     // 3. Number + label counts
     try {
         document.querySelectorAll('.stat, .stat-val, .count, .badge, h1, h2, h3, p, span').forEach(el => {
-            const text = el.textContent.trim();
+            const text = rowText(el).trim();
             const m = text.match(/^(\d+)\s+(.+)$/);
             if (m) result.counts[m[2].trim()] = parseInt(m[1], 10);
         });
@@ -113,7 +114,7 @@
             document.querySelectorAll('.' + cls).forEach(el => {
                 result.cssIndicators.push({
                     cls: cls,
-                    text: el.textContent.trim().slice(0, 100),
+                    text: rowText(el).trim().slice(0, 100),
                     tag: el.tagName.toLowerCase()
                 });
             });
@@ -142,7 +143,7 @@
                 // Lists sharing a class or tag must not overwrite each other.
                 let key = base;
                 for (let n = 2; key in result.itemLists; n++) key = base + ' #' + n;
-                result.itemLists[key] = items.map(it => it.textContent.trim().slice(0, 200));
+                result.itemLists[key] = items.map(it => rowText(it).trim().slice(0, 200));
             }
         });
     } catch(e) {}
