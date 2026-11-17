@@ -60,6 +60,32 @@ the user's broader task. The short version:
   Map → **Use it** (walk each goal end-to-end, carrying real state) →
   Hypothesize → Act → Observe → Verify → Record → Cover.
 
+## Running a pass without the user
+
+The user wants the result, not the run. Handle the routine parts yourself and
+ask only for what you cannot get: a login you were not given, or a decision
+outside the task.
+
+- **Address**: from the request, the conversation, the project's start script
+  and port, or a dev server that is already running. Start the app with the
+  project's own command when that is part of your task.
+- **Setup**: the first `start_session` downloads the browser; if it reports the
+  download is still running, wait and call it again.
+- **A target is gone or ambiguous**: `observe` and choose from what is there now.
+- **A timeout or error after a write**: check whether the write happened
+  (`observe`, `verify_persistence`) before repeating it.
+- **A failed session**: call `start_session` again with the unfinished goals.
+  It saves the earlier session's report first and returns it as
+  `data.unended_run`; confirmed findings are already in the journal.
+- **No account for a journey**: mark the goal `blocked` with the reason, finish
+  the rest, and say what you need in the report.
+- **After a fix**: start a session and call `regression_check`. When the bug
+  was a change that did not stay, repeat that action once on the fixed build
+  first, because the old data is still there.
+- **Report**: the journeys tested, each bug with impact, steps and evidence
+  paths, what was not finished and why. Inconclusive stays inconclusive, and a
+  run with no defects is a normal result.
+
 ## Structured results (0.8)
 
 Read `structuredContent.data`

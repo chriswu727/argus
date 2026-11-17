@@ -26,6 +26,11 @@
   and to check whether a write happened before repeating it.
 - `navigate` accepts a path such as `/settings`, resolved against the current
   page, as `verify_persistence` and `record_bug` already did.
+- The protocol `start_session` returns has a seventh step on recovering
+  without the user, so a host connected without a plugin gets it too.
+  `AGENTS.md` and `docs/evaluation.md` describe running a pass unattended and
+  how to accept it: deterministic scenarios in CI, and a host-level protocol
+  with defective, fixed and never-defective builds that has not been run yet.
 
 ## 0.13.1 - 2026-11-12
 
