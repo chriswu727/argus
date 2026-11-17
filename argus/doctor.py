@@ -23,6 +23,8 @@ class Check:
     ok: bool
     detail: str
     fix: str = ""
+    # Not there yet, and nothing for the user to do: Argus provides it on first use.
+    on_first_use: bool = False
 
 
 def install_command() -> str:
@@ -116,6 +118,17 @@ async def _chromium_checks(timeout: float) -> list[Check]:
             await browser.close()
         except Exception as exc:
             if not executable.exists():
+                if auto_install_enabled():
+                    return [
+                        Check(
+                            "Chromium browser",
+                            True,
+                            f"not downloaded yet for Playwright {playwright_version}; the first "
+                            "start_session downloads it (one time, about 150 MB). To fetch it "
+                            f"now: `{install_command()}`",
+                            on_first_use=True,
+                        )
+                    ]
                 return [
                     Check(
                         "Chromium browser",
@@ -178,24 +191,48 @@ def check_output_dir() -> Check:
 def render(checks: list[Check]) -> list[str]:
     lines = []
     for check in checks:
-        lines.append(f"  [{'ok' if check.ok else 'MISSING'}] {check.name}")
+        marker = "first use" if check.on_first_use else "ok" if check.ok else "MISSING"
+        lines.append(f"  [{marker}] {check.name}")
         lines.append(f"        {check.detail}")
         if check.fix and not check.ok:
             lines.append(f"        Fix: {check.fix}")
     return lines
 
 
-def main() -> int:
+def main(profile: str = "web") -> int:
+    """Print the checks and return the exit status for the tools `profile` serves.
+
+    Web testing needs only the web checks. The macOS screen grants count
+    toward the status when the profile includes the screen tools; otherwise
+    they are reported as optional.
+    """
     from argus.screen.permissions import check_all, is_macos, render_report
 
+    needs_screen = profile in {"screen", "full"}
     web = [*check_browser(), check_output_dir()]
     ok = all(check.ok for check in web)
     lines = ["Argus environment check", "", "Web testing:", *render(web), ""]
+    if not ok:
+        lines.append("Web testing is NOT ready: fix the items marked MISSING.")
+    elif any(check.on_first_use for check in web):
+        lines.append("Web testing is ready; the browser downloads on the first session.")
+    else:
+        lines.append("Web testing is ready.")
+    lines.append("")
     if is_macos():
         screen = check_all()
-        ok = ok and all(check.granted for check in screen)
+        granted = all(check.granted for check in screen)
+        if needs_screen:
+            ok = ok and granted
+        elif not granted:
+            lines.append(
+                "The grants below are for screen mode only (native macOS apps, experimental). "
+                "Web testing does not use them, and this check does not fail on them."
+            )
         lines.append(render_report(screen))
     else:
         lines.append("Screen mode: not available on this platform (macOS only).")
+        if needs_screen:
+            ok = False
     print("\n".join(lines))
     return 0 if ok else 1

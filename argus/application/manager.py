@@ -151,7 +151,9 @@ class SessionManager:
                 "end_session",
             }:
                 raise OperationError(
-                    ErrorCode.BACKEND, "Session failed; end it or start a new session."
+                    ErrorCode.BACKEND,
+                    "Session failed; its findings are kept. Call start_session to continue "
+                    "(the earlier findings are saved first) or end_session to write the report.",
                 )
             with runtime_scope(self):
                 if name not in {"start_session", "start_screen_session", "end_session"}:
@@ -183,7 +185,10 @@ class SessionManager:
             await self.close_backends()
             self.transition(SessionState.FAILED)
             return self._result(
-                f"{name}: operation timed out; session stopped. No automatic retry was attempted.",
+                f"{name}: operation timed out; session stopped. No automatic retry was "
+                "attempted. Findings recorded so far are kept: call start_session to continue "
+                "(they are saved first) or end_session to write the report. If this call was "
+                "changing data, check whether the change happened before repeating it.",
                 error,
             )
         except OperationError as exc:

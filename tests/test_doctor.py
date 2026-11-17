@@ -30,8 +30,24 @@ def test_output_dir_check_probes_with_a_real_file(monkeypatch, tmp_path):
     assert not check.ok and "ARGUS_OUTPUT_DIR" in check.fix
 
 
+def test_missing_browser_is_not_a_failure_when_the_first_session_downloads_it(
+    monkeypatch, tmp_path, capsys
+):
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path))
+    monkeypatch.delenv("ARGUS_AUTO_INSTALL_BROWSER", raising=False)
+    monkeypatch.setattr("argus.screen.permissions.is_macos", lambda: False)
+    (check,) = doctor.check_browser()
+    assert check.ok and check.on_first_use
+    assert "first start_session downloads it" in check.detail
+    assert doctor.main() == 0
+    output = capsys.readouterr().out
+    assert "[first use] Chromium browser" in output and "MISSING" not in output
+    assert "Web testing is ready; the browser downloads on the first session." in output
+
+
 def test_missing_browser_reports_install_command(monkeypatch, tmp_path):
     monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path))
+    monkeypatch.setenv("ARGUS_AUTO_INSTALL_BROWSER", "0")
     (check,) = doctor.check_browser()
     assert not check.ok and "not installed for Playwright" in check.detail
     assert check.fix == f"{sys.executable} -m playwright install chromium"
@@ -77,6 +93,37 @@ def test_doctor_exit_code_follows_web_checks(monkeypatch, capsys, ok):
     monkeypatch.setattr(doctor, "check_browser", lambda: [doctor.Check("Chromium", ok, "x")])
     monkeypatch.setattr(doctor, "check_output_dir", lambda: doctor.Check("Reports", True, "ok"))
     assert doctor.main() == (0 if ok else 1)
+
+
+def _screen_grants(monkeypatch, granted):
+    from argus.screen.permissions import PermissionCheck
+
+    monkeypatch.setattr("argus.screen.permissions.is_macos", lambda: True)
+    monkeypatch.setattr(
+        "argus.screen.permissions.check_all",
+        lambda: [PermissionCheck("Screen Recording", granted, "probe", "x-apple:settings")],
+    )
+    monkeypatch.setattr(doctor, "check_browser", lambda: [doctor.Check("Chromium", True, "x")])
+    monkeypatch.setattr(doctor, "check_output_dir", lambda: doctor.Check("Reports", True, "ok"))
+
+
+@pytest.mark.parametrize("profile", ["web", "advanced"])
+def test_missing_screen_grants_do_not_fail_a_web_profile(monkeypatch, capsys, profile):
+    _screen_grants(monkeypatch, False)
+    assert doctor.main(profile) == 0
+    output = capsys.readouterr().out
+    assert "Web testing is ready." in output
+    assert "[MISSING] Screen Recording" in output
+    assert "this check does not fail on them" in output
+
+
+@pytest.mark.parametrize("profile", ["screen", "full"])
+def test_screen_profiles_need_the_screen_grants(monkeypatch, capsys, profile):
+    _screen_grants(monkeypatch, False)
+    assert doctor.main(profile) == 1
+    assert "does not fail on them" not in capsys.readouterr().out
+    _screen_grants(monkeypatch, True)
+    assert doctor.main(profile) == 0
 
 
 async def test_start_session_launch_failure_names_the_install_command(

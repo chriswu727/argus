@@ -15,7 +15,7 @@ from argus.domain.verification import VerificationSpec, receipt_outcome, retaine
 
 from .coverage import _coverage_goal_index, _refresh_finding_coverage
 from .events import _BUG_TYPE_BY_NAME, _SEVERITY_BY_NAME
-from .evidence import _auto_screenshot
+from .evidence import _auto_screenshot, _journal_confirmed
 from .observation import _near_duplicate
 from .progress import Stage
 from .session import Session, _require_session
@@ -304,6 +304,10 @@ async def record_bug(
     s.bugs.append(bug)
     _refresh_finding_coverage(s, bug)
     verdict = receipt_outcome(receipt)
+    if verdict is True:
+        journal_warning = await _journal_confirmed(s)
+        if journal_warning:
+            warnings.append(journal_warning)
     code = (
         "verified" if verdict is True else "not_reproduced" if verdict is False else "inconclusive"
     )
@@ -550,6 +554,8 @@ async def _recheck_finding(
     _refresh_finding_coverage(s, bug)
     verdict = (receipt or {}).get("reproduced")
     code = _verdict_code(receipt)
+    if receipt_outcome(receipt) is True:
+        await _journal_confirmed(s)
     await runtime.progress(
         Stage.VERIFIED
         if verdict is True

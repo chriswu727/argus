@@ -15,6 +15,7 @@ from argus.domain.contracts import ErrorCode, OperationError, Rejection, Session
 
 from .coverage import _contract_items, _session_protocol, _update_coverage_from_state
 from .evidence import _journal_entries, _screenshot_dir
+from .finish import abandoned_session_note, save_abandoned_session
 from .observation import _coverage_line, _format_observation
 from .payloads import observation_data
 from .progress import Stage
@@ -62,12 +63,15 @@ async def start_session(
         return Rejection("start_session: viewport dimensions must be between 1 and 16384.")
 
     current_runtime().settings.access.check_url(url)
+    previous = await save_abandoned_session()
+    # A start that fails below must still say where the earlier findings went.
+    kept = "\n" + abandoned_session_note(previous) if previous else ""
     teardown_errors = await _teardown_active_session()
     if teardown_errors:
         current_runtime().transition(SessionState.FAILED)
         raise OperationError(
             ErrorCode.BACKEND,
-            "could not close the active session safely — " + "; ".join(teardown_errors),
+            "could not close the active session safely — " + "; ".join(teardown_errors) + kept,
         )
 
     current_runtime().session = new_session = Session()
@@ -115,12 +119,12 @@ async def start_session(
                 ErrorCode.BACKEND,
                 "Chromium is being downloaded for first use (one time, about 150 MB) and "
                 "is not finished yet. The download continues in the background; call "
-                "start_session again in a minute.",
+                "start_session again in a minute." + kept,
             )
         raise OperationError(
             ErrorCode.BACKEND,
             f"failed to launch the browser — "
-            f"{type(exc).__name__}: {str(exc)[:160]}\n{launch_failure_hint(exc)}",
+            f"{type(exc).__name__}: {str(exc)[:160]}\n{launch_failure_hint(exc)}{kept}",
         )
     try:
         await current_runtime().progress(Stage.NAVIGATING)
@@ -140,7 +144,7 @@ async def start_session(
         current_runtime().transition(SessionState.FAILED)
         raise OperationError(
             ErrorCode.BACKEND,
-            f"could not load {url} — {type(exc).__name__}.{hint}\nNo session was created.",
+            f"could not load {url} — {type(exc).__name__}.{hint}\nNo session was created." + kept,
         )
 
     current_runtime().session = new_session
@@ -172,8 +176,11 @@ async def start_session(
     )
     if installed_browser:
         summary = "Chromium was downloaded for first use (one time).\n" + summary
+    summary = abandoned_session_note(previous) + summary
     introduction = summary + "\n\n" + _session_protocol(current_runtime().session)
     payload = observation_data(current_runtime().session, state)
+    if previous:
+        payload["unended_run"] = previous
     payload["protocol"] = _session_protocol(current_runtime().session)
     if not include_observation:
         return ToolText(
@@ -242,6 +249,7 @@ async def start_screen_session(target_app: str = "") -> str:
         )
     screen_safety.prepare_abort_location()
 
+    previous = await save_abandoned_session()
     teardown_errors = await _teardown_active_session()
     if teardown_errors:
         return Rejection(
@@ -291,7 +299,7 @@ async def start_screen_session(target_app: str = "") -> str:
     print(screen_safety.banner(), file=_sys.stderr)
 
     return (
-        f"Screen session started.\n"
+        abandoned_session_note(previous) + f"Screen session started.\n"
         f"Foreground app: {obs.foreground_app} (pid {obs.foreground_pid})\n"
         f"Window: {obs.foreground_window_title!r}\n"
         f"Screen: {obs.screen_width}x{obs.screen_height}\n"

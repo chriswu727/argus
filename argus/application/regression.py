@@ -142,8 +142,8 @@ async def regression_check() -> str:
     """Re-test previously-recorded findings for this site against the CURRENT
     build — "did my fix land, and did anything I'd fixed come back?".
 
-    Findings with a clean-load verify clause are journaled at end_session (per
-    origin). This re-runs each one's INDEPENDENT clean-load check now and
+    Findings confirmed by a clean-load verify clause are journaled as they are
+    recorded (per origin). This re-runs each one's INDEPENDENT clean-load check now and
     classifies it: STILL-PRESENT (the bug is still there), NO-LONGER-REPRODUCES
     (the symptom is gone — likely fixed; confirm the surface still exists), or
     INCONCLUSIVE. Each carried finding is treated as a hypothesis and re-checked
@@ -158,7 +158,7 @@ async def regression_check() -> str:
     if not entries:
         return (
             f"regression_check: no journaled findings for {origin}. Findings with a "
-            "verify clause are journaled when you call end_session."
+            "verify clause are journaled once record_bug confirms them."
         )
 
     lines = [f"Regression re-check for {origin} — {len(entries)} journaled finding(s):", ""]
