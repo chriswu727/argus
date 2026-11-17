@@ -1,9 +1,19 @@
 # Changelog
 
-## Plugin updates - 2026-11-12 (0.13.1)
+## Plugin updates - 2026-11-17 (0.13.1)
 
 - Claude plugin 0.13.1 and Codex plugin 0.13.1 pin the published Argus 0.13.1
   runtime and refresh their dependency locks and setup commands.
+- Both test skills now run a pass without handing work back to the user. They
+  find the address from the conversation, the project or a running dev server
+  instead of asking; let the first session download the browser and retry
+  while it does; say what to do when a target is gone, a page is slow, a call
+  times out after a write, the session fails, a login is missing or a check is
+  inconclusive; and report the journeys tested, each bug with its evidence,
+  and what was not finished. They also apply when a feature was just finished
+  and when a fix needs re-testing, which goes through the journal with
+  `regression_check`. Exporting a test file is on request, not part of every
+  run, and the skills no longer ask the user to set replay variables.
 
 ## 0.13.1 - 2026-11-12
 
