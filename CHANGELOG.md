@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- A fresh load that kept the path but dropped or changed a requested query
+  parameter (`/tasks?list=work` redirected to `/tasks?list=home`) is a
+  different page: text absent there is inconclusive (`moved`) instead of a
+  confirmed absence. Added parameters, parameter order and tracking parameters
+  (`utm_*`, click ids) do not count.
+- The search for text a lazy or virtualized list has not rendered now scrolls
+  in steps smaller than the viewport (a 1000px step skipped rows of a list
+  without overscan), also scrolls boxes with their own scrollbar, and reports
+  whether it reached the end. A search that spends its 30 steps with content
+  left is inconclusive (`unsearched`) instead of a confirmed absence. Live
+  verification, `verify_persistence` and exported tests (verdict rules
+  version 2) share the change; export a test again to pick it up.
+
 ## 0.13.1 - 2026-11-12
 
 - The first session downloads the Chromium build it needs instead of failing

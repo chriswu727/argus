@@ -165,11 +165,14 @@ def test_receipt_verdict_and_outcome():
     assert v.receipt_outcome(None) is None
 
 
-def test_scroll_budget():
-    assert v.scroll_exhausted(v.MAX_SCROLLS, False, 10, 0)
-    assert v.scroll_exhausted(1, True, 10, 0)
-    assert v.scroll_exhausted(1, False, 10, 10)
-    assert not v.scroll_exhausted(1, False, 10, 0)
+def test_absence_needs_a_search_that_reached_the_end():
+    load = {"status": 200, "requested": "http://a.test/t", "landed": "http://a.test/t"}
+    load["frames"] = [{"text": "Tasks"}]
+    assert v.text_observation({**load, "searched": True}, False) == (False, None)
+    assert v.text_observation({**load, "searched": False}, False) == (None, "unsearched")
+    assert v.text_observation({**load, "searched": False}, True) == (True, None)
+    check = v.persistence_check("absent", False, {**load, "searched": False})
+    assert check["conclusive"] is False and check["matches"] is None
 
 
 def test_every_reason_has_text():

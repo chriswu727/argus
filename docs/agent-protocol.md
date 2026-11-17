@@ -130,7 +130,12 @@ the password-field and login-heading checks also read the main frame.
 the loaded page's HTTP `status`, and whether the check is conclusive. Observed
 presence is always conclusive. Absence on an HTTP error page or login wall, or
 on a load whose network did not settle, is inconclusive (`matches: null`),
-because the target may be missing for the wrong reason. Like `record_bug`
+because the target may be missing for the wrong reason. So is absence on a load
+that ended somewhere else than requested, including the same path with a
+requested query parameter dropped or changed (`?list=work` answered with
+`?list=home`), and absence on a page too long to search: the check scrolls the
+window and every scrollable box in steps smaller than their height, up to 30
+steps, and reports absence only if it reached the end of all of them. Like `record_bug`
 verification, the load runs with the session's network mocks suspended; they
 are restored afterwards, also when the load fails. Pass `expect_status` when that status is the intended outcome, such as
 404 for a deleted item's own page; a different status is a conclusive mismatch.
@@ -240,7 +245,7 @@ Returned fields:
 | `required_env` | Since 0.12.1: environment variable names mapped to fixed step/purpose descriptions, never values. Configure these privately for standalone or CI runs. |
 | `private_values_path` | Since 0.12.1: `null` by default; path to a local raw-values JSON file only when `save_private_values=true`. Never publish this file. |
 | `manual_steps` | Steps that could not be translated; each is also a `TODO(argus)` line in the file. Since 0.12.1, exports with manual steps stop before browser actions until completed. An empty list means every recorded step was exported. |
-| `run` | `null` unless `run=true`; otherwise `{"outcome", "detail"}` with outcome `fails_on_symptom`, `passes`, `inconclusive`, `errored` or `incomplete`. An `inconclusive` run also carries `reason`, one of `http_error`, `login_wall`, `login_form`, `moved`, `unread`, `truncated`, `unsettled`. |
+| `run` | `null` unless `run=true`; otherwise `{"outcome", "detail"}` with outcome `fails_on_symptom`, `passes`, `inconclusive`, `errored` or `incomplete`. An `inconclusive` run also carries `reason`, one of `http_error`, `login_wall`, `login_form`, `moved`, `unread`, `truncated`, `unsettled`, `unsearched`. |
 
 The file replays the actions recorded up to the finding with locators captured
 from the resolved elements, then loads the checked URL afresh and decides the
@@ -255,8 +260,9 @@ reproduce the symptom and must not be relied on as a regression test.
 `inconclusive` means the fresh load could not show the symptom
 either way: the page returned HTTP 4xx/5xx, a login wall or a login form (in any
 supported language) replaced it, the load ended on another page, a frame could
-not be read or the text exceeded the inspection limit, or an absent target was
-read on a page whose network never settled. The file signals it with a final
+not be read or the text exceeded the inspection limit, an absent target was
+read on a page whose network never settled, or the search for an absent target
+ran out of scroll steps before the end of the page. The file signals it with a final
 stderr line starting `ARGUS_INCONCLUSIVE`; under pytest the test fails, never
 passes or skips, and run as a script it exits with status 3, the status
 `argus-regression` uses for inconclusive checks (a present symptom exits 1). `errored` means it stopped before the check (a step failed or timed

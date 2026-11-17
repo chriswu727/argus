@@ -128,6 +128,7 @@ _FIND_VISIBLE_ELEMENT_JS = (
 
 _CHECK_LAYOUT_JS = files("argus.adapters.scripts").joinpath("check_layout_js.js").read_text()
 _COLLECT_TEXT_JS = files("argus.adapters.scripts").joinpath("collect_text_js.js").read_text()
+_SCAN_STEP_JS = files("argus.adapters.scripts").joinpath("scan_step_js.js").read_text()
 _REF_ENGINE_JS = files("argus.adapters.scripts").joinpath("ref_engine_js.js").read_text()
 
 # Traced steps that replay does not repeat; a journey through one diverges
@@ -1983,6 +1984,16 @@ class BrowserDriver:
             return
         await self._page.evaluate("(d) => window.scrollBy(0, d)", int(px))
         await asyncio.sleep(0.4)
+
+    async def scan_step(self) -> bool:
+        """Scroll the window or a scrollable box one step further and let lazy
+        content render. False once nothing is left to scroll."""
+        if self._page is None:
+            return False
+        if not await self._page.evaluate(_SCAN_STEP_JS):
+            return False
+        await asyncio.sleep(0.4)
+        return True
 
     @timed("screenshot")
     async def screenshot(self, path: str, full_page: bool = False) -> str:

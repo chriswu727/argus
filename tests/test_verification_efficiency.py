@@ -70,7 +70,8 @@ async def test_persistence_suggestions_require_observed_transition(
     from unittest.mock import patch
 
     with patch(
-        "argus.application.probes._present_with_scroll", AsyncMock(return_value=after == "Morgan")
+        "argus.application.probes._search_page",
+        AsyncMock(return_value=(after == "Morgan", True)),
     ):
         result = await verify_persistence("present", "Morgan")
     assert bool(result.data["suggested_verify"]) is suggested
@@ -100,7 +101,7 @@ async def test_only_absence_on_error_or_login_pages_is_inconclusive(
         has_page=True,
         get_state=AsyncMock(return_value=page_factory(page_text=page)),
         goto=AsyncMock(return_value=SimpleNamespace(status=status)),
-        scroll_by=AsyncMock(),
+        scan_step=AsyncMock(return_value=False),
         suspend_mocks=AsyncMock(return_value=[]),
         restore_mocks=AsyncMock(),
     )
@@ -126,9 +127,9 @@ async def test_before_state_scrolls_for_a_just_saved_row(isolated_runtime, page_
     isolated_runtime.session.browser = SimpleNamespace(
         current_url="https://example.test/",
         has_page=True,
-        get_state=AsyncMock(side_effect=states + [page_factory()] * 25),
+        get_state=AsyncMock(side_effect=states),
         goto=AsyncMock(return_value=SimpleNamespace(status=200)),
-        scroll_by=AsyncMock(),
+        scan_step=AsyncMock(side_effect=[True, False]),
         suspend_mocks=AsyncMock(return_value=[]),
         restore_mocks=AsyncMock(),
     )
@@ -147,7 +148,7 @@ async def test_persistence_load_runs_without_mocks_and_needs_a_settled_page(
         last_navigation_settled=False,
         get_state=AsyncMock(return_value=page_factory(page_text="Loading")),
         goto=AsyncMock(return_value=SimpleNamespace(status=200)),
-        scroll_by=AsyncMock(),
+        scan_step=AsyncMock(return_value=False),
         suspend_mocks=AsyncMock(return_value=["**/api/items"]),
         restore_mocks=AsyncMock(),
     )

@@ -15,9 +15,9 @@ not read carries "unread": true instead. The main frame comes first.
 """
 
 import re
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlsplit
 
-VERDICT_VERSION = "1"
+VERDICT_VERSION = "2"
 
 # Scripts written without spaces between words have no word boundary to test:
 # "已完成" inside "任务已完成" is a real occurrence, not a mid-word match.
@@ -69,8 +69,13 @@ LOGIN_WORDS = (
     "로그인",
 )
 
-MAX_SCROLLS = 20
-SCROLL_STEP = 1000
+# Steps of the in-page scan (scan_step_js.js) spent looking for a row a lazy or
+# virtualized list has not rendered. A scan that ends with content still
+# unscrolled has not searched the page, so it cannot report the text absent.
+MAX_SCROLLS = 30
+
+# Added by mail and ad links; a server that drops them still serves the same page.
+TRACKING_PARAMS = ("fbclid", "gclid", "dclid", "msclkid", "mc_cid", "mc_eid")
 
 REASON_CODES = (
     "http_error",
@@ -80,6 +85,7 @@ REASON_CODES = (
     "unread",
     "truncated",
     "unsettled",
+    "unsearched",
 )
 
 
@@ -155,10 +161,28 @@ def same_page(requested: str, landed: str) -> bool:
     )
 
 
+def _parameters(url: str) -> list:
+    return [
+        (name, value)
+        for name, value in parse_qsl(urlsplit(url).query, keep_blank_values=True)
+        if not name.lower().startswith("utm_") and name.lower() not in TRACKING_PARAMS
+    ]
+
+
 def moved_from(requested: str, landed: str) -> bool:
-    """True when the load ended on a different page than the one requested."""
+    """True when the load ended on a different page than the one requested.
+
+    A query parameter selects what the page shows (?list=work, ?page=2), so a
+    load that dropped or changed a requested one shows something else. Order
+    and parameters the server added do not matter.
+    """
     if not landed:
         return False
+    kept = _parameters(landed)
+    for parameter in _parameters(requested):
+        if parameter not in kept:
+            return True
+        kept.remove(parameter)
     want, got = urlsplit(requested), urlsplit(landed)
     if (want.scheme, want.netloc.lower(), want.path.rstrip("/")) != (
         got.scheme,
@@ -236,8 +260,8 @@ def text_observation(
 ) -> tuple:
     """One load of a text check: (True present / False absent / None, reason code).
 
-    Absence is trusted only on the requested page, fully read, settled and not
-    behind a login form. present_is_conclusive trusts an observed presence on
+    Absence is trusted only on the requested page, fully read, settled, searched
+    to its end (`load["searched"]`) and not behind a login form. present_is_conclusive trusts an observed presence on
     any page; status_expected accepts an HTTP error status the caller expected.
     """
     if present and present_is_conclusive:
@@ -259,6 +283,8 @@ def text_observation(
         return None, "truncated"
     if not load.get("settled", True):
         return None, "unsettled"
+    if not load.get("searched", True):
+        return None, "unsearched"
     return False, None
 
 
@@ -270,7 +296,10 @@ def reason_text(code: str, status: int | None = None, landed: str = "") -> str:
     if code == "login_form":
         return "clean load hit a login wall — absence cannot confirm an application symptom"
     if code == "moved":
-        where = (urlsplit(landed).path or "/") if landed else "another page"
+        where = "another page"
+        if landed:
+            parts = urlsplit(landed)
+            where = (parts.path or "/") + ("?" + parts.query if parts.query else "")
         return (
             f"clean load ended on {where} instead of the requested page — absence there "
             "cannot confirm an application symptom; verify at the page that actually shows "
@@ -282,6 +311,12 @@ def reason_text(code: str, status: int | None = None, landed: str = "") -> str:
         return "page text exceeds the inspection limit — absence is not reliable evidence"
     if code == "unsettled":
         return "clean load did not settle — absence is not reliable evidence"
+    if code == "unsearched":
+        return (
+            "the page is longer than the search covers and was not scrolled to its end — "
+            "absence is not reliable evidence; check a filtered, searched or paged view "
+            "that would show the text"
+        )
     return code
 
 
@@ -311,11 +346,6 @@ def persistence_check(expect: str, present: bool, load: dict, expect_status: int
         "status_matches": status_matches,
         "reason": reason,
     }
-
-
-def scroll_exhausted(scrolls: int, at_bottom: bool, y, last_y) -> bool:
-    """Stop scrolling for a lazily rendered row: budget spent, bottom, or stalled."""
-    return scrolls >= MAX_SCROLLS or bool(at_bottom) or (y is not None and y == last_y)
 
 
 def receipt_verdict(observations: list, expect: str) -> dict:
