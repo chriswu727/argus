@@ -35,7 +35,7 @@ wheels = [
 
 [[package]]
 name = "argus-testing"
-version = "0.13.1"
+version = "0.13.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
@@ -52,21 +52,21 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "uvicorn" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/10/51/d068c1d16380a6ecace8a39befe1f073bd21148ac744ac3d9d585208db79/argus_testing-0.13.1.tar.gz", hash = "sha256:cfcd3c2421d5b8908d8db1bad4a9cbe353cc980424da8b16bc2dfa061d6c8f48", size = 495481, upload-time = "2026-11-12T22:07:17.527Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/50/64/d8801376d38f205479ecd814f38f22ac583acbdc9eed46d092cf471517eb/argus_testing-0.13.2.tar.gz", hash = "sha256:2c70c4679a9b4f683c2414182b758783ee18758a3a918e651faf11ee842aa355", size = 527631, upload-time = "2026-11-18T23:06:07.007Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/48/f6/14f8bb9b61465e05d68249740fd3becc244986bb732bd687d27bf7bef88a/argus_testing-0.13.1-py3-none-any.whl", hash = "sha256:fb07dc93d6c422f37a69e7b98baf05895e5e03106f9666c8ed93931c93b775cf", size = 274376, upload-time = "2026-11-12T22:07:15.857Z" },
+    { url = "https://files.pythonhosted.org/packages/ca/56/8aaf711b3c9ae4664b8eb444436d046113023f18a0b3a8dcd611d1f937f9/argus_testing-0.13.2-py3-none-any.whl", hash = "sha256:4c02cc0729d7d468504f42d77795f3778de78758e0570a2ab328147daaf9ebad", size = 283587, upload-time = "2026-11-18T23:06:05.388Z" },
 ]
 
 [[package]]
 name = "argus-testing-plugin-runtime"
-version = "0.13.1"
+version = "0.13.2"
 source = { virtual = "." }
 dependencies = [
     { name = "argus-testing" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "argus-testing", specifier = "==0.13.1" }]
+requires-dist = [{ name = "argus-testing", specifier = "==0.13.2" }]
 
 [[package]]
 name = "attrs"

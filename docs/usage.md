@@ -48,8 +48,8 @@ address, recover from stale elements, timeouts and a failed session, report
 the bugs with their evidence, and re-test after a fix with `regression_check`.
 Whether a host loads the skill, and follows it, is the host's choice;
 [small host runs](evaluation.md#host-runs-before-0132) show where
-the hosts did and did not. Claude plugin 0.13.1 and Codex plugin 0.13.1 both run
-Argus 0.13.1; they move to 0.13.2 once it is on PyPI.
+the hosts did and did not. Claude plugin 0.13.2 and Codex plugin 0.13.2 both run
+the published Argus 0.13.2 runtime.
 
 </details>
 

@@ -52,13 +52,13 @@ does not need the user:
   server runs in, then call `start_session` again:
 
   ```bash
-  uvx --python 3.12 --from argus-testing==0.13.1 --with playwright==1.64.1 python -m playwright install chromium
+  uvx --python 3.12 --from argus-testing==0.13.2 --with playwright==1.64.1 python -m playwright install chromium
   ```
 
 - If the address cannot be reached, the app is not running: start it as in
   section 1 and try again.
 - For any other setup failure, run
-  `uvx --python 3.12 --from argus-testing==0.13.1 argus-mcp --doctor`.
+  `uvx --python 3.12 --from argus-testing==0.13.2 argus-mcp --doctor`.
   It prints the fix for each failed web check; the macOS screen grants it
   lists are not needed for web testing.
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## Plugin updates - 2026-11-18 (0.13.2)
+
+- Claude plugin 0.13.2 and Codex plugin 0.13.2 pin the published Argus 0.13.2
+  runtime, including session recovery, structured results and regression reports.
+- Both test skills prefer the README and start scripts when finding the app
+  address, and say not to read a whole `.env` file. This is host guidance,
+  not an enforced file-access restriction.
+
 ## 0.13.2 - 2026-11-18
 
 Fixes found by running Argus under a real coding agent and by an independent
