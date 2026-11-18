@@ -132,16 +132,107 @@ def test_both_skills_ask_for_a_visual_review_kept_as_observations():
         assert "use `record_bug` with `verify`\nonly when a text check" in text
 
 
-def test_both_skills_export_verified_findings_before_closing():
-    for skill in (
-        BUNDLE / "skills" / "argus-test" / "SKILL.md",
-        CLAUDE / "skills" / "test" / "SKILL.md",
-    ):
+SKILLS = (
+    BUNDLE / "skills" / "argus-test" / "SKILL.md",
+    CLAUDE / "skills" / "test" / "SKILL.md",
+)
+
+
+def _sections(skill):
+    """Section title -> text, for the numbered sections of a skill."""
+    parts = re.split(r"^## (\d\. .*)$", skill.read_text(), flags=re.M)
+    return dict(zip(parts[1::2], parts[2::2], strict=True))
+
+
+def test_both_skills_give_the_same_procedure():
+    codex, claude = (_sections(skill) for skill in SKILLS)
+    assert list(codex) == list(claude) and len(codex) == 5
+    for title in codex:
+        # Only the setup commands differ: each plugin launches its runtime its own way.
+        if not title.startswith("2."):
+            assert codex[title] == claude[title], title
+
+
+def test_both_skills_trigger_on_testing_finished_work_and_fixes():
+    for skill in SKILLS:
+        description = skill.read_text().split("description: ", 1)[1].split("\n", 1)[0]
+        for occasion in ("asks to test", "before the work is called done", "has been fixed"):
+            assert occasion in description, (skill, occasion)
+
+
+def test_both_skills_find_the_address_and_handle_setup_without_the_user():
+    for skill in SKILLS:
         text = skill.read_text()
-        deliver = text[text.index("## 4. Deliver") :]
-        assert "if the tool list includes `export_test`" in deliver, skill
-        assert deliver.index("`export_test`") < deliver.index("`end_session`"), skill
+        scope = _sections(skill)["1. Settle the scope yourself"]
+        assert "Ask only when none of this gives an address." in scope, skill
+        assert "a login you were not\n  given" in scope, skill
+        start = _sections(skill)["2. Start"]
+        assert "The first session downloads the browser" in start, skill
+        assert "call\n  `start_session` again" in start, skill
+        for handed_back in ("ask for it", "after they agree", "offer to install"):
+            assert handed_back not in text, (skill, handed_back)
+
+
+def test_both_skills_say_how_to_recover_without_repeating_a_write():
+    for skill in SKILLS:
+        recover = _sections(skill)["3. Test"].split("### When something goes wrong", 1)[1]
+        for step in (
+            "Call `observe` and pick the target from what is there now.",
+            "repeat the action only if it did not\n  take effect",
+            "Call `end_session` so the report and\n  the journal",
+            "Mark that goal `blocked`",
+            "report it as inconclusive",
+        ):
+            assert step in recover, (skill, step)
+        assert "A page with no defects is a normal\nresult" in skill.read_text(), skill
+
+
+def test_both_skills_report_evidence_and_what_was_not_finished():
+    for skill in SKILLS:
+        deliver = _sections(skill)["4. Deliver"]
+        for part in (
+            "What you tested",
+            "where the evidence is",
+            "What was not finished and why",
+            "The paths of any test files you exported.",
+        ):
+            assert part in deliver, (skill, part)
+        assert "Never present an observed finding as verified." in deliver, skill
+
+
+def test_both_skills_export_a_requested_file_before_closing_the_session():
+    """export_test reads the open session's findings, so a skill that closed
+    the session first would send the agent into a no_session error."""
+    for skill in SKILLS:
+        deliver = " ".join(_sections(skill)["4. Deliver"].split())
+        export = deliver.index("export it first, while the session is open")
+        close = deliver.index("Then close with `end_session`")
+        assert deliver.index("`export_test`") < close and export < close, skill
+        assert "`end_session` closes it: after that the call fails" in deliver, skill
+        # Every other mention of closing the session comes after the export step.
+        assert deliver.count("close with `end_session`") == 1, skill
+
+
+def test_both_skills_keep_exports_optional_and_private():
+    for skill in SKILLS:
+        text = skill.read_text()
+        deliver = " ".join(_sections(skill)["4. Deliver"].split())
+        assert deliver.startswith("**Only if the user asked for a regression test file**"), skill
+        assert "Without such a request, skip this step" in deliver, skill
+        assert "exporting is not part of every run" in deliver, skill
         assert "`run=true` only when the user authorized" in deliver, skill
+        assert "only set `save_private_values=true` when the user explicitly" in deliver, skill
+        assert "never be published or committed" in deliver, skill
+        # Re-testing goes through the journal; nobody sets variables by hand for it.
+        assert "ARGUS_VALUES_FILE" not in text and "ARGUS_EXPORT_ID" not in text, skill
+
+
+def test_both_skills_retest_fixes_from_the_journal():
+    for skill in SKILLS:
+        retest = _sections(skill)["5. Re-test after a fix"]
+        assert 'review_mode="regression"' in retest, skill
+        assert retest.index("do that action once") < retest.index("Call `regression_check`"), skill
+        assert "inconclusive with the reason" in retest, skill
 
 
 @pytest.mark.asyncio

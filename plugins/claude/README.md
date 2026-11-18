@@ -22,8 +22,10 @@ launcher does not set environment variables, change package indexes, or write
 a virtual environment into the installed plugin files. It does not reuse the
 host's active environment.
 
-Before starting Claude with the plugin for the first time, warm uv's cache and
-install the matching Chromium browser. This works from any directory:
+The first testing session downloads the matching Chromium browser by itself
+(one time, about 150 MB). To have everything in place before starting Claude
+with the plugin for the first time, warm uv's cache and install the browser
+ahead; this is optional and works from any directory:
 
 ```bash
 uvx --python 3.12 --from argus-testing==0.13.1 --with playwright==1.64.1 python -m playwright install chromium
@@ -38,9 +40,9 @@ therefore usually removes most of the first-start download. If the first connect
 out, start Claude with a longer startup timeout in milliseconds, for example
 `MCP_TIMEOUT=120000 claude`. Linux may also need Playwright's system
 dependencies; see the [installation guide](https://github.com/chriswu727/argus#quick-start).
-Browser installation is a separate, explicit setup step, not a hidden startup hook.
-Once the plugin is installed, `/argus-testing:test` offers an exact alternative:
-it installs Chromium from the plugin's own locked environment, after you agree.
+Starting the plugin never downloads a browser; the first testing session does.
+If that download fails, `/argus-testing:test` installs Chromium from the
+plugin's own locked environment and tries again.
 
 Install the plugin from this repository's marketplace (Claude Code 2.1.275 or
 later):
@@ -66,13 +68,24 @@ provide a remote MCP endpoint or lifecycle hooks.
 
 ## Test an application with `/argus-testing:test`
 
-Run `/argus-testing:test http://localhost:3000 checkout and saved settings`, or ask
-Claude to test your app. The skill agrees the scope and asks before anything with
-real-world effects, checks the environment (offering the exact browser install if
-a launch fails), runs the session, rechecks symptoms on fresh loads, and reports
-findings grouped as verified, observed, not reproduced, or inconclusive, together
-with coverage and report paths. It does not change your code or repeat writes
-unless you ask.
+Run `/argus-testing:test http://localhost:3000 checkout and saved settings`, or
+just ask Claude to test your app, to check a feature it finished, or to re-test
+after a fix. The skill finds the address from the conversation, the project's
+start script or a running dev server, turns the request into a few user
+journeys, runs them within a time budget, and rechecks symptoms on fresh
+loads. It handles the browser download, stale elements, slow pages, timeouts
+and a failed session itself, and asks you only for what it cannot get: a login
+it was not given, or a decision outside the task. It stays inside what you
+allowed and does not buy, send, publish or delete real data without your say.
+
+You get the journeys it tested, each bug with its impact, steps and evidence
+paths, grouped as verified, observed, not reproduced or inconclusive, and what
+was not finished and why. A run that finds nothing says so. After a fix it
+re-tests the earlier findings from Argus's journal with `regression_check`;
+you do not configure anything for that. A Playwright regression test file is
+exported only when you ask for one. Ask with the request: the file is written
+before the testing session closes, and a finding from a closed session has to
+be reproduced again before it can be exported.
 
 ## Other example requests
 
