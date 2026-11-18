@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.13.2 - 2026-11-18
+
+Fixes found by running Argus under a real coding agent and by an independent
+review of that work. No new tools. Upgrade notes: absence that Argus could not
+fully check is now inconclusive where it used to be confirmed, so a regression
+gate can report more inconclusive results; exported tests carry verdict rules
+version 2 only after they are exported again; MCP progress notifications are
+off unless `ARGUS_PROGRESS_NOTIFICATIONS=1`.
 
 - A fresh load that kept the path but dropped or changed a requested query
   parameter (`/tasks?list=work` redirected to `/tasks?list=home`) is a
@@ -83,9 +90,9 @@
 
 - Claude plugin 0.13.1 and Codex plugin 0.13.1 pin the published Argus 0.13.1
   runtime and refresh their dependency locks and setup commands.
-- Both test skills now run a pass without handing work back to the user. They
-  find the address from the conversation, the project or a running dev server
-  instead of asking; let the first session download the browser and retry
+- Both test skills are rewritten so the agent can run a pass without handing
+  work back to the user. They say to find the address from the conversation,
+  the project or a running dev server instead of asking; let the first session download the browser and retry
   while it does; say what to do when a target is gone, a page is slow, a call
   times out after a write, the session fails, a login is missing or a check is
   inconclusive; and report the journeys tested, each bug with its evidence,

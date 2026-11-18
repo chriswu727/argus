@@ -94,9 +94,11 @@ Read `structuredContent.data`
 for operation-specific evidence where available; text and images remain for
 compatibility. `status: completed` means the tool ran, not that the application
 passed. Inspect expectation matches, finding verdicts and export warnings.
-Progress notifications describe actual phases, not percentages or proof of
-coverage. Missing live notifications do not mean execution stopped; the final
-result includes captured stages. See [the protocol](docs/agent-protocol.md).
+Since 0.13.2, MCP progress notifications are off unless
+`ARGUS_PROGRESS_NOTIFICATIONS=1`; every result lists its `stages`. When on, they
+describe actual phases, not percentages or proof of coverage, and missing
+notifications do not mean execution stopped. See
+[the protocol](docs/agent-protocol.md#progress-transport).
 
 ## Tools you'll use most
 
@@ -165,7 +167,10 @@ goal evidence, user constraints, page coverage, time-budget status, review mode,
 observations, tool-call counts, step counts, and screenshot metadata.
 
 Since 0.10.0, persistence mismatches may include `suggested_verify` for
-a fresh-load recheck without repeating writes. Do not use replay for an
+a fresh-load recheck without repeating writes. Since 0.13.2, a finding recorded
+on that page without a confirmation also comes back with that
+`suggested_verify`, offered and not applied; pass it with the `finding_id` only
+if the finding is that failure. Do not use replay for an
 unrecorded refresh. Supplement an existing finding with
 `record_bug(title, severity, verify=..., finding_id=...)`, omitting evidence and
 keeping title/severity unchanged. At most two rechecks are allowed; stop on a

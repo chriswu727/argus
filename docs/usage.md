@@ -43,10 +43,13 @@ which pins the published runtime and adds a `/argus-testing:test` skill:
 `/plugin install argus-testing --marketplace chriswu727/argus`. Its optional
 warm-up command fetches the dependencies and browser ahead of the first
 session. Use the plugin instead of, not alongside, the manual connection.
-With either plugin the agent runs the whole pass itself (finding the address,
-recovering from stale elements, timeouts and a failed session, re-testing after
-a fix from the journal) and reports the bugs with their evidence.
-Claude plugin 0.13.1 and Codex plugin 0.13.1 both run Argus 0.13.1.
+Each plugin's skill tells the agent how to run the pass on its own: find the
+address, recover from stale elements, timeouts and a failed session, report
+the bugs with their evidence, and re-test after a fix with `regression_check`.
+Whether a host loads the skill, and follows it, is the host's choice;
+[small host runs](evaluation.md#host-runs-before-0132) show where
+the hosts did and did not. Claude plugin 0.13.1 and Codex plugin 0.13.1 both run
+Argus 0.13.1; they move to 0.13.2 once it is on PyPI.
 
 </details>
 
@@ -226,7 +229,7 @@ synthetic sample does not establish general superiority.
 
 The no-model [response encoding benchmark](evaluation.md#response-overhead)
 compares identical synthetic evidence. Delta mode reduces aggregate result JSON
-by 48.25% versus compact mode across those 24 responses, reproduced with 0.13.1.
+by 48.25% versus compact mode across those 24 responses, reproduced with 0.13.2.
 This measures bytes, **not agent token usage or testing quality**.
 
 <details>
