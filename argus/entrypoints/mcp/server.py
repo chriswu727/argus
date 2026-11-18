@@ -81,8 +81,14 @@ def bind_tool(runtime: SessionManager, operation, snapshots: ObservationSnapshot
             if ctx is not None:
                 await ctx.report_progress(sequence, message=message)
 
+        # Off unless asked for. A client built on the TypeScript MCP SDK handles
+        # a response at once but a notification one microtask later, so a
+        # progress notification read together with its response arrives for a
+        # token that is already gone. Claude Code treats that as a transport
+        # error and restarts the server, which loses the session.
+        live = ctx is not None and runtime.settings.progress_notifications
         with measurement_scope() as measurements:
-            with progress_scope(notify if ctx is not None else None) as progress:
+            with progress_scope(notify if live else None) as progress:
                 try:
                     result = await runtime.execute(operation.__name__, operation, *args, **kwargs)
                 except BaseException:

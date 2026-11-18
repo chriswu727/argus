@@ -42,6 +42,7 @@ async def serve(arm: str, origin: str, output: Path, limit: int = 60):
             output_dir=output / "reports",
             response_mode="compact",
             access=AccessPolicy(allowed_origins=(origin,)),
+            progress_notifications=Settings.from_env().progress_notifications,
         )
     )
     inner = create_server(runtime, "web") if arm == "argus" else baseline.server()

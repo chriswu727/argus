@@ -39,6 +39,11 @@ class Progress:
             self.omitted += 1
             return
         self.stages.append(stage.name.lower())
+        # The response follows the last stage at once and says the same thing;
+        # a notification that close to it is the one a client is most likely
+        # to read after the response.
+        if stage in (Stage.COMPLETED, Stage.FAILED):
+            return
         if self.sink is not None and not self.delivery_failed:
             try:
                 async with asyncio.timeout(0.25):

@@ -120,7 +120,32 @@ async def test_monitor_progress_events_never_include_tool_arguments(isolated_run
     assert any(event["kind"] == "progress" and event["code"] == "verifying" for event in events)
 
 
-async def test_cancel_during_final_notification_closes_backend(isolated_runtime):
+async def test_the_closing_stage_is_recorded_but_never_sent(isolated_runtime):
+    """The response follows the closing stage at once; a notification that
+    close to it can reach a client after the response and break the connection."""
+    sent = []
+
+    async def notify(sequence, message):
+        sent.append(message)
+
+    async def operation():
+        await isolated_runtime.progress(Stage.VERIFYING)
+        return "done"
+
+    async def fails():
+        raise RuntimeError("synthetic")
+
+    with progress_scope(notify) as progress:
+        await asyncio.wait_for(isolated_runtime.execute("probe", operation), 5)
+    assert progress.stages == ["started", "verifying", "completed"]
+    assert sent == [Stage.STARTED.value, Stage.VERIFYING.value]
+    with progress_scope(notify) as progress:
+        result = await asyncio.wait_for(isolated_runtime.execute("probe", fails), 5)
+    assert result.error is not None and progress.stages == ["started", "failed"]
+    assert Stage.FAILED.value not in sent and Stage.COMPLETED.value not in sent
+
+
+async def test_cancel_during_a_late_notification_closes_backend(isolated_runtime):
     entered = asyncio.Event()
 
     class Backend:
@@ -133,11 +158,13 @@ async def test_cancel_during_final_notification_closes_backend(isolated_runtime)
     isolated_runtime.session.browser = backend
 
     async def notify(sequence, message):
-        if message == Stage.COMPLETED.value:
+        if message == Stage.EXPORTING.value:
             entered.set()
             await asyncio.Event().wait()
 
     async def operation():
+        # The last notification an operation still sends, just before it returns.
+        await isolated_runtime.progress(Stage.EXPORTING)
         return "done"
 
     async def request():
@@ -145,7 +172,7 @@ async def test_cancel_during_final_notification_closes_backend(isolated_runtime)
             await isolated_runtime.execute("observe", operation)
 
     task = asyncio.create_task(request())
-    await entered.wait()
+    await asyncio.wait_for(entered.wait(), 5)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task

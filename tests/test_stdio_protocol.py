@@ -10,10 +10,46 @@ from mcp.client.stdio import stdio_client
 from argus import __version__
 
 
+async def test_no_progress_notification_is_sent_unless_asked_for(tmp_path):
+    """A notification that reaches a client together with its response makes
+    Claude Code drop the connection, so a progress token alone sends none."""
+    page = tmp_path / "fixture.html"
+    page.write_text("<html><body><h1>Protocol fixture</h1><button>Save</button></body></html>")
+    env = {k: v for k, v in os.environ.items() if k != "ARGUS_PROGRESS_NOTIFICATIONS"}
+    env["ARGUS_OUTPUT_DIR"] = str(tmp_path / "reports")
+    server = StdioServerParameters(command=sys.executable, args=["-m", "argus.mcp_server"], env=env)
+    progress = []
+
+    async def on_progress(value, total, message):
+        progress.append(message)
+
+    async with stdio_client(server) as (read, write):
+        async with ClientSession(read, write) as client:
+            await client.initialize()
+            started = await client.call_tool(
+                "start_session",
+                {"url": page.as_uri(), "goals": ["inspect page"]},
+                progress_callback=on_progress,
+            )
+            assert started.structuredContent["stages"][-1] == "completed"
+            for name, arguments in (
+                ("coverage_update", {"goal": "inspect page", "status": "in_progress"}),
+                ("observe", {}),
+                ("record_bug", {"title": "Heading is unclear", "severity": "low"}),
+                ("end_session", {}),
+            ):
+                result = await client.call_tool(name, arguments, progress_callback=on_progress)
+                assert not result.isError, result.content[0].text
+                assert result.structuredContent["progress_delivery_failed"] is False
+    assert progress == []
+
+
 async def test_real_stdio_handshake_and_local_page_journey(tmp_path):
     page = tmp_path / "fixture.html"
     page.write_text("<html><body><h1>Protocol fixture</h1><button>Save</button></body></html>")
-    env = dict(os.environ, ARGUS_OUTPUT_DIR=str(tmp_path / "reports"))
+    env = dict(
+        os.environ, ARGUS_OUTPUT_DIR=str(tmp_path / "reports"), ARGUS_PROGRESS_NOTIFICATIONS="1"
+    )
     server = StdioServerParameters(
         command=sys.executable, args=["-m", "argus.mcp_server", "--monitor-port", "0"], env=env
     )
@@ -54,8 +90,9 @@ async def test_real_stdio_handshake_and_local_page_journey(tmp_path):
                 "observing",
                 "completed",
             ]
-            assert len(progress) == 5
-            assert [entry[0] for entry in progress] == list(range(1, 6))
+            # The closing stage is in the result, never sent as a notification.
+            assert len(progress) == 4
+            assert [entry[0] for entry in progress] == list(range(1, 5))
             assert all(
                 entry[1] is None and "Protocol fixture" not in entry[2] for entry in progress
             )
