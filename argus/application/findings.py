@@ -11,7 +11,6 @@ from argus.domain.models import (
     Bug,
     Observation,
 )
-from argus.domain.verdict import receipt_verdict, token_present
 from argus.domain.verification import VerificationSpec, receipt_outcome, retained_verification
 
 from .coverage import _coverage_goal_index, _refresh_finding_coverage
@@ -196,29 +195,6 @@ async def record_bug(
             verify.pop("expect")
             verify.pop("target_text")
 
-    # The failed persistence check this finding is about, if the agent has
-    # done nothing else since. Its symptom is re-checked from fresh loads like
-    # any verify, so using it adds no trust in the agent's word.
-    symptom = s._observed_symptom if s.mode == "web" else None
-    if symptom and symptom["actions"] != len(s.action_trace):
-        symptom = None
-    verify_note = ""
-    if (
-        verify is None
-        and symptom
-        # Only in the agent's own words: the steps Argus collected by default
-        # name every row that was touched and would match any finding.
-        and token_present(
-            symptom["target_text"],
-            " ".join([title, description, *(steps if ev.get("steps") is not None else [])]),
-        )
-    ):
-        verify = {key: symptom[key] for key in ("expect", "target_text", "at_url")}
-        verify_note = (
-            "verify was not given; Argus rechecked the persistence failure it had just "
-            f"observed ({symptom['expect']} {_short(symptom['target_text'], 60)!r})."
-        )
-
     fresh_load = False
     if verify:
         try:
@@ -303,38 +279,6 @@ async def record_bug(
                 warnings.append(
                     receipt.get("evidence_warning") or "Verification screenshot was unavailable."
                 )
-
-    if (
-        symptom
-        and not verify_note
-        and receipt
-        and receipt.get("reproduced") is False
-        and not receipt.get("flaky")
-        and receipt.get("mode") != "replay"
-        and receipt.get("expect") in ("present", "absent")
-        and receipt["expect"] != symptom["expect"]
-        and not verify.get("clear_storage")
-        and " ".join(str(receipt.get("target_text", "")).split()).casefold()
-        == " ".join(symptom["target_text"][:120].split()).casefold()
-        and _resolve_url(s, receipt.get("at_url") or "") == symptom["at_url"]
-    ):
-        # verify named the state that was expected, not the symptom. The fresh
-        # loads already show the opposite, which is what verify_persistence saw.
-        verify_note = (
-            f"verify said expect={receipt['expect']!r}, the state that should hold; the "
-            f"symptom is the opposite. The same fresh loads show {symptom['expect']} "
-            f"{_short(symptom['target_text'], 60)!r}, as verify_persistence did, so the "
-            "finding is checked against that."
-        )
-        verify = {**verify, "expect": symptom["expect"]}
-        receipt = {
-            **receipt,
-            **receipt_verdict(receipt["observed_present"], symptom["expect"]),
-            "stated_expect": receipt["expect"],
-        }
-    if verify_note:
-        warnings.append(verify_note)
-        s._observed_symptom = None
 
     description, receipt = await _guard_capsule(s, description, receipt)
 
@@ -469,25 +413,44 @@ async def record_bug(
             'toast), recheck this finding_id with verify={"expect":"present|absent","target_text":'
             '"...","at_url":"/path"} so Argus re-confirms it from a clean load.'
         )
+    finding_id = f"{s.run_id}:{len(s.bugs)}"
+    suggested = None if verdict is True else _pending_symptom(s, url, receipt)
+    next_action = (
+        "Preserve this receipt; do not repeat the journey."
+        if verdict is True
+        else "This finding is not confirmed. If its symptom can be read as text on a "
+        "page, call record_bug again with this finding_id, the same title and "
+        "severity, and verify stating the symptom as seen (expect is what the page "
+        "shows while the bug is there, not what it should show). Use fresh loads "
+        "for persistence failures; do not repeat writes to force confirmation."
+    )
+    if suggested:
+        # Offered, never applied: whether this finding is that failure is the
+        # caller's claim to make. Its words are not read to decide it.
+        next_action = (
+            f"This finding is not confirmed. verify_persistence just saw "
+            f"{suggested['expect']} {_short(suggested['target_text'], 60)!r} at this page; "
+            "Argus has not applied that to this finding. Only if this finding is that "
+            "persistence failure, confirm it: call record_bug again with this finding_id, "
+            "the same title and severity, and verify=suggested_verify. If it claims "
+            "anything else, leave it as it is."
+        )
+        out.append(
+            f"  suggested_verify (not applied): {suggested} — use it with finding_id "
+            f"{finding_id} only if this finding is the persistence failure just observed."
+        )
     out.append(f"  total bugs in session: {len(s.bugs)}")
     return ToolText(
         "\n".join(out),
         {
             "recorded": True,
-            "finding_id": f"{s.run_id}:{len(s.bugs)}",
+            "finding_id": finding_id,
             "evidence_status": "observed" if receipt is None else code,
             "verdict": code,
             "receipt": receipt,
             "warnings": warnings,
-            "next_action": (
-                "Preserve this receipt; do not repeat the journey."
-                if verdict is True
-                else "This finding is not confirmed. If its symptom can be read as text on a "
-                "page, call record_bug again with this finding_id, the same title and "
-                "severity, and verify stating the symptom as seen (expect is what the page "
-                "shows while the bug is there, not what it should show). Use fresh loads "
-                "for persistence failures; do not repeat writes to force confirmation."
-            ),
+            "suggested_verify": suggested,
+            "next_action": next_action,
             "finding": {
                 "title": title,
                 "severity": sev.value,
@@ -496,6 +459,29 @@ async def record_bug(
             },
         },
     )
+
+
+def _pending_symptom(s: Session, url: str, receipt: dict | None) -> dict | None:
+    """The symptom the last failed verify_persistence saw, as a verify clause
+    the caller may choose to use, or None.
+
+    Only while it still describes the page: no action since that check, and a
+    finding on the page it checked. Not when the finding was just checked
+    against the same clause.
+    """
+    symptom = s._observed_symptom if s.mode == "web" else None
+    if not symptom or symptom["actions"] != len(s.action_trace):
+        return None
+    if _resolve_url(s, url) != symptom["at_url"]:
+        return None
+    clause = {key: symptom[key] for key in ("expect", "target_text", "at_url")}
+    if receipt and all(
+        " ".join(str(receipt.get(key, "")).split()).casefold()
+        == " ".join(str(clause[key])[:120].split()).casefold()
+        for key in ("expect", "target_text")
+    ):
+        return None
+    return clause
 
 
 def _finding_goals(s: Session, evidence: dict) -> tuple[list[str], str | None, list[str]]:

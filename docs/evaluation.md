@@ -374,6 +374,12 @@ What the earlier rounds showed, before the fixes they led to:
   stated the expected state instead of the symptom.
 - The agent began editing the app before reporting.
 
+The code these trials ran also let `record_bug` apply an earlier failed
+check to a finding by itself. An independent review showed that it confirmed
+findings that claimed something else, and it was removed; `record_bug` now
+only suggests the check. No trial in the final round had used it: the two
+findings recorded there were confirmed by the `verify` the agent passed.
+
 What this run does not show:
 
 - That a host uses Argus when asked to check a finished feature. On this

@@ -145,17 +145,22 @@ Each check records `expect_status` (or `null`), `text_matches` and
 `status_matches` (`null` without an expected status), so an exported mismatch
 shows whether the text, the status or both failed.
 `expect` here is the state that should hold; `record_bug`'s `verify.expect` is
-the symptom, the state the page shows while the bug is there. After a
-conclusive text mismatch, and until the next action, `record_bug` uses what
-this check saw in two cases. If `verify` is left out and the title, description
-or supplied steps name the target text, it rechecks that symptom from fresh
-loads. If `verify` names the same target and URL with the state that was
-expected, the fresh loads show the opposite and the finding is checked
-against the symptom; the receipt keeps the stated value as `stated_expect`.
-Either way a warning says so, and a finding that does not name the target is
-left as observed. In a session that declared no goals, a `goal` on a finding
-is dropped with a warning instead of rejecting the finding; where goals were
-declared, a name that matches none of them is still an error.
+the symptom, the state the page shows while the bug is there. `record_bug`
+checks the condition the caller gave, in `verify` or in the evidence fields
+that carry one (`target_text` or `target`, `expect`, `at_url`,
+`expect_status`). It does not derive a condition from an earlier check or
+from a finding's wording, and it does not reverse one the caller stated: a
+finding for which the caller gave no condition stays observed, and a stated
+condition that does not reproduce is not reproduced. What it does after a
+conclusive text mismatch, until the next action, is hand the check back. A finding recorded on the checked page that is not confirmed
+carries `data.suggested_verify` (`expect`, `target_text`, `at_url` as this
+check saw them) and a `next_action` saying it was not applied. If the finding
+is that persistence failure, the caller confirms it with a second call:
+`record_bug` with the `finding_id`, the same title and severity, and that
+`verify`. A finding on another page gets no suggestion. In a session that
+declared no goals, a `goal` on a finding is dropped with a warning instead of
+rejecting the finding; where goals were declared, a name that matches none of
+them is still an error.
 For an observed match-to-mismatch transition it supplies `suggested_verify`: the inverse
 text predicate at the checked URL, carrying the same storage policy. Review the
 user requirement before passing it to `record_bug`. This is a fresh-load symptom

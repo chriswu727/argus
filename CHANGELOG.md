@@ -33,13 +33,14 @@
   a progress notification read together with its response reaches the host
   for a token it has already dropped, and the host closes the connection.
   Results still list their `stages`.
-- `record_bug` right after a failed `verify_persistence` no longer loses the
-  finding to a bookkeeping slip. Without `verify`, it rechecks the symptom
-  that check saw when the finding names the target text. With `verify`
-  stating the expected state instead of the symptom, the same fresh loads
-  confirm the opposite and the receipt records both. A `goal` named in a
-  session that declared none is dropped with a warning instead of rejecting
-  the finding.
+- After a failed `verify_persistence`, a finding recorded on that page without
+  a confirmation carries `suggested_verify`: the symptom that check saw,
+  offered and not applied. The caller confirms the finding with a second
+  `record_bug` call using its `finding_id` and that clause. `record_bug` does
+  not derive a condition from an earlier check or from a finding's wording,
+  and does not reverse one the caller stated; a condition given in `verify`
+  or in the evidence fields is checked as given. A `goal` named in a session that declared none is
+  dropped with a warning instead of rejecting the finding.
 - `docs/evaluation.md` records the first host-level run (Claude Code with a
   small model, six trials in the final round): what finished without a person,
   what did not use Argus at all, and what the run cannot show.

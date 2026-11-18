@@ -93,7 +93,11 @@ The two tools read `expect` differently. `verify_persistence` takes the state
 that should hold (a deleted row is `absent`). `record_bug`'s `verify` takes the
 symptom, what the page shows while the bug is there (the deleted row is still
 `present`). When a persistence check fails, record it straight away, before
-any other action, and name the affected text in the title or description.
+any other action, passing the `suggested_verify` that check returned. If
+`record_bug` answers with a `suggested_verify` of its own, the finding is not
+confirmed yet: Argus never applies it for you. When the finding is that
+persistence failure, call `record_bug` again with its `finding_id`, the same
+title and severity, and that `verify`.
 
 Finding a bug is not a reason to stop or to start fixing. Record it, finish
 the other journeys, close the session and report.
