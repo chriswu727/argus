@@ -97,7 +97,15 @@ def to_mcp_result(
         else TextContent(type="text", text=(f"[{code}] " if code else "") + str(item))
         for item in values
     ]
-    data = redacted_copy(value.data) if isinstance(value, ToolText) else {}
+    structured = next((item for item in values if isinstance(item, ToolText)), None)
+    data = redacted_copy(structured.data) if structured is not None else {}
+    if not data:
+        # Hosts that read only structuredContent (Claude Code shows the model
+        # this envelope, not the text blocks) would otherwise get an empty data
+        # object for every tool that answers in text, errors included.
+        text = "\n".join(str(item) for item in values if not isinstance(item, ImageArtifact))
+        if text:
+            data["message"] = redacted_copy(text)
     artifacts = [
         {"kind": "image", "path": str(item.path)}
         for item in values
