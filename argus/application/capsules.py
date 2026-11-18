@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 from urllib.parse import urlparse
 
+from argus.domain.contracts import ErrorCode, Rejection
 from argus.storage import (
     StorageError,
     atomic_write_json,
@@ -44,7 +45,7 @@ async def capsule_save(name: str, liveness_marker: str = "") -> str:
     """
     s = _require_session()
     if s.mode != "web" or s.browser is None or not s.browser.has_page:
-        return "capsule_save: this tool is web-mode only."
+        return Rejection("capsule_save: this tool is web-mode only.")
     capsule = await s.browser.capsule_capture()
     capsule["schema_version"] = 1
     capsule["liveness_marker"] = liveness_marker.strip()
@@ -59,7 +60,10 @@ async def capsule_save(name: str, liveness_marker: str = "") -> str:
             atomic_write_text(gi, "*\n")
         atomic_write_json(path, capsule)
     except Exception as exc:
-        return f"capsule_save: could not write capsule — {type(exc).__name__}: {str(exc)[:120]}"
+        return Rejection(
+            f"capsule_save: could not write capsule — {type(exc).__name__}: {str(exc)[:120]}",
+            ErrorCode.STORAGE,
+        )
     s.steps.append(f"capsule_save({name!r})")
     _record_coverage_action(s, "capsule_save", name)
     n_c = len(capsule.get("cookies") or [])
@@ -89,7 +93,7 @@ async def capsule_restore(name: str) -> str:
     """
     s = _require_session()
     if s.mode != "web" or s.browser is None or not s.browser.has_page:
-        return "capsule_restore: this tool is web-mode only."
+        return Rejection("capsule_restore: this tool is web-mode only.")
     # Look up by the current origin first, but fall back to scanning every saved
     # origin for this name — so restore works from about:blank or after the app
     # moved to a different port/host alias (the whole point is to skip re-login).
@@ -102,12 +106,12 @@ async def capsule_restore(name: str) -> str:
             path = matches[0]
         elif len(matches) > 1:
             origins = ", ".join(p.parent.name for p in matches)
-            return (
+            return Rejection(
                 f"capsule_restore: {name!r} exists for multiple origins ({origins}); "
                 f"navigate to the target origin first to disambiguate."
             )
         else:
-            return (
+            return Rejection(
                 f"capsule_restore: no capsule named {name!r}. "
                 f"capsule_save({name!r}, liveness_marker=...) it first."
             )
@@ -119,7 +123,10 @@ async def capsule_restore(name: str) -> str:
             raise StorageError("unsupported capsule schema; re-save the capsule")
         applied = await s.browser.capsule_apply(capsule)
     except Exception as exc:
-        return f"capsule_restore: failed to apply — {type(exc).__name__}: {str(exc)[:120]}"
+        return Rejection(
+            f"capsule_restore: failed to apply — {type(exc).__name__}: {str(exc)[:120]}",
+            ErrorCode.BACKEND,
+        )
     state = await s.browser.get_state()
     s._last_elements = state.elements
     s.steps.append(f"capsule_restore({name!r})")
