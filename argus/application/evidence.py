@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import re
@@ -137,6 +138,19 @@ def _write_journal(s: "Session") -> None:
         return
     path = _journal_path(origin)
     current_runtime().journal.merge(path, fresh)
+
+
+async def _journal_confirmed(s: "Session") -> str | None:
+    """Journal now rather than at end_session: a session that is never ended
+    (the host stops, the server exits) must still leave its confirmed findings
+    for a later regression_check. Returns a warning when the write fails."""
+    if s.mode != "web":
+        return None
+    try:
+        await asyncio.to_thread(_write_journal, s)
+    except Exception as exc:
+        return f"journal was not saved: {type(exc).__name__}: {str(exc)[:160]}"
+    return None
 
 
 async def _auto_screenshot(s: Session, name: str, step: str) -> Optional[str]:

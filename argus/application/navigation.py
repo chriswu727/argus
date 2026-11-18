@@ -7,6 +7,7 @@ from .coverage import _coverage_reference_url
 from .evidence import _record_action
 from .payloads import action_result
 from .session import _require_session, _require_web_session
+from .text import _resolve_url
 
 
 async def tabs_list() -> str:
@@ -144,12 +145,14 @@ async def navigate(url: str) -> str:
     """Navigate to a specific URL.
 
     Args:
-        url: The URL to navigate to
+        url: The URL to navigate to; a path such as /settings is resolved
+            against the current page.
     """
     s = _require_session()
     err = _require_web_session(s, "navigate")
     if err:
         return err
+    url = _resolve_url(s, url)
     step = f"Navigate to {url}"
     s.steps.append(step)
 

@@ -285,6 +285,55 @@ Codex model sampling does not expose a deterministic seed in this runner. Token
 usage is the host's reported total input (including cached input) and output, not
 a dollar-cost estimate. Keep model, host and reasoning effort fixed.
 
+## Autonomy acceptance
+
+Whether a host agent finishes a testing pass without a person is a separate
+question from whether the tools work. Two layers answer it.
+
+**Deterministic layer (runs in CI).** `tests/test_autonomous_acceptance.py`
+drives the tools through the MCP server against an application whose defect
+can be switched on and off: the defective build, the fixed build and a build
+that never had the defect; content that arrives late; a row that is gone; a
+timeout after a write; a failed session and a failed restart; a page behind a
+login. `tests/test_first_run_browser.py` covers the first-use browser download.
+These calls are scripted. They show that a host has what it needs at each
+step, not that a model takes the step.
+
+**Host layer (not yet run; needs separate authorization because it uses model
+subscriptions).** Use the real plugin in a real host, a fresh conversation per
+trial, and only these three requests, with no testing instructions added:
+
+1. "Test the app." (the app is running, or startable from the project)
+2. "The feature is done, check it." (after the agent or a person changed code)
+3. "The problem from before is fixed, test it again."
+
+Run each request on three builds: with the seeded defect, with it fixed, and
+one that never had it. The last two are the controls: a finding there is a
+false positive, and a pass that reports "nothing found" on the defective build
+is a miss.
+
+Record per trial, from the host transcript and Argus's own artifacts:
+
+| Measure | Source |
+|---|---|
+| Human interventions (any message the person had to send after the request), and why | transcript |
+| Completed (a final report exists and `end_session` ran) | transcript, report file |
+| Where a seeded defect was lost: not exercised, exercised but not noticed, noticed but not recorded, recorded but not confirmed, confirmed but missing from the final answer | action trace, findings, receipts, final answer |
+| False positives, on every build | adjudicated final answer |
+| Inconclusive results and whether they were reported as inconclusive | receipts, final answer |
+| For request 3: whether `regression_check` was used, and its result per finding | tool trace |
+| Wall-clock time, tool calls, and tokens where the host reports them | transcript |
+
+Rules, so the result means something:
+
+- Fix the prompts, builds, pass criteria and the adjudication key before the
+  first trial, and keep them outside what the agent under test can edit.
+- Count an intervention as avoidable only if the information was already in
+  the project, the conversation or a running process.
+- A trial that runs out of budget is reported as unfinished with what it
+  covered. Do not rerun it until it passes, and do not drop it.
+- Report every trial. Small samples show problems; they do not prove rates.
+
 ## Independent adjudication
 
 The collector saves an unscored model answer, tool trace and server-side oracle

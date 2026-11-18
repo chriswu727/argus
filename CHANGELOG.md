@@ -15,6 +15,23 @@
   left is inconclusive (`unsearched`) instead of a confirmed absence. Live
   verification, `verify_persistence` and exported tests (verdict rules
   version 2) share the change; export a test again to pick it up.
+- `argus-mcp --doctor` exits 0 when web testing can run. Missing macOS screen
+  grants are listed but only fail the check with `--tool-profile screen` or
+  `full`, and a browser that is not downloaded yet is reported as arriving on
+  the first session instead of as missing.
+- A session that was never ended no longer loses what it found. A confirmed
+  finding is journaled when `record_bug` confirms it, not at `end_session`.
+  `start_session` after a timeout or failure first saves the earlier session's
+  report and names it, with the goals that were left, in its result
+  (`unended_run`). The timeout and failed-session errors say how to continue
+  and to check whether a write happened before repeating it.
+- `navigate` accepts a path such as `/settings`, resolved against the current
+  page, as `verify_persistence` and `record_bug` already did.
+- The protocol `start_session` returns has a seventh step on recovering
+  without the user, so a host connected without a plugin gets it too.
+  `AGENTS.md` and `docs/evaluation.md` describe running a pass unattended and
+  how to accept it: deterministic scenarios in CI, and a host-level protocol
+  with defective, fixed and never-defective builds that has not been run yet.
 
 ## Plugin updates - 2026-11-17 (0.13.1)
 

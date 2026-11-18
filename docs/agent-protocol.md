@@ -165,6 +165,19 @@ Replay rechecks use the original finding's trace and still repeat its writes;
 they require the same authority as any replay. A limit or inconclusive receipt
 is a reason to preserve uncertainty, not to create a duplicate and force a pass.
 
+## Recovering a session
+
+A call that outlasts the operation timeout stops the session, and so does a
+browser that fails. What the session recorded stays in memory: `end_session`
+writes its report, and `start_session` does the same before it replaces the
+session, returning `data.unended_run` with `run_id`, `findings`, `observations`,
+`report_path` and `unfinished_goals` (also when the new start itself fails, in
+the error text). Pass the unfinished goals to the new session to continue.
+A finding is added to the regression journal when `record_bug` confirms it, so
+confirmed findings survive a server that exits without `end_session`; their
+report does not. After a timeout on a call that changes data, observe or use
+`verify_persistence` to see whether the change happened before repeating it.
+
 ## Regression checks and migration
 
 Since 0.12.2, journals retain the complete verification predicate and preconditions
@@ -179,7 +192,7 @@ form cannot turn missing content into evidence of a fix.
 
 Journals from 0.12.1 and earlier lack complete preconditions and require re-recording.
 Preserve the old directory, record replacement findings in a new `ARGUS_OUTPUT_DIR`,
-and call `end_session` before checking the new journal. An empty journal is not a
+and check the new journal once `record_bug` has confirmed them. An empty journal is not a
 successful migration. Regenerate older exported tests from the new findings; saved
 Python files do not update when the package is upgraded.
 

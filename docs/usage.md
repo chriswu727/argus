@@ -17,7 +17,10 @@ uvx --from argus-testing argus-mcp --doctor     # checks Chromium, a real launch
 Set `ARGUS_AUTO_INSTALL_BROWSER=0` where downloads are not allowed; a missing
 browser is then reported with the command to run.
 
-Each failed `--doctor` check prints the exact fix. If your default interpreter is
+`--doctor` exits 0 when web testing can run. A browser that has not been
+downloaded yet is listed as arriving on first use, and on macOS the screen-mode
+grants are listed without affecting the result unless you pass
+`--tool-profile screen` or `full`. Each failed check prints the exact fix. If your default interpreter is
 older than 3.11, use `uvx --python 3.12 --from argus-testing argus-mcp`. If an
 upgrade reports a missing browser, run `uvx --from argus-testing python -m playwright install chromium`.
 
@@ -104,7 +107,7 @@ claude mcp add argus -- argus-mcp
 ```bash
 pip install 'argus-testing[mac]'
 brew install cliclick          # keystroke / coordinate fallback
-argus-mcp --doctor             # web checks plus Screen Recording + Accessibility grants
+argus-mcp --doctor --tool-profile screen   # web checks plus Screen Recording + Accessibility grants
 claude mcp add argus-screen -- argus-mcp --tool-profile screen
 ```
 
@@ -397,8 +400,8 @@ Since 0.12.2, mixed receipts (such as `1/2`) and storage-reset preconditions
 are inconclusive, never a passing gate. Journals from 0.12.1 and earlier lack
 complete verification conditions and must be re-recorded. Preserve the old
 output directory, use a new `ARGUS_OUTPUT_DIR` when recording the replacement
-findings, and point `argus-regression --output` at that new directory after
-`end_session` has written the new journal. An empty directory has no checks;
+findings, and point `argus-regression --output` at that new directory once
+the findings are confirmed (a finding is journaled when `record_bug` confirms it). An empty directory has no checks;
 do not treat that as a successful migration. Older exported Python files do not
 update automatically; regenerate them from the new findings.
 

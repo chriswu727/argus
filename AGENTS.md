@@ -21,7 +21,7 @@ brew install cliclick
 claude mcp add argus -- argus-mcp
 argus-mcp --version       # confirm host loaded the version you expect
 argus-mcp --list-tools    # show the selected profile and public tools
-argus-mcp --doctor        # Chromium, report dir; on macOS also screen grants
+argus-mcp --doctor        # Chromium and report dir decide the result; screen grants are listed
 ```
 
 The default `web` profile has 29 tools covering the complete testing loop,
@@ -59,6 +59,34 @@ the user's broader task. The short version:
   compact coverage ledger visible):
   Map → **Use it** (walk each goal end-to-end, carrying real state) →
   Hypothesize → Act → Observe → Verify → Record → Cover.
+
+## Running a pass without the user
+
+The user wants the result, not the run. Handle the routine parts yourself and
+ask only for what you cannot get: a login you were not given, or a decision
+outside the task.
+
+- **Address**: from the request, the conversation, the project's start script
+  and port, or a dev server that is already running. Start the app with the
+  project's own command when that is part of your task.
+- **Setup**: the first `start_session` downloads the browser; if it reports the
+  download is still running, wait and call it again.
+- **A target is gone or ambiguous**: `observe` and choose from what is there now.
+- **A timeout or error after a write**: check whether the write happened
+  (`observe`, `verify_persistence`) before repeating it.
+- **A failed session**: call `start_session` again with the unfinished goals.
+  It saves the earlier session's report first and returns it as
+  `data.unended_run`; confirmed findings are already in the journal.
+- **No account for a journey**: mark the goal `blocked` with the reason, finish
+  the rest, and say what you need in the report.
+- **After a fix**: start a session and call `regression_check`. When the bug
+  was a change that did not stay, repeat that action once on the fixed build
+  first, because the old data is still there.
+- **A test file the user asked for**: call `export_test` before `end_session`.
+  It reads the open session's findings; a closed session has none to export.
+- **Report**: the journeys tested, each bug with impact, steps and evidence
+  paths, what was not finished and why. Inconclusive stays inconclusive, and a
+  run with no defects is a normal result.
 
 ## Structured results (0.8)
 
@@ -200,8 +228,11 @@ Don't record speculation, polish nits, or static a11y / SEO that
 
 - `argus-mcp --version` — what version your MCP host actually loaded.
 - `argus-mcp --doctor` — checks the matching Chromium (with a real headless
-  launch) and the report directory, printing exact fixes; on macOS it also
-  probes Screen Recording and Accessibility for screen mode.
+  launch) and the report directory, printing exact fixes. Those web checks
+  decide its exit status; a browser that is not downloaded yet is reported as
+  arriving on first use, not as a failure. On macOS it also lists the Screen
+  Recording and Accessibility grants, which count toward the status only with
+  `--tool-profile screen` or `full`.
 - `argus-mcp --list-tools` — selected tool profile and exported names.
 - `argus-mcp --tool-profile web|advanced|screen|full` — control discovery size.
 - `argus-mcp --unsafe` — turn on `eval_js` (off by default).

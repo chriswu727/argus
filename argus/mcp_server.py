@@ -107,7 +107,7 @@ def main() -> None:
     if args.doctor:
         from argus.doctor import main as doctor
 
-        sys.exit(doctor())
+        sys.exit(doctor(resolve_profile(args.tool_profile)))
     if args.list_tools:
         names = sorted(tool_names(args.tool_profile))
         resolved = resolve_profile(args.tool_profile)
