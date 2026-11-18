@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "argus_version": "0.13.1",
+  "argus_version": "0.13.2",
   "mcp_sdk_version": "1.30.0",
   "python_version": "3.12.13",
   "method": "synthetic-identical-input-encoding-v1",
@@ -15,7 +15,7 @@
     "web": {
       "tools": 29,
       "tools_json_bytes": 36242,
-      "instructions_utf8_bytes": 223,
+      "instructions_utf8_bytes": 238,
       "description_utf8_bytes": 5089,
       "input_schema_json_bytes": 5703,
       "output_schema_json_bytes": 19343
@@ -23,7 +23,7 @@
     "advanced": {
       "tools": 62,
       "tools_json_bytes": 80902,
-      "instructions_utf8_bytes": 223,
+      "instructions_utf8_bytes": 238,
       "description_utf8_bytes": 17167,
       "input_schema_json_bytes": 9039,
       "output_schema_json_bytes": 41354
@@ -31,16 +31,16 @@
     "screen": {
       "tools": 14,
       "tools_json_bytes": 23851,
-      "instructions_utf8_bytes": 223,
+      "instructions_utf8_bytes": 238,
       "description_utf8_bytes": 8045,
       "input_schema_json_bytes": 3282,
       "output_schema_json_bytes": 9338
     },
     "full": {
       "tools": 78,
-      "tools_json_bytes": 118417,
-      "instructions_utf8_bytes": 223,
-      "description_utf8_bytes": 37931,
+      "tools_json_bytes": 118504,
+      "instructions_utf8_bytes": 238,
+      "description_utf8_bytes": 38017,
       "input_schema_json_bytes": 11044,
       "output_schema_json_bytes": 52026
     }

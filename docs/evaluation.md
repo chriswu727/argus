@@ -5,7 +5,7 @@ Available in 0.8.0 and newer.
 ## Response overhead
 
 Version 0.9 introduced an offline, deterministic encoding benchmark; the figures
-below are reproduced with 0.13.1:
+below are reproduced with 0.13.2:
 
 ```bash
 python -m argus_lab.evaluation.overhead
@@ -40,7 +40,8 @@ versions do not, so 0.10 discovery sizes for profiles using docstrings depend on
 the Python version.
 
 0.11.0 replaced the `agent` and `core` profiles with `web`. Full discovery
-payloads (tool JSON plus the 223-byte server instructions) compare as follows:
+payloads (tool JSON plus the server instructions, 223 bytes up to 0.13.1 and
+238 bytes from 0.13.2) compare as follows:
 
 | Profile | Tools | Discovery bytes |
 |---|---:|---:|
@@ -50,6 +51,8 @@ payloads (tool JSON plus the 223-byte server instructions) compare as follows:
 | 0.11 `advanced` | 61 | 79,039 (any Python) |
 | 0.12 `web` (default) | 29 | 36,280 |
 | 0.12 `advanced` | 62 | 80,940 |
+| 0.13.2 `web` (default) | 29 | 36,480 |
+| 0.13.2 `advanced` | 62 | 81,140 |
 
 0.11 `web` is 41.0% larger than 0.10 `agent`, and 33.5% (Python 3.11/3.12) or 32.0%
 (Python 3.13) smaller than 0.10 `core`. These are bytes for discovery only, not
@@ -58,6 +61,12 @@ model tokens or whole-session context.
 0.12 adds `export_test` and richer interaction arguments. Its web discovery is
 5.5% larger than 0.11 web; response encoding sizes remain unchanged. The 0.12
 figures above were measured on Python 3.12.13 with MCP SDK 1.30.0.
+
+0.13.2 changes the server instructions (they now say to look for the app's
+address before asking and to report before changing code), so discovery grows
+by 15 bytes in every profile; `full` also grows by 87 bytes of tool JSON from
+the `navigate` description. Response encoding sizes are unchanged. Measured on
+Python 3.12.13 with MCP SDK 1.30.0.
 
 These are **encoding results, not a new agent evaluation**. They do not show
 token savings, coverage gains, fewer false positives, lower billed costs or faster
@@ -335,7 +344,7 @@ Rules, so the result means something:
   covered. Do not rerun it until it passes, and do not drop it.
 - Report every trial. Small samples show problems; they do not prove rates.
 
-### Host run of 2026-11-17
+### Host run of 2026-11-17 (before 0.13.2)
 
 One run, authorized by the maintainer with a small model. It found defects;
 it is far too small to state a completion or detection rate.

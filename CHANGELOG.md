@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.13.2 - 2026-11-18
+
+Fixes found by running Argus under a real coding agent and by an independent
+review of that work. No new tools. Upgrade notes: absence that Argus could not
+fully check is now inconclusive where it used to be confirmed, so a regression
+gate can report more inconclusive results; exported tests carry verdict rules
+version 2 only after they are exported again; MCP progress notifications are
+off unless `ARGUS_PROGRESS_NOTIFICATIONS=1`.
 
 - A fresh load that kept the path but dropped or changed a requested query
   parameter (`/tasks?list=work` redirected to `/tasks?list=home`) is a
@@ -42,8 +49,9 @@
   or in the evidence fields is checked as given. A `goal` named in a session that declared none is
   dropped with a warning instead of rejecting the finding.
 - `docs/evaluation.md` records the first host-level run (Claude Code with a
-  small model, six trials in the final round): what finished without a person,
-  what did not use Argus at all, and what the run cannot show.
+  small model, six trials in its final round, before this release): what
+  finished without a person, what did not use Argus at all, and what the run
+  cannot show. It is not a success rate.
 - The server instructions and the session protocol tell a host to find the
   app's address in the project before asking, and to report before changing
   code.
@@ -51,15 +59,15 @@
   without the user, so a host connected without a plugin gets it too.
   `AGENTS.md` and `docs/evaluation.md` describe running a pass unattended and
   how to accept it: deterministic scenarios in CI, and a host-level protocol
-  with defective, fixed and never-defective builds that has not been run yet.
+  with defective, fixed and never-defective builds.
 
 ## Plugin updates - 2026-11-17 (0.13.1)
 
 - Claude plugin 0.13.1 and Codex plugin 0.13.1 pin the published Argus 0.13.1
   runtime and refresh their dependency locks and setup commands.
-- Both test skills now run a pass without handing work back to the user. They
-  find the address from the conversation, the project or a running dev server
-  instead of asking; let the first session download the browser and retry
+- Both test skills are rewritten so the agent can run a pass without handing
+  work back to the user. They say to find the address from the conversation,
+  the project or a running dev server instead of asking; let the first session download the browser and retry
   while it does; say what to do when a target is gone, a page is slow, a call
   times out after a write, the session fails, a login is missing or a check is
   inconclusive; and report the journeys tested, each bug with its evidence,

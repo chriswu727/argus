@@ -80,15 +80,19 @@ replaying a journey can repeat its writes.
 [Cursor, other MCP clients and troubleshooting](docs/usage.md#quick-start) ·
 [Claude plugin](plugins/claude) · [Codex plugin](plugins/codex)
 
-**0.13.1**: the first session downloads Chromium by itself, so connecting
-Argus is the only setup step. Since 0.13.0, live verification, `verify_persistence` and exported tests
-decide with the same rules, checked against each other on every change. They
-read what a user can see, in every frame and open shadow root, and an exported
-test reports an inconclusive check instead of a false failure. Regenerate
-exported tests to get the shared rules; see the
-[journal migration steps](docs/usage.md#regression-gates-in-ci), the
+**0.13.2**: fixes found by running Argus under a real coding agent. Argus no
+longer sends the progress notifications that made Claude Code drop the
+connection partway through a run and lose the session's findings. A delete
+that redirects to another list, or a row
+further down a long or virtualized list than Argus scrolled, is reported as
+inconclusive instead of confirmed absent. A finding is confirmed only by a
+check the agent states. `--doctor` passes on a Mac without the screen-mode
+grants. Since 0.13.1 the first session downloads Chromium by itself, and since
+0.13.0 live verification, `verify_persistence` and exported tests decide with
+the same rules. Regenerate exported tests to pick up verdict rules version 2;
+see the [journal migration steps](docs/usage.md#regression-gates-in-ci), the
 [releases](https://github.com/chriswu727/argus/releases) and the
-[changelog](CHANGELOG.md#0131---2026-11-12).
+[changelog](CHANGELOG.md#0132---2026-11-18).
 
 ## Engineering
 
