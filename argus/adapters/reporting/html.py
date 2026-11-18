@@ -243,7 +243,16 @@ def render_html(
         )
     else:
         coverage_section = f"<h2>Focus Areas</h2><ul>{focus}</ul>"
-    no_bugs = '<div class="nb">No bugs found.</div>' if not r.bugs else ""
+    # After a recheck, "no bugs" would contradict a known bug that is still
+    # present: say what is true, that this session recorded nothing new.
+    findings_label = "New Findings" if r.regression else "Bugs Found"
+    if r.bugs:
+        no_bugs = ""
+    elif r.regression:
+        # Neutral, not the green all-clear: a known bug may still be present.
+        no_bugs = '<p class="nn">No new findings recorded in this session.</p>'
+    else:
+        no_bugs = '<div class="nb">No bugs found.</div>'
 
     observations_html = ""
     if r.observations:
@@ -259,6 +268,38 @@ def render_html(
 <span class="ou">{_esc(_redact(observation.url))}</span></div>
 <h3>{_esc(observation.title)}</h3>
 <p>{_esc(observation.evidence)}</p>{image}</div>"""
+
+    regression_html = ""
+    if r.regression and not r.regression["findings"]:
+        regression_html = (
+            "<h2>Regression Re-check (0)</h2>"
+            f'<p class="cb">{r.regression["checks"]} run(s): no journaled findings for this '
+            "site; nothing was rechecked.</p>"
+        )
+    elif r.regression:
+        status_style = {
+            "STILL-PRESENT": "cv-bad",
+            "NO-LONGER-REPRODUCES": "cv-ok",
+            "INCONCLUSIVE": "cv-unknown",
+        }
+        rows = "".join(
+            f'<tr><td><span class="cv {status_style.get(f["status"], "cv-unknown")}">'
+            f"{_esc(f['status'])}</span></td><td>{_esc(str(f['severity']).upper())}</td>"
+            f"<td>{_esc(f['title'])}</td><td>{_esc(f.get('runs') or '')}</td>"
+            f"<td>{_esc(f.get('reason') or '')}</td><td>{_esc(' → '.join(f['history']))}</td></tr>"
+            for f in r.regression["findings"]
+        )
+        counts = r.regression["counts"]
+        regression_html = (
+            f"<h2>Regression Re-check ({len(r.regression['findings'])})</h2>"
+            f'<p class="cb">Latest of {r.regression["checks"]} run(s): '
+            f"{counts['still_present']} still present, {counts['no_longer_reproduces']} no "
+            f"longer reproduce, {counts['inconclusive']} inconclusive. Rechecks of findings "
+            "recorded earlier; they are not counted as new bugs.</p>"
+            '<div class="rw"><table class="rt"><tr><th>Status</th><th>Severity</th>'
+            "<th>Finding</th><th>Runs</th><th>Reason</th><th>History</th></tr>"
+            f"{rows}</table></div>"
+        )
 
     # screenshots timeline
     screenshots_html = ""
@@ -328,6 +369,13 @@ h3{{font-size:1.1rem;margin:.5rem 0;color:#f1f5f9}}
 ul{{margin:.5rem 0 .5rem 1.5rem;color:#cbd5e1}}
 li{{margin:.2rem 0}}
 .nb{{text-align:center;padding:3rem;color:#22c55e;font-size:1.2rem}}
+.nn{{color:#94a3b8;margin:.5rem 0 1rem}}
+.rw{{max-width:100%;overflow-x:auto;margin:.75rem 0 1rem}}
+.rt{{width:100%;border-collapse:collapse;font-size:.85rem}}
+.rt th,.rt td{{text-align:left;vertical-align:top;padding:.5rem .75rem;border-bottom:1px solid #334155}}
+.rt th{{color:#94a3b8;font-weight:600;white-space:nowrap}}
+.rt td{{color:#cbd5e1;overflow-wrap:break-word}}
+.rt td:first-child{{white-space:nowrap}}
 .tl{{display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:1rem}}
 .tc{{background:#1e293b;border:1px solid #334155;border-radius:8px;overflow:hidden}}
 .th{{padding:.75rem 1rem;border-bottom:1px solid #334155}}
@@ -339,7 +387,7 @@ li{{margin:.2rem 0}}
 <h1>Argus QA Report</h1>
 <div class="m">{_esc(r.url)} — {_esc(r.review_mode)} review — {r.timestamp.strftime("%Y-%m-%d %H:%M:%S")} — {r.duration_seconds:.1f}s</div>
 <div class="sg">
-<div class="s"><div class="sv2">{len(r.bugs)}</div><div class="sl">Bugs Found</div></div>
+<div class="s"><div class="sv2">{len(r.bugs)}</div><div class="sl">{findings_label}</div></div>
 <div class="s"><div class="sv2">{len(r.observations)}</div><div class="sl">Observations</div></div>
 <div class="s"><div class="sv2">{r.tool_calls}</div><div class="sl">Tool Calls</div></div>
 <div class="s"><div class="sv2">{r.actions_taken}</div><div class="sl">Recorded Steps</div></div>
@@ -347,7 +395,8 @@ li{{margin:.2rem 0}}
 <div class="s"><div class="sv2">{len(r.screenshots)}</div><div class="sl">Screenshots</div></div>
 </div>
 {coverage_section}
-<h2>Bugs ({len(r.bugs)})</h2><div class="sm">{summary}</div>
+{regression_html}
+<h2>{"New Findings" if r.regression else "Bugs"} ({len(r.bugs)})</h2><div class="sm">{summary}</div>
 {cards}{no_bugs}
 {observations_html}
 {screenshots_html}

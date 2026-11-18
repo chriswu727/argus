@@ -36,4 +36,8 @@ def render_json(r: ExplorationResult) -> str:
         "summary": {"total": len(findings), "verified": verified, "by_severity": by_sev},
         "findings": findings,
     }
+    if r.regression:
+        # Rechecks of journaled findings, not new findings: summary.total does
+        # not count them.
+        doc["regression"] = r.regression
     return json.dumps(doc, indent=2, ensure_ascii=False)

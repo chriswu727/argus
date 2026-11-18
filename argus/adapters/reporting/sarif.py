@@ -53,6 +53,51 @@ def render_sarif(r: ExplorationResult) -> str:
                 },
             }
         )
+    # Rechecks of journaled findings, in SARIF's own terms: still present
+    # fails, no longer reproducing passes, and an inconclusive check is "open"
+    # (undetermined), never a pass. SARIF requires level "none" when kind is
+    # not "fail".
+    _KIND = {"STILL-PRESENT": "fail", "NO-LONGER-REPRODUCES": "pass", "INCONCLUSIVE": "open"}
+    _LEVEL_BY_NAME = {severity.value: level for severity, level in _LEVEL.items()}
+    regression = r.regression or {}
+    for f in regression.get("findings", []):
+        rules.setdefault(
+            "regression-recheck",
+            {
+                "id": "regression-recheck",
+                "name": "regression-recheck",
+                "shortDescription": {"text": "Fresh-load recheck of a journaled finding"},
+            },
+        )
+        kind = _KIND[f["status"]]
+        level = _LEVEL_BY_NAME.get(f["severity"], "error") if kind == "fail" else "none"
+        reason = f" — {f['reason']}" if f.get("reason") else ""
+        results.append(
+            {
+                "ruleId": "regression-recheck",
+                "kind": kind,
+                "level": level,
+                "message": {"text": f"[{f['status']}] {f['title']}{reason}"},
+                "locations": [
+                    {"physicalLocation": {"artifactLocation": {"uri": f.get("path") or "/"}}}
+                ],
+                "properties": {
+                    "status": f["status"],
+                    "history": f["history"],
+                    "runs": f.get("runs"),
+                    "severity": f["severity"],
+                },
+            }
+        )
+    run_properties = (
+        {
+            "regression": {
+                key: regression[key] for key in ("checks", "counts", "reason") if key in regression
+            }
+        }
+        if regression
+        else {}
+    )
     doc = {
         "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
         "version": "2.1.0",
@@ -66,6 +111,7 @@ def render_sarif(r: ExplorationResult) -> str:
                     }
                 },
                 "results": results,
+                **({"properties": run_properties} if run_properties else {}),
             }
         ],
     }
