@@ -11,7 +11,7 @@ from .evidence import _auto_screenshot
 from .payloads import observation_data
 from .progress import Stage
 from .session import _require_session
-from .text import _present_with_scroll, _resolve_url, _short, _state_frames, _text_in_state
+from .text import _resolve_url, _search_page, _short, _state_frames, _text_in_state
 from .verification import _fresh_goto, _looks_logged_out
 
 
@@ -81,7 +81,7 @@ async def verify_persistence(
     before_present = _text_in_state(target_text, before_state)
     if not before_present and expect_norm == "present":
         # A just-saved row can sit below the fold or outside a virtualized window.
-        before_present = await _present_with_scroll(s, target_text, before_state)
+        before_present, _ = await _search_page(s, target_text, before_state)
     before_matches = before_present == (expect_norm == "present")
     # The agent's own forced responses would otherwise answer the fresh load
     # and confirm themselves.
@@ -94,7 +94,7 @@ async def verify_persistence(
         settled = getattr(s.browser, "last_navigation_settled", True)
         after_state = await s.browser.get_state()
         s._last_elements = after_state.elements
-        present = await _present_with_scroll(s, target_text, after_state)
+        present, searched = await _search_page(s, target_text, after_state)
         landed = s.browser.current_url
     finally:
         await s.browser.restore_mocks(suspended_mocks)
@@ -105,6 +105,7 @@ async def verify_persistence(
         "landed": landed,
         "frames": _state_frames(after_state),
         "settled": settled,
+        "searched": searched,
         "login_page": False,
     }
     check = persistence_check(expect_norm, present, load, expect_status)
@@ -157,6 +158,13 @@ async def verify_persistence(
             verdict = (
                 "Target absent, but the page's network did not settle — absence cannot "
                 "establish persistence. Re-check once the page finishes loading."
+            )
+        elif check["reason"] == "unsearched":
+            verdict = (
+                "Target not found, but the page, a frame or a scrollable list in it is longer "
+                "than the search covers and was not scrolled to its end — absence cannot "
+                "establish persistence. Check a "
+                "filtered, searched or paged view that would show the text."
             )
         elif check["reason"] == "moved":
             verdict = (

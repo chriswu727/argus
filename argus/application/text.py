@@ -5,7 +5,7 @@ from urllib.parse import urljoin
 from argus.domain.models import (
     PageState,
 )
-from argus.domain.verdict import frames_present
+from argus.domain.verdict import MAX_SCROLLS, frames_present
 from argus.domain.verdict import token_present as _token_present
 
 from .session import Session
@@ -109,31 +109,38 @@ def _short(text: str, n: int = 60) -> str:
     return textwrap.shorten(t, width=n, placeholder="…") if t else ""
 
 
-async def _present_with_scroll(
-    s: "Session", target: str, initial_state, visible_only: bool = False, max_scrolls: int = 20
-) -> bool:
-    """Presence check robust to VIRTUALIZED / infinite / below-the-fold lists.
+async def _search_page(
+    s: "Session",
+    target: str,
+    initial_state,
+    visible_only: bool = False,
+    max_scrolls: int = MAX_SCROLLS,
+) -> tuple[bool, bool]:
+    """(present, searched): look for the target, scrolling to reveal more.
 
     A virtualization window (react-window/virtuoso) only renders the rows near
     the viewport, so a row scrolled out of view is NOT in the DOM and reads as
     absent — which would let the receipt false-certify a deletion of a row that
-    is actually still there. If the target isn't in the initial state, scroll
-    down (bounded) and re-check; stop at the page bottom, when scrolling stalls,
-    or after max_scrolls so infinite scroll can't run away."""
+    is actually still there. If the target isn't in the initial state, step the
+    window and every scrollable box of every rendered frame through their
+    content and re-check.
+    `searched` is False when max_scrolls ran out with content still
+    unscrolled (an infinite feed, a very long list): absence is then unknown.
+    """
     check = _visible_text_in_state if visible_only else _text_in_state
     if check(target, initial_state):
-        return True
-    last_y = None
+        return True, True
     for _ in range(max_scrolls):
-        await s.browser.scroll_by(1000)
-        state = await s.browser.get_state()
-        if check(target, state):
-            return True
-        vp = state.viewport or {}
-        if vp.get("atBottom"):
-            break
-        y = vp.get("scrollY")
-        if y is not None and y == last_y:
-            break  # scroll position not advancing — nothing more to reveal
-        last_y = y
-    return False
+        moved = await s.browser.scan_step()
+        if not moved:
+            # None: a frame could not be scanned, so the end was not reached.
+            return False, moved is False
+        if check(target, await s.browser.get_state()):
+            return True, True
+    return False, await s.browser.scan_step() is False
+
+
+async def _present_with_scroll(
+    s: "Session", target: str, initial_state, visible_only: bool = False, max_scrolls: int = 20
+) -> bool:
+    return (await _search_page(s, target, initial_state, visible_only, max_scrolls))[0]

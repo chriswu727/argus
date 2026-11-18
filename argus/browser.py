@@ -128,6 +128,7 @@ _FIND_VISIBLE_ELEMENT_JS = (
 
 _CHECK_LAYOUT_JS = files("argus.adapters.scripts").joinpath("check_layout_js.js").read_text()
 _COLLECT_TEXT_JS = files("argus.adapters.scripts").joinpath("collect_text_js.js").read_text()
+_SCAN_STEP_JS = files("argus.adapters.scripts").joinpath("scan_step_js.js").read_text()
 _REF_ENGINE_JS = files("argus.adapters.scripts").joinpath("ref_engine_js.js").read_text()
 
 # Traced steps that replay does not repeat; a journey through one diverges
@@ -1983,6 +1984,43 @@ class BrowserDriver:
             return
         await self._page.evaluate("(d) => window.scrollBy(0, d)", int(px))
         await asyncio.sleep(0.4)
+
+    async def scan_step(self) -> Optional[bool]:
+        """Scroll one step further in the first rendered frame that has more to
+        show, and let lazy content render.
+
+        True when something scrolled, False once every frame is at its end,
+        None when a frame could not be scanned, so the search cannot be called
+        complete. Frames are walked as _collect_text walks them: a frame
+        scrolls on its own, and the page around it being at its end says
+        nothing about a list inside it.
+        """
+        if self._page is None:
+            return False
+        unscanned = False
+
+        async def visit(frame) -> bool:
+            nonlocal unscanned
+            try:
+                if await frame.evaluate(_SCAN_STEP_JS):
+                    return True
+            except Exception:
+                if not frame.is_detached():
+                    unscanned = True
+                return False
+            for child in frame.child_frames:
+                try:
+                    shown = await (await child.frame_element()).is_visible()
+                except Exception:
+                    shown = not child.is_detached()
+                if shown and await visit(child):
+                    return True
+            return False
+
+        if await visit(self._page.main_frame):
+            await asyncio.sleep(0.4)
+            return True
+        return None if unscanned else False
 
     @timed("screenshot")
     async def screenshot(self, path: str, full_page: bool = False) -> str:

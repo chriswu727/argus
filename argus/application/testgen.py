@@ -194,6 +194,11 @@ def collector_source() -> str:
     )
 
 
+def scan_step_source() -> str:
+    """The installed in-page scan step, embedded verbatim in every export."""
+    return files("argus.adapters.scripts").joinpath("scan_step_js.js").read_text(encoding="utf-8")
+
+
 def row_text_source() -> str:
     """The installed row-text rule (parent_context), embedded verbatim in exports
     that locate a control by its row."""
@@ -337,25 +342,49 @@ def _frames(page):
     return frames
 
 
-def _present(target, page, frames):
-    """Scroll (bounded) like Argus's fresh-load check, so a row a virtualized
-    or lazy list renders further down is still found."""
-    if frames_present(target, frames):
-        return True
-    last_y = None
-    for scrolls in range(1, MAX_SCROLLS + 1):
-        page.evaluate("(step) => window.scrollBy(0, step)", SCROLL_STEP)
-        page.wait_for_timeout(400)
-        if frames_present(target, _frames(page)):
-            return True
-        y, at_bottom = page.evaluate(
-            "() => [window.scrollY, "
-            "window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2]"
-        )
-        if scroll_exhausted(scrolls, at_bottom, y, last_y):
+def _scan_step(page):
+    """Scroll one step further in the first rendered frame that has more to
+    show. True when something scrolled, False once every frame is at its end,
+    None when a frame could not be scanned."""
+    unscanned = []
+
+    def visit(frame):
+        try:
+            if frame.evaluate(SCAN_STEP_JS):
+                return True
+        except Exception:
+            if not frame.is_detached():
+                unscanned.append(frame)
             return False
-        last_y = y
-    return False
+        for child in frame.child_frames:
+            try:
+                shown = child.frame_element().is_visible()
+            except Exception:
+                shown = not child.is_detached()
+            if shown and visit(child):
+                return True
+        return False
+
+    if visit(page.main_frame):
+        page.wait_for_timeout(400)
+        return True
+    return None if unscanned else False
+
+
+def _search(target, page, frames):
+    """(present, searched): scan like Argus's fresh-load check, so a row a
+    virtualized or lazy list renders further down is still found. searched is
+    False when the budget ran out with content still unscrolled, or a frame
+    could not be scanned."""
+    if frames_present(target, frames):
+        return True, True
+    for _ in range(MAX_SCROLLS):
+        moved = _scan_step(page)
+        if not moved:
+            return False, moved is False
+        if frames_present(target, _frames(page)):
+            return True, True
+    return False, _scan_step(page) is False
 
 
 def _check(page, response, requested, target, expect, login_page):
@@ -374,7 +403,8 @@ def _check(page, response, requested, target, expect, login_page):
     }}
     observed, code = None, load_gate(load)
     if code is None:
-        observed, code = text_observation(load, _present(target, page, frames))
+        present, load["searched"] = _search(target, page, frames)
+        observed, code = text_observation(load, present)
     if code is not None:
         raise _ExportInconclusive(f"ARGUS_INCONCLUSIVE: {{code}}: {{reason_text(code, status)}}")
     if observed == (expect == "present"):
@@ -656,9 +686,12 @@ def generate_test(
     )
     rules = _VERDICT_BEGIN + verdict_source() + _VERDICT_END
     collector = collector_source()
-    if "'''" in collector or collector.endswith("\\"):
-        raise ValueError("the text collector cannot be embedded as a raw string")
+    scan_step = scan_step_source()
+    for script in (collector, scan_step):
+        if "'''" in script or script.endswith("\\"):
+            raise ValueError("an in-page script cannot be embedded as a raw string")
     rules += f"\nCOLLECT_TEXT_JS = r'''{collector}'''\n"
+    rules += f"\nSCAN_STEP_JS = r'''{scan_step}'''\n"
     body_start = _BODY.format(
         preflight=preflight,
         row_helper=(

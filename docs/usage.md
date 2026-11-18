@@ -132,7 +132,8 @@ An export that already passes is not a useful regression check.
   so it decides the symptom exactly as fresh-load verification and
   `verify_persistence` do. When the fresh load cannot show the symptom either
   way (an HTTP error, a login wall or login form, a redirect to another page, a
-  page that never settles or cannot be fully read), `run=true` reports the
+  page that never settles, cannot be fully read or is too long to search to
+  its end), `run=true` reports the
   outcome `inconclusive`; the file's last stderr line starts with
   `ARGUS_INCONCLUSIVE`, and under pytest the test fails rather than passing or
   skipping. Tests exported by earlier versions keep their old rules (and report

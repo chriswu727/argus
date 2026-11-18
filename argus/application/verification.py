@@ -21,8 +21,8 @@ from .evidence import _auto_screenshot
 from .session import Session
 from .text import (
     _main_facts,
-    _present_with_scroll,
     _resolve_url,
+    _search_page,
     _state_frames,
     _visible_text_in_state,
 )
@@ -176,7 +176,7 @@ async def _run_reproduction_check(
             # wrong reason — never certify (esp. expect=absent) off that.
             code = load_gate(load)
             if code is None:
-                present = await _present_with_scroll(s, target, state)
+                present, load["searched"] = await _search_page(s, target, state)
                 observed, code = text_observation(load, present)
             if code is not None:
                 inconclusive = reason_text(code, status, landed)

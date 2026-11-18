@@ -244,7 +244,8 @@ def test_moved_from_compares_pages_not_anchors():
     assert _moved_from("http://a.test/#/tasks", "http://a.test/#/login")
     assert not _moved_from("http://a.test/cart", "http://a.test/cart/")
     assert not _moved_from("http://a.test/", "http://a.test/#section")
-    assert not _moved_from("http://a.test/x?page=2", "http://a.test/x")
+    assert _moved_from("http://a.test/x?page=2", "http://a.test/x")
+    assert not _moved_from("http://a.test/x", "http://a.test/x?page=1")
 
 
 @pytest.mark.parametrize("url", ["127.0.0.1:3000", "localhost", "http://u:p@example.test/", ""])

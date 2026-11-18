@@ -62,6 +62,38 @@ REDIRECT = {
 }
 
 
+def _lazy_page(height, reveal_after, text=TARGET):
+    """A tall page whose row exists only once the window has scrolled past a point."""
+    return (
+        f"<body style='margin:0;height:{height}px'><h1>Tasks</h1><div id='row'></div><script>"
+        f"onscroll=()=>{{row.textContent=scrollY>{reveal_after}?{text!r}:''}}</script></body>"
+    )
+
+
+_FRAMED = "<h1>Tasks</h1><iframe src='{src}' style='width:600px;height:400px'></iframe>"
+
+
+def _virtual_list(rows, target_row, inner=False, box_height=400):
+    """A list that keeps only the rows crossing its viewport in the DOM, with no
+    overscan. inner=True scrolls inside a fixed-height box instead of the window."""
+    box = f"height:{box_height}px;overflow:auto" if inner else ""
+    scroller = "box" if inner else "window"
+    top = "box.scrollTop" if inner else "scrollY"
+    span = "box.clientHeight" if inner else "innerHeight"
+    return (
+        f"<body style='margin:0'><div id='box' style='{box}'>"
+        f"<div id='list' style='position:relative;height:{rows * 40}px'></div></div><script>"
+        "const box=document.getElementById('box'),list=document.getElementById('list');"
+        "function draw(){"
+        f"const top={top},first=Math.floor(top/40),last=Math.ceil((top+{span})/40);"
+        "list.innerHTML='';"
+        f"for(let i=first;i<Math.min(last,{rows});i++){{const r=document.createElement('div');"
+        "r.style.cssText='position:absolute;height:40px;top:'+i*40+'px';"
+        f"r.textContent=i==={target_row}?'Buy groceries':'Task '+i;list.appendChild(r)}}}}"
+        f"{scroller}.addEventListener('scroll',draw);draw()</script></body>"
+    )
+
+
 class _Pages(http.server.BaseHTTPRequestHandler):
     pages: dict = {}
 
@@ -80,7 +112,8 @@ class _Pages(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
-        status, body, location = type(self).pages.get(path, (200, "<p>home</p>", None))
+        pages = type(self).pages
+        status, body, location = pages.get(self.path) or pages.get(path, (200, "<p>home</p>", None))
         self.send_response(status)
         if location:
             self.send_header("Location", location)
@@ -102,7 +135,10 @@ def sites():
         pages: dict = {}
 
     class Other(_Pages):
-        pages = {"/frame": (200, "<p>Buy groceries</p>", None)}
+        pages = {
+            "/frame": (200, "<p>Buy groceries</p>", None),
+            "/list": (200, _virtual_list(40, 25), None),
+        }
 
     main, base = _serve(Main)
     other, other_base = _serve(Other)
@@ -208,6 +244,83 @@ CASES = {
     "never_settles": Case(
         {"/t": (200, "<h1>Tasks</h1><p>Loading…</p><script>fetch('/hang')</script>", None)},
         INCONCLUSIVE,
+    ),
+    # The server answers a request for one list with another list.
+    "redirect_changes_query_value": Case(
+        {
+            "/tasks?list=work": (302, "", "/tasks?list=home"),
+            "/tasks?list=home": (200, "<h1>Home tasks</h1><ul><li>Walk dog</li></ul>", None),
+        },
+        INCONCLUSIVE,
+        path="/tasks?list=work",
+    ),
+    "redirect_drops_query": Case(
+        {
+            "/tasks?list=work": (302, "", "/tasks"),
+            "/tasks": (200, "<h1>All tasks</h1><ul><li>Walk dog</li></ul>", None),
+        },
+        INCONCLUSIVE,
+        path="/tasks?list=work",
+    ),
+    "redirect_only_adds_parameters": Case(
+        {
+            "/tasks?list=work": (302, "", "/tasks?page=1&list=work&utm_source=mail"),
+            "/tasks?page=1&list=work&utm_source=mail": (200, TASKS, None),
+        },
+        "absent",
+        path="/tasks?list=work",
+    ),
+    "rendered_past_the_scan_budget": Case(
+        {"/t": (200, _lazy_page(40000, 30000), None)}, INCONCLUSIVE
+    ),
+    "rendered_far_down_within_budget": Case({"/t": (200, _lazy_page(9000, 6000), None)}, "present"),
+    "long_page_scanned_to_the_end": Case(
+        {"/t": (200, _lazy_page(9000, 6000, "Walk dog"), None)}, "absent"
+    ),
+    # Row 45 sits at 1800px: between two 1000px steps of a 720px viewport.
+    "virtual_list_row_between_steps": Case({"/t": (200, _virtual_list(150, 45), None)}, "present"),
+    "virtual_list_in_inner_scroller": Case(
+        {"/t": (200, _virtual_list(150, 75, inner=True), None)}, "present"
+    ),
+    "inner_scroller_scanned_to_the_end": Case(
+        {"/t": (200, _virtual_list(150, -1, inner=True), None)}, "absent"
+    ),
+    # A frame scrolls on its own: the page around it being at its end says
+    # nothing about the list inside.
+    "virtual_list_in_iframe": Case(
+        {
+            "/t": (200, _FRAMED.format(src="/list"), None),
+            "/list": (200, _virtual_list(40, 25), None),
+        },
+        "present",
+    ),
+    "virtual_list_in_cross_origin_iframe": Case(
+        {"/t": (200, _FRAMED.format(src="{other}/list"), None)}, "present"
+    ),
+    "virtual_list_in_nested_iframe": Case(
+        {
+            "/t": (200, _FRAMED.format(src="/outer"), None),
+            "/outer": (200, _FRAMED.format(src="/list"), None),
+            "/list": (200, _virtual_list(40, 25), None),
+        },
+        "present",
+    ),
+    "iframe_list_scanned_to_the_end": Case(
+        {
+            "/t": (200, _FRAMED.format(src="/list"), None),
+            "/list": (200, _virtual_list(40, -1), None),
+        },
+        "absent",
+    ),
+    # A box one row high: a step longer than the box would pass over row 1.
+    "virtual_list_in_one_row_scroller": Case(
+        {"/t": (200, _virtual_list(20, 1, inner=True, box_height=40), None)}, "present"
+    ),
+    "virtual_list_in_scroller_shorter_than_a_row": Case(
+        {"/t": (200, _virtual_list(12, 7, inner=True, box_height=24), None)}, "present"
+    ),
+    "one_row_scroller_scanned_to_the_end": Case(
+        {"/t": (200, _virtual_list(20, -1, inner=True, box_height=40), None)}, "absent"
     ),
     "agent_mock_active": Case(
         {"/t": (200, API_LIST, None)},
