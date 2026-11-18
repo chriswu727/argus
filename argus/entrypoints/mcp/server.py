@@ -29,9 +29,10 @@ from .results import AgentResult, _omit_schema_titles, to_mcp_result
 from .snapshots import FIELDS, ObservationSnapshots
 
 INSTRUCTIONS = (
-    "Start with start_session; follow its protocol. Exercise real journeys and "
-    "verify findings before record_bug. Read structured data: completed means "
-    "the tool ran, not the application passed. Never exceed the user's authority."
+    "To test a web app, look before asking: find its address in the repo, "
+    "start it if needed, call start_session, follow its protocol. Verify before "
+    "record_bug. Report before changing code. completed means it ran. Keep to "
+    "the user's authority."
 )
 
 
@@ -81,8 +82,14 @@ def bind_tool(runtime: SessionManager, operation, snapshots: ObservationSnapshot
             if ctx is not None:
                 await ctx.report_progress(sequence, message=message)
 
+        # Off unless asked for. A client built on the TypeScript MCP SDK handles
+        # a response at once but a notification one microtask later, so a
+        # progress notification read together with its response arrives for a
+        # token that is already gone. Claude Code treats that as a transport
+        # error and restarts the server, which loses the session.
+        live = ctx is not None and runtime.settings.progress_notifications
         with measurement_scope() as measurements:
-            with progress_scope(notify if ctx is not None else None) as progress:
+            with progress_scope(notify if live else None) as progress:
                 try:
                     result = await runtime.execute(operation.__name__, operation, *args, **kwargs)
                 except BaseException:

@@ -16,7 +16,9 @@ import asyncio
 import html
 import http.server
 import json
+import os
 import socket
+import sys
 import threading
 import time
 from dataclasses import replace
@@ -24,6 +26,8 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import pytest
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 
 import argus.mcp_server as m
 from argus.domain.contracts import SessionState
@@ -420,3 +424,241 @@ async def test_a_requested_test_file_is_exported_before_the_session_is_closed(ap
 
     late, text = await host.call("export_test", finding_id=finding_id)
     assert late["status"] == "error" and late["error_code"] == "no_session", text
+
+
+BUG = {
+    "title": "Deleted task comes back after reload",
+    "severity": "high",
+    "evidence": {"expected": "Buy groceries stays deleted", "actual": "it is listed again"},
+}
+
+
+async def _failed_delete(host, app):
+    app.delete_persists = False
+    await _start(host, app.base + "/tasks", goals=["Delete a task"])
+    check = await _delete_and_check(host, app)
+    assert check["verification"]["matches"] is False
+    return check
+
+
+SYMPTOM = {"expect": "present", "target_text": TASK}
+
+
+async def _confirm(host, recorded, title, severity="high"):
+    """The host's own second call: it says this finding is that failure."""
+    data = recorded["data"]
+    return await host.call(
+        "record_bug",
+        title=title,
+        severity=severity,
+        finding_id=data["finding_id"],
+        verify=data["suggested_verify"],
+    )
+
+
+async def test_a_finding_recorded_without_verify_is_confirmed_only_when_the_host_says_so(
+    app, isolated_runtime
+):
+    """A real host saw the delete come back, recorded it and left verify out.
+    Argus does not confirm it from the wording; it hands the check back."""
+    host = _Host()
+    await _failed_delete(host, app)
+    recorded, text = await host.call("record_bug", **BUG)
+    data = recorded["data"]
+    assert data["verdict"] == "inconclusive" and data["receipt"] is None
+    assert data["suggested_verify"] == {**SYMPTOM, "at_url": app.base + "/tasks"}
+    assert "has not applied" in data["next_action"] and "not applied" in text
+    assert _journal(isolated_runtime) == []
+
+    confirmed, _ = await _confirm(host, recorded, BUG["title"])
+    assert confirmed["data"]["verdict"] == "verified"
+    assert confirmed["data"]["receipt"]["runs"] == "2/2"
+    assert [entry["title"] for entry in _journal(isolated_runtime)] == [BUG["title"]]
+    await host.call("end_session")
+
+
+async def test_verify_stating_the_expected_state_keeps_its_verdict(app, isolated_runtime):
+    """Another real host passed the state that should hold (absent) as the
+    symptom. The claim as stated did not reproduce, and that is the verdict."""
+    host = _Host()
+    await _failed_delete(host, app)
+    recorded, _ = await host.call(
+        "record_bug",
+        **BUG,
+        verify={"expect": "absent", "target_text": TASK, "at_url": app.base + "/tasks"},
+    )
+    data = recorded["data"]
+    assert data["verdict"] == "not_reproduced"
+    assert data["receipt"]["expect"] == "absent" and data["receipt"]["runs"] == "0/2"
+    assert "stated_expect" not in data["receipt"]
+    assert data["suggested_verify"] == {**SYMPTOM, "at_url": app.base + "/tasks"}
+    assert _journal(isolated_runtime) == []
+
+    confirmed, _ = await _confirm(host, recorded, BUG["title"])
+    assert confirmed["data"]["verdict"] == "verified"
+    assert confirmed["data"]["receipt"]["expect"] == "present"
+    assert len(_journal(isolated_runtime)) == 1
+    await host.call("end_session")
+
+
+@pytest.mark.parametrize("after_a_failed_check", [False, True])
+async def test_a_claim_that_the_row_vanished_is_not_confirmed_while_it_is_there(
+    app, isolated_runtime, after_a_failed_check
+):
+    """The row is on the page. A finding that says it disappeared, with verify
+    saying so, does not reproduce, whatever an earlier check saw."""
+    host = _Host()
+    if after_a_failed_check:
+        await _failed_delete(host, app)
+    else:
+        await _start(host, app.base + "/tasks")
+    recorded, _ = await host.call(
+        "record_bug",
+        title="Buy groceries unexpectedly disappears from the saved list",
+        severity="high",
+        evidence={"expected": "Buy groceries is listed", "actual": "Buy groceries is missing"},
+        verify={"expect": "absent", "target_text": TASK, "at_url": app.base + "/tasks"},
+    )
+    data = recorded["data"]
+    assert data["verdict"] == "not_reproduced" and data["receipt"]["expect"] == "absent"
+    assert data["receipt"]["observed_present"] == [True, True]
+    await host.call("end_session")
+    assert _journal(isolated_runtime) == []
+
+
+@pytest.mark.parametrize(
+    "title,evidence,suggestion_offered",
+    [
+        # Another page: the check on /tasks says nothing about /notes.
+        (
+            "Buy groceries appears in Notes without being saved there",
+            {"url": "/notes", "expected": "Notes is empty", "actual": "Buy groceries is a note"},
+            False,
+        ),
+        # The same page and the same row, but another claim. The button is there.
+        (
+            "Buy groceries is missing its Delete button",
+            {"url": "/tasks", "actual": "Buy groceries has no Delete button"},
+            True,
+        ),
+        # No page given, row named, nothing about persistence.
+        ("The Buy groceries row is hard to read", {"actual": "Low contrast"}, True),
+    ],
+)
+async def test_a_failed_check_never_confirms_another_finding(
+    app, isolated_runtime, title, evidence, suggestion_offered
+):
+    """Naming the row is not a claim that the row came back. Nothing in a
+    finding's words makes Argus attach the earlier check to it."""
+    host = _Host()
+    await _failed_delete(host, app)
+    if "url" in evidence:
+        evidence = {**evidence, "url": app.base + evidence["url"]}
+    recorded, _ = await host.call("record_bug", title=title, severity="medium", evidence=evidence)
+    data = recorded["data"]
+    assert data["verdict"] == "inconclusive" and data["receipt"] is None
+    assert data["evidence_status"] == "observed"
+    assert (data["suggested_verify"] is not None) is suggestion_offered
+    await host.call("end_session")
+    assert _journal(isolated_runtime) == []
+
+
+async def test_the_suggestion_ends_with_the_next_action(app, isolated_runtime):
+    host = _Host()
+    await _failed_delete(host, app)
+    await host.call("navigate", url="/notes")
+    late, _ = await host.call("record_bug", **BUG)
+    assert late["data"]["receipt"] is None and late["data"]["suggested_verify"] is None
+    assert "expect is what the page" in late["data"]["next_action"]
+    await host.call("end_session")
+    assert _journal(isolated_runtime) == []
+
+
+@pytest.mark.parametrize("case", ["stated_expectation", "another_page", "another_claim"])
+async def test_no_finding_is_verified_by_inference_over_stdio(app, tmp_path, case):
+    """The same refusals through a real MCP stdio session, as a host sees them."""
+    app.delete_persists = False
+    env = dict(os.environ, ARGUS_OUTPUT_DIR=str(tmp_path / "reports"))
+    server = StdioServerParameters(command=sys.executable, args=["-m", "argus.mcp_server"], env=env)
+    arguments = {
+        "stated_expectation": {
+            "title": "Buy groceries is missing from saved tasks",
+            "severity": "high",
+            "evidence": {"expected": "Buy groceries is listed", "actual": "it is absent"},
+            "verify": {"expect": "absent", "target_text": TASK, "at_url": app.base + "/tasks"},
+        },
+        "another_page": {
+            "title": "Buy groceries leaked into Notes",
+            "severity": "medium",
+            "evidence": {"url": app.base + "/notes", "actual": "Buy groceries is in Notes"},
+        },
+        "another_claim": {
+            "title": "Buy groceries is missing its Delete button",
+            "severity": "medium",
+            "evidence": {"url": app.base + "/tasks", "actual": "No Delete button"},
+        },
+    }[case]
+    async with stdio_client(server) as (read, write):
+        async with ClientSession(read, write) as client:
+            await client.initialize()
+
+            async def call(name, payload):
+                result = await client.call_tool(name, payload)
+                assert not result.isError, result.content
+                return result.structuredContent["data"]
+
+            await call("start_session", {"url": app.base + "/tasks"})
+            await call(
+                "test_action",
+                {"target": "Delete in the Buy groceries row", "expect": {"removes": TASK}},
+            )
+            check = await call(
+                "verify_persistence",
+                {"expect": "absent", "target_text": TASK, "after_url": "/tasks"},
+            )
+            assert check["verification"]["matches"] is False
+            recorded = await call("record_bug", arguments)
+            ended = await call("end_session", {})
+    assert recorded["verdict"] in {"not_reproduced", "inconclusive"}, recorded
+    report = json.loads(Path(ended["report_path"]).with_suffix(".json").read_text())
+    assert [finding["title"] for finding in report["findings"]] == [arguments["title"]]
+    journal = Path(tmp_path / "reports" / ".argus" / "journal")
+    assert not list(journal.glob("*.json"))
+
+
+async def test_a_delete_that_stayed_leaves_nothing_to_confirm(app, isolated_runtime):
+    host = _Host()
+    await _start(host, app.base + "/tasks", goals=["Delete a task"])
+    assert (await _delete_and_check(host, app))["verification"]["matches"] is True
+    recorded, _ = await host.call("record_bug", **BUG)
+    assert recorded["data"]["receipt"] is None
+    wrong, _ = await host.call(
+        "record_bug",
+        title="Buy groceries is still listed",
+        severity="high",
+        verify={"expect": "present", "target_text": TASK, "at_url": app.base + "/tasks"},
+    )
+    assert wrong["data"]["verdict"] == "not_reproduced"
+    assert _journal(isolated_runtime) == []
+    await host.call("end_session")
+
+
+async def test_a_goal_named_in_a_session_without_goals_does_not_cost_the_finding(app):
+    """Seen in a real run: the session had been restarted without goals, the
+    host still named one, and the whole finding was refused."""
+    host = _Host()
+    app.delete_persists = False
+    await _start(host, app.base + "/tasks")
+    check = await _delete_and_check(host, app)
+    recorded, _ = await host.call(
+        "record_bug",
+        title=BUG["title"],
+        severity="high",
+        evidence={**BUG["evidence"], "goal": "Remove items from the basket"},
+        verify=check["suggested_verify"],
+    )
+    data = recorded["data"]
+    assert recorded["status"] == "completed" and data["verdict"] == "verified"
+    assert any("goal not linked" in warning for warning in data["warnings"])
+    ended, _ = await host.call("end_session")
+    assert ended["data"]["summary"]["findings"] == 1

@@ -27,6 +27,26 @@
   and to check whether a write happened before repeating it.
 - `navigate` accepts a path such as `/settings`, resolved against the current
   page, as `verify_persistence` and `record_bug` already did.
+- MCP progress notifications are off unless `ARGUS_PROGRESS_NOTIFICATIONS=1`,
+  and the closing stage is never sent. In a real Claude Code session the
+  server was restarted twice in one run, losing the session and its findings:
+  a progress notification read together with its response reaches the host
+  for a token it has already dropped, and the host closes the connection.
+  Results still list their `stages`.
+- After a failed `verify_persistence`, a finding recorded on that page without
+  a confirmation carries `suggested_verify`: the symptom that check saw,
+  offered and not applied. The caller confirms the finding with a second
+  `record_bug` call using its `finding_id` and that clause. `record_bug` does
+  not derive a condition from an earlier check or from a finding's wording,
+  and does not reverse one the caller stated; a condition given in `verify`
+  or in the evidence fields is checked as given. A `goal` named in a session that declared none is
+  dropped with a warning instead of rejecting the finding.
+- `docs/evaluation.md` records the first host-level run (Claude Code with a
+  small model, six trials in the final round): what finished without a person,
+  what did not use Argus at all, and what the run cannot show.
+- The server instructions and the session protocol tell a host to find the
+  app's address in the project before asking, and to report before changing
+  code.
 - The protocol `start_session` returns has a seventh step on recovering
   without the user, so a host connected without a plugin gets it too.
   `AGENTS.md` and `docs/evaluation.md` describe running a pass unattended and
@@ -45,7 +65,10 @@
   inconclusive; and report the journeys tested, each bug with its evidence,
   and what was not finished. They also apply when a feature was just finished
   and when a fix needs re-testing, which goes through the journal with
-  `regression_check`. Exporting a test file is on request, not part of every
+  `regression_check`. After a run with a small model as the host, they also
+  say: look before asking, `verify` states the symptom and not the expected
+  state, and a bug found is recorded and reported, not fixed, unless a fix was
+  asked for. Exporting a test file is on request, not part of every
   run, and happens before `end_session`, because `export_test` reads the open
   session's findings. The skills no longer ask the user to set replay
   variables.

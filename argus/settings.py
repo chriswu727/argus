@@ -49,6 +49,7 @@ class Settings:
     event_capacity: int = 512
     monitor_port: int | None = None
     unsafe_eval: bool = False
+    progress_notifications: bool = False
     response_mode: str = "compatible"
     capture: CaptureSettings = field(default_factory=CaptureSettings)
     access: AccessPolicy = field(default_factory=AccessPolicy)
@@ -82,6 +83,8 @@ class Settings:
             if env.get("ARGUS_MONITOR_PORT")
             else None,
             "unsafe_eval": env.get("ARGUS_UNSAFE_EVAL", "").lower() in {"1", "true"},
+            "progress_notifications": env.get("ARGUS_PROGRESS_NOTIFICATIONS", "").lower()
+            in {"1", "true", "yes", "on"},
             "response_mode": env.get("ARGUS_RESPONSE_MODE", "compatible"),
             "capture": CaptureSettings.from_env(env),
             "access": AccessPolicy.from_env(env),

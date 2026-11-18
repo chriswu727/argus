@@ -144,6 +144,23 @@ are restored afterwards, also when the load fails. Pass `expect_status` when tha
 Each check records `expect_status` (or `null`), `text_matches` and
 `status_matches` (`null` without an expected status), so an exported mismatch
 shows whether the text, the status or both failed.
+`expect` here is the state that should hold; `record_bug`'s `verify.expect` is
+the symptom, the state the page shows while the bug is there. `record_bug`
+checks the condition the caller gave, in `verify` or in the evidence fields
+that carry one (`target_text` or `target`, `expect`, `at_url`,
+`expect_status`). It does not derive a condition from an earlier check or
+from a finding's wording, and it does not reverse one the caller stated: a
+finding for which the caller gave no condition stays observed, and a stated
+condition that does not reproduce is not reproduced. What it does after a
+conclusive text mismatch, until the next action, is hand the check back. A finding recorded on the checked page that is not confirmed
+carries `data.suggested_verify` (`expect`, `target_text`, `at_url` as this
+check saw them) and a `next_action` saying it was not applied. If the finding
+is that persistence failure, the caller confirms it with a second call:
+`record_bug` with the `finding_id`, the same title and severity, and that
+`verify`. A finding on another page gets no suggestion. In a session that
+declared no goals, a `goal` on a finding is dropped with a warning instead of
+rejecting the finding; where goals were declared, a name that matches none of
+them is still an error.
 For an observed match-to-mismatch transition it supplies `suggested_verify`: the inverse
 text predicate at the checked URL, carrying the same storage policy. Review the
 user requirement before passing it to `record_bug`. This is a fresh-load symptom
@@ -412,11 +429,20 @@ Snapshot evidence remains in process memory, not in the numeric monitor.
 
 ## Progress transport
 
-When the caller supplies an MCP progress token, Argus sends standard progress
-notifications: operation started, browser launching, target loading, observation,
-verification, reproduction outcome, coverage update, export and completion/failure
-as applicable. A monotonically increasing ordinal is sent with **no total**;
-it is not a percentage or an estimated time remaining.
+Progress notifications are off by default; every result carries its `stages`
+either way. Set `ARGUS_PROGRESS_NOTIFICATIONS=1` to send them. They are off
+because a client built on the TypeScript MCP SDK handles a response at once
+but a notification one microtask later: a progress notification read together
+with its response arrives for a token that is already gone, and Claude Code
+(seen on 2.1.111) then closes the connection and restarts the server, which
+loses the session. Only turn them on for a host known to tolerate that.
+
+When enabled and the caller supplies an MCP progress token, Argus sends standard
+progress notifications: operation started, browser launching, target loading,
+observation, verification, reproduction outcome, coverage update and export
+as applicable. The closing stage (completed or failed) is never sent; the
+response follows it at once. A monotonically increasing ordinal is sent with
+**no total**; it is not a percentage or an estimated time remaining.
 
 Only fixed phase messages are allowed. Page contents, URLs, targets, input
 values and model reasoning never enter these events. The loopback monitor SSE

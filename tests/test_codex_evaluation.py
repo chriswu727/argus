@@ -101,7 +101,11 @@ async def test_evaluation_gateway_real_stdio_without_model(tmp_path, arm):
                 "--limit",
                 "5",
             ],
-            env={key: os.environ[key] for key in ("HOME", "PATH") if key in os.environ},
+            env={
+                **{key: os.environ[key] for key in ("HOME", "PATH") if key in os.environ},
+                # Progress notifications are opt-in; this test reads their text.
+                "ARGUS_PROGRESS_NOTIFICATIONS": "1",
+            },
         )
         async with stdio_client(server) as (read, write):
             async with ClientSession(read, write) as client:

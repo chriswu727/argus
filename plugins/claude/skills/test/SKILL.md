@@ -1,11 +1,18 @@
 ---
-description: Test a running web app with Argus and report verified bugs with evidence. Use when the user asks to test, QA or check an app or a feature; when a development task has changed something a person uses in a browser and it should be checked there before the work is called done; and when a bug found earlier has been fixed and needs re-testing.
+description: Test a running web app with Argus and report verified bugs with evidence. Use when the user asks to test, QA or check an app or a feature; when a development task has changed something a person uses in a browser and it should be checked there before the work is called done; and when a bug found earlier has been fixed and needs re-testing. Load it before asking the user where the app is or what to test: it says how to find out.
 argument-hint: "[url] [what to focus on]"
 ---
 
 Test the application the user is authorized to exercise, using the Argus MCP
 tools (`mcp__plugin_argus-testing_argus__*`), and finish without needing the
 user: they should hear the result, not manage the run. Arguments: $ARGUMENTS
+
+Two rules hold for the whole run:
+
+- Do not open by asking where the app is or what to test. Look first; section
+  1 says where.
+- Find and report. Do not edit the application's code unless the user asked
+  for a fix, and never before you have closed the session and reported.
 
 ## 1. Settle the scope yourself
 
@@ -81,6 +88,19 @@ with `record_bug`. Use `verify` (or the
 `suggested_verify` from a persistence mismatch) so Argus rechecks the symptom on
 a fresh load. Use `record_observation` for visual or usability judgments.
 Never repeat a write or use `replay` only to obtain a receipt.
+
+The two tools read `expect` differently. `verify_persistence` takes the state
+that should hold (a deleted row is `absent`). `record_bug`'s `verify` takes the
+symptom, what the page shows while the bug is there (the deleted row is still
+`present`). When a persistence check fails, record it straight away, before
+any other action, passing the `suggested_verify` that check returned. If
+`record_bug` answers with a `suggested_verify` of its own, the finding is not
+confirmed yet: Argus never applies it for you. When the finding is that
+persistence failure, call `record_bug` again with its `finding_id`, the same
+title and severity, and that `verify`.
+
+Finding a bug is not a reason to stop or to start fixing. Record it, finish
+the other journeys, close the session and report.
 
 Report what you found, not how much. A page with no defects is a normal
 result; do not record style preferences or possible improvements as bugs to
