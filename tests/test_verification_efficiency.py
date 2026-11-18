@@ -115,6 +115,23 @@ async def test_only_absence_on_error_or_login_pages_is_inconclusive(
     assert ("INCONCLUSIVE" in result) is (matches is None)
 
 
+@pytest.mark.parametrize("scan,matches", [(False, True), (None, None)])
+async def test_absence_needs_every_frame_scanned(isolated_runtime, page_factory, scan, matches):
+    isolated_runtime.session.mode = "web"
+    isolated_runtime.session.browser = SimpleNamespace(
+        current_url="https://example.test/tasks",
+        has_page=True,
+        get_state=AsyncMock(return_value=page_factory(page_text="Tasks")),
+        goto=AsyncMock(return_value=SimpleNamespace(status=200)),
+        scan_step=AsyncMock(return_value=scan),
+        suspend_mocks=AsyncMock(return_value=[]),
+        restore_mocks=AsyncMock(),
+    )
+    result = await verify_persistence("absent", "Buy milk")
+    assert result.data["verification"]["matches"] is matches
+    assert ("INCONCLUSIVE" in result) is (matches is None)
+
+
 async def test_persistence_rejects_invalid_expected_status(isolated_runtime):
     isolated_runtime.session.mode = "web"
     isolated_runtime.session.browser = SimpleNamespace(current_url="https://example.test/")

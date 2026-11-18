@@ -133,9 +133,11 @@ on a load whose network did not settle, is inconclusive (`matches: null`),
 because the target may be missing for the wrong reason. So is absence on a load
 that ended somewhere else than requested, including the same path with a
 requested query parameter dropped or changed (`?list=work` answered with
-`?list=home`), and absence on a page too long to search: the check scrolls the
-window and every scrollable box in steps smaller than their height, up to 30
-steps, and reports absence only if it reached the end of all of them. Like `record_bug`
+`?list=home`), and absence on a page too long to search: in every rendered
+frame, the check scrolls the window and every box with a vertical scrollbar,
+each step shorter than what that scroller shows, up to 30 steps in all. It
+reports absence only if it reached the end of all of them. Content that only
+horizontal scrolling reveals is not searched. Like `record_bug`
 verification, the load runs with the session's network mocks suspended; they
 are restored afterwards, also when the load fails. Pass `expect_status` when that status is the intended outcome, such as
 404 for a deleted item's own page; a different status is a conclusive mismatch.

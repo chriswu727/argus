@@ -1985,15 +1985,42 @@ class BrowserDriver:
         await self._page.evaluate("(d) => window.scrollBy(0, d)", int(px))
         await asyncio.sleep(0.4)
 
-    async def scan_step(self) -> bool:
-        """Scroll the window or a scrollable box one step further and let lazy
-        content render. False once nothing is left to scroll."""
+    async def scan_step(self) -> Optional[bool]:
+        """Scroll one step further in the first rendered frame that has more to
+        show, and let lazy content render.
+
+        True when something scrolled, False once every frame is at its end,
+        None when a frame could not be scanned, so the search cannot be called
+        complete. Frames are walked as _collect_text walks them: a frame
+        scrolls on its own, and the page around it being at its end says
+        nothing about a list inside it.
+        """
         if self._page is None:
             return False
-        if not await self._page.evaluate(_SCAN_STEP_JS):
+        unscanned = False
+
+        async def visit(frame) -> bool:
+            nonlocal unscanned
+            try:
+                if await frame.evaluate(_SCAN_STEP_JS):
+                    return True
+            except Exception:
+                if not frame.is_detached():
+                    unscanned = True
+                return False
+            for child in frame.child_frames:
+                try:
+                    shown = await (await child.frame_element()).is_visible()
+                except Exception:
+                    shown = not child.is_detached()
+                if shown and await visit(child):
+                    return True
             return False
-        await asyncio.sleep(0.4)
-        return True
+
+        if await visit(self._page.main_frame):
+            await asyncio.sleep(0.4)
+            return True
+        return None if unscanned else False
 
     @timed("screenshot")
     async def screenshot(self, path: str, full_page: bool = False) -> str:
