@@ -41,9 +41,10 @@
   and does not reverse one the caller stated; a condition given in `verify`
   or in the evidence fields is checked as given. A `goal` named in a session that declared none is
   dropped with a warning instead of rejecting the finding.
-- `docs/evaluation.md` records the first host-level run (Claude Code with a
-  small model, six trials in the final round): what finished without a person,
-  what did not use Argus at all, and what the run cannot show.
+- `docs/evaluation.md` records two small host-level runs (Claude Code with a
+  small model, one synthetic to-do app with a seeded defect): what finished
+  without a person, what did not use Argus at all, the defects they found in
+  Argus, and what they cannot show. They are not a success rate.
 - The server instructions and the session protocol tell a host to find the
   app's address in the project before asking, and to report before changing
   code.
@@ -51,7 +52,7 @@
   without the user, so a host connected without a plugin gets it too.
   `AGENTS.md` and `docs/evaluation.md` describe running a pass unattended and
   how to accept it: deterministic scenarios in CI, and a host-level protocol
-  with defective, fixed and never-defective builds that has not been run yet.
+  with defective, fixed and never-defective builds.
 - A host that reads only the structured result now gets every answer. Claude
   Code shows the model the structured envelope and not the text, and tools
   that answered in text, `regression_check` and `get_errors` among them,
