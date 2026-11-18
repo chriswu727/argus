@@ -264,3 +264,17 @@ async def test_codex_launch_command_handshake_from_plugin_root():
                 assert {"regression_check", "export_test"} <= tools
                 result = await client.call_tool("observe", {})
                 assert result.structuredContent["error_code"] == "no_session"
+
+
+def test_both_skills_say_what_a_real_host_got_wrong():
+    """Each line answers a failure seen when a small model ran the skill for
+    real: it asked instead of looking, passed the expected state as the
+    symptom, and started fixing before it had reported."""
+    for skill in SKILLS:
+        text = " ".join(skill.read_text().split())
+        description = skill.read_text().split("description: ", 1)[1].split("\n", 1)[0]
+        assert "Load it before asking the user where the app is" in description, skill
+        assert "Do not open by asking where the app is or what to test." in text, skill
+        assert "never before you have closed the session and reported" in text, skill
+        assert "`record_bug`'s `verify` takes the symptom" in text, skill
+        assert "Finding a bug is not a reason to stop or to start fixing." in text, skill

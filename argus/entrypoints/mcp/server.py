@@ -29,9 +29,12 @@ from .results import AgentResult, _omit_schema_titles, to_mcp_result
 from .snapshots import FIELDS, ObservationSnapshots
 
 INSTRUCTIONS = (
-    "Start with start_session; follow its protocol. Exercise real journeys and "
-    "verify findings before record_bug. Read structured data: completed means "
-    "the tool ran, not the application passed. Never exceed the user's authority."
+    "Asked to test or check a web app, act before asking: find its address in "
+    "the project (README, start script, a running dev server), start it if "
+    "needed, then call start_session and follow its protocol. Exercise real "
+    "journeys and verify findings before record_bug. Report what you found "
+    "before changing any code. Read structured data: completed means the tool "
+    "ran, not the application passed. Never exceed the user's authority."
 )
 
 

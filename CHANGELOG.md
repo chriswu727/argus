@@ -27,6 +27,21 @@
   and to check whether a write happened before repeating it.
 - `navigate` accepts a path such as `/settings`, resolved against the current
   page, as `verify_persistence` and `record_bug` already did.
+- MCP progress notifications are off unless `ARGUS_PROGRESS_NOTIFICATIONS=1`,
+  and the closing stage is never sent. In a real Claude Code session the
+  server was restarted twice in one run, losing the session and its findings:
+  a progress notification read together with its response reaches the host
+  for a token it has already dropped, and the host closes the connection.
+  Results still list their `stages`.
+- `record_bug` right after a failed `verify_persistence` no longer loses the
+  finding to a bookkeeping slip. Without `verify`, it rechecks the symptom
+  that check saw when the finding names the target text. With `verify`
+  stating the expected state instead of the symptom, the same fresh loads
+  confirm the opposite and the receipt records both. A `goal` that matches
+  nothing is a warning, not a rejection.
+- The server instructions and the session protocol tell a host to find the
+  app's address in the project before asking, and to report before changing
+  code.
 - The protocol `start_session` returns has a seventh step on recovering
   without the user, so a host connected without a plugin gets it too.
   `AGENTS.md` and `docs/evaluation.md` describe running a pass unattended and
@@ -45,7 +60,10 @@
   inconclusive; and report the journeys tested, each bug with its evidence,
   and what was not finished. They also apply when a feature was just finished
   and when a fix needs re-testing, which goes through the journal with
-  `regression_check`. Exporting a test file is on request, not part of every
+  `regression_check`. After a run with a small model as the host, they also
+  say: look before asking, `verify` states the symptom and not the expected
+  state, and a bug found is recorded and reported, not fixed, unless a fix was
+  asked for. Exporting a test file is on request, not part of every
   run, and happens before `end_session`, because `export_test` reads the open
   session's findings. The skills no longer ask the user to set replay
   variables.

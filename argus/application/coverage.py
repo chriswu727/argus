@@ -293,7 +293,7 @@ def _session_protocol(s: Session) -> str:
         "6. COVER important goals and pages. Batch related goals in coverage_update(goal=[...], status='in_progress') before their shared journey. Submit final exercised/blocked updates with observed evidence in end_session(coverage_updates=[...]); use coverage_update mid-session. Never mark untested goals exercised.",
         "7. RECOVER without asking the user. A target that is gone: observe and choose from what is there now. A timeout or error after a write: check whether the write happened before repeating it. A failed session: call start_session again with the unfinished goals; what was found is saved first. Report an inconclusive check as inconclusive, and a run with no defects as that.",
         "Severity: HIGH for security, data loss, payment, or a blocked primary flow; MEDIUM for workflow friction, deceptive feedback, or inconsistency; LOW for minor UX.",
-        "Authority: do not purchase, publish, delete real data, or cause another irreversible external effect unless explicitly authorized.",
+        "Authority: do not purchase, publish, delete real data, or cause another irreversible external effect unless explicitly authorized. Report findings, with end_session done, before changing the application's code; change it only if the user asked for a fix.",
     ]
     if s.coverage_goals:
         lines.append("Goals:")

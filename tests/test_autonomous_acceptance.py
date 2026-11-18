@@ -420,3 +420,107 @@ async def test_a_requested_test_file_is_exported_before_the_session_is_closed(ap
 
     late, text = await host.call("export_test", finding_id=finding_id)
     assert late["status"] == "error" and late["error_code"] == "no_session", text
+
+
+BUG = {
+    "title": "Deleted task comes back after reload",
+    "severity": "high",
+    "evidence": {"expected": "Buy groceries stays deleted", "actual": "it is listed again"},
+}
+
+
+async def _failed_delete(host, app):
+    app.delete_persists = False
+    await _start(host, app.base + "/tasks", goals=["Delete a task"])
+    check = await _delete_and_check(host, app)
+    assert check["verification"]["matches"] is False
+    return check
+
+
+async def test_a_failed_persistence_check_is_confirmed_when_verify_is_left_out(
+    app, isolated_runtime
+):
+    """What a weaker host did in a real run: it saw the delete come back,
+    recorded the bug, and left verify out. The finding stayed unconfirmed and
+    never reached the journal."""
+    host = _Host()
+    await _failed_delete(host, app)
+    recorded, text = await host.call("record_bug", **BUG)
+    data = recorded["data"]
+    assert data["verdict"] == "verified" and "CONFIRMED 2/2" in text
+    assert data["receipt"]["expect"] == "present" and data["receipt"]["observed_present"] == [
+        True,
+        True,
+    ]
+    assert any("verify was not given" in warning for warning in data["warnings"])
+    assert [entry["verify"]["expect"] for entry in _journal(isolated_runtime)] == ["present"]
+    await host.call("end_session")
+
+
+async def test_verify_stating_the_expected_state_is_checked_as_the_symptom(app, isolated_runtime):
+    """The other thing a real host did: verify_persistence takes the state that
+    should hold, record_bug's verify takes the symptom, and it passed the
+    first to the second. A real bug was recorded as not reproduced."""
+    host = _Host()
+    await _failed_delete(host, app)
+    recorded, text = await host.call(
+        "record_bug",
+        **BUG,
+        verify={"expect": "absent", "target_text": TASK, "at_url": app.base + "/tasks"},
+    )
+    data = recorded["data"]
+    assert data["verdict"] == "verified", text
+    assert data["receipt"]["expect"] == "present" and data["receipt"]["stated_expect"] == "absent"
+    assert data["receipt"]["runs"] == "2/2"
+    assert any("the state that should hold" in warning for warning in data["warnings"])
+    assert len(_journal(isolated_runtime)) == 1
+    await host.call("end_session")
+
+
+async def test_the_observed_symptom_is_not_lent_to_another_finding(app, isolated_runtime):
+    host = _Host()
+    await _failed_delete(host, app)
+    # A finding that does not name the row keeps the agent's word only.
+    other, _ = await host.call("record_bug", title="The Notes link is hard to see", severity="low")
+    assert other["data"]["verdict"] == "inconclusive" and other["data"]["receipt"] is None
+    # After another action the earlier check no longer describes the page.
+    await host.call("navigate", url="/notes")
+    late, _ = await host.call("record_bug", **BUG)
+    assert late["data"]["receipt"] is None and late["data"]["evidence_status"] == "observed"
+    assert "expect is what the page" in late["data"]["next_action"]
+    assert _journal(isolated_runtime) == []
+    await host.call("end_session")
+
+
+async def test_a_delete_that_stayed_leaves_nothing_to_confirm(app, isolated_runtime):
+    host = _Host()
+    await _start(host, app.base + "/tasks", goals=["Delete a task"])
+    assert (await _delete_and_check(host, app))["verification"]["matches"] is True
+    recorded, _ = await host.call("record_bug", **BUG)
+    assert recorded["data"]["receipt"] is None
+    wrong, _ = await host.call(
+        "record_bug",
+        title="Buy groceries is still listed",
+        severity="high",
+        verify={"expect": "present", "target_text": TASK, "at_url": app.base + "/tasks"},
+    )
+    assert wrong["data"]["verdict"] == "not_reproduced"
+    assert _journal(isolated_runtime) == []
+    await host.call("end_session")
+
+
+async def test_a_goal_that_matches_nothing_does_not_cost_the_finding(app):
+    host = _Host()
+    check = await _failed_delete(host, app)
+    recorded, _ = await host.call(
+        "record_bug",
+        title=BUG["title"],
+        severity="high",
+        evidence={**BUG["evidence"], "goal": "Remove items from the basket"},
+        verify=check["suggested_verify"],
+    )
+    data = recorded["data"]
+    assert recorded["status"] == "completed" and data["verdict"] == "verified"
+    assert any("goal not linked" in warning for warning in data["warnings"])
+    ended, _ = await host.call("end_session")
+    assert ended["data"]["summary"]["findings"] == 1

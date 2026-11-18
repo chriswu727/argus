@@ -144,6 +144,17 @@ are restored afterwards, also when the load fails. Pass `expect_status` when tha
 Each check records `expect_status` (or `null`), `text_matches` and
 `status_matches` (`null` without an expected status), so an exported mismatch
 shows whether the text, the status or both failed.
+`expect` here is the state that should hold; `record_bug`'s `verify.expect` is
+the symptom, the state the page shows while the bug is there. After a
+conclusive text mismatch, and until the next action, `record_bug` uses what
+this check saw in two cases. If `verify` is left out and the title, description
+or supplied steps name the target text, it rechecks that symptom from fresh
+loads. If `verify` names the same target and URL with the state that was
+expected, the fresh loads show the opposite and the finding is checked
+against the symptom; the receipt keeps the stated value as `stated_expect`.
+Either way a warning says so, and a finding that does not name the target is
+left as observed. A `goal` that matches none of the session's goals no longer
+rejects the finding: it is recorded without that link, with a warning.
 For an observed match-to-mismatch transition it supplies `suggested_verify`: the inverse
 text predicate at the checked URL, carrying the same storage policy. Review the
 user requirement before passing it to `record_bug`. This is a fresh-load symptom
@@ -412,11 +423,20 @@ Snapshot evidence remains in process memory, not in the numeric monitor.
 
 ## Progress transport
 
-When the caller supplies an MCP progress token, Argus sends standard progress
-notifications: operation started, browser launching, target loading, observation,
-verification, reproduction outcome, coverage update, export and completion/failure
-as applicable. A monotonically increasing ordinal is sent with **no total**;
-it is not a percentage or an estimated time remaining.
+Progress notifications are off by default; every result carries its `stages`
+either way. Set `ARGUS_PROGRESS_NOTIFICATIONS=1` to send them. They are off
+because a client built on the TypeScript MCP SDK handles a response at once
+but a notification one microtask later: a progress notification read together
+with its response arrives for a token that is already gone, and Claude Code
+(seen on 2.1.111) then closes the connection and restarts the server, which
+loses the session. Only turn them on for a host known to tolerate that.
+
+When enabled and the caller supplies an MCP progress token, Argus sends standard
+progress notifications: operation started, browser launching, target loading,
+observation, verification, reproduction outcome, coverage update and export
+as applicable. The closing stage (completed or failed) is never sent; the
+response follows it at once. A monotonically increasing ordinal is sent with
+**no total**; it is not a percentage or an estimated time remaining.
 
 Only fixed phase messages are allowed. Page contents, URLs, targets, input
 values and model reasoning never enter these events. The loopback monitor SSE

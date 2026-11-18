@@ -87,6 +87,8 @@ class Session:
         # while the capsule's server session is dead gets flagged — and one made
         # after re-minting state through the UI does NOT (no sticky latch).
         self._capsule_marker: Optional[str] = None
+        # The symptom the last failed verify_persistence saw, until the next action.
+        self._observed_symptom: Optional[dict] = None
         # Lazy-initialised screen-mode safety state. Populated by
         # start_screen_session; consulted by every screen-mode tool.
         self._safety = None  # type: Optional["argus.screen.safety.SafetyState"]

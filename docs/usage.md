@@ -451,6 +451,7 @@ Explicit command-line options override environment variables, which override def
 | `ARGUS_EVENT_CAPACITY` | 512 events |
 | `ARGUS_OUTPUT_DIR` | `./argus-reports` |
 | `ARGUS_AUTO_INSTALL_BROWSER` | on; `0` reports a missing Chromium instead of downloading it |
+| `ARGUS_PROGRESS_NOTIFICATIONS` | off; `1` sends MCP progress notifications. Off because a notification that reaches Claude Code together with its response makes it restart the server ([details](agent-protocol.md#progress-transport)) |
 
 One runtime owns one active session. Actions and lifecycle changes are
 serialized; an operation timeout cancels the action and closes the backend.

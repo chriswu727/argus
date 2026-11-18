@@ -128,6 +128,19 @@ async def verify_persistence(
         }
     )
     s.exploration.last_verified_action = len(s.action_trace)
+    # What this load showed, as record_bug's verify would state it. An agent
+    # that records the failure next often leaves verify out or writes the state
+    # it expected instead of the one it saw; record_bug can then use this.
+    s._observed_symptom = (
+        {
+            "expect": "present" if present else "absent",
+            "target_text": target_text.strip(),
+            "at_url": nav_url,
+            "actions": len(s.action_trace),
+        }
+        if conclusive and not text_matches and not clear_storage
+        else None
+    )
 
     if expect_norm == "absent":
         verdict = (

@@ -11,6 +11,7 @@ from argus.domain.models import (
     Bug,
     Observation,
 )
+from argus.domain.verdict import receipt_verdict, token_present
 from argus.domain.verification import VerificationSpec, receipt_outcome, retained_verification
 
 from .coverage import _coverage_goal_index, _refresh_finding_coverage
@@ -99,7 +100,7 @@ async def record_bug(
     expected, actual = ev.get("expected", ""), ev.get("actual", "")
     if any(not isinstance(value, str) or len(value) > 4000 for value in (expected, actual)):
         return Rejection("record_bug: expected and actual must be text of at most 4000 characters.")
-    coverage_goals, error = _finding_goals(s, ev)
+    coverage_goals, error, goal_warnings = _finding_goals(s, ev)
     if error:
         return Rejection(error)
     claimed_calls = ev.get("evidence_calls", [])
@@ -195,6 +196,29 @@ async def record_bug(
             verify.pop("expect")
             verify.pop("target_text")
 
+    # The failed persistence check this finding is about, if the agent has
+    # done nothing else since. Its symptom is re-checked from fresh loads like
+    # any verify, so using it adds no trust in the agent's word.
+    symptom = s._observed_symptom if s.mode == "web" else None
+    if symptom and symptom["actions"] != len(s.action_trace):
+        symptom = None
+    verify_note = ""
+    if (
+        verify is None
+        and symptom
+        # Only in the agent's own words: the steps Argus collected by default
+        # name every row that was touched and would match any finding.
+        and token_present(
+            symptom["target_text"],
+            " ".join([title, description, *(steps if ev.get("steps") is not None else [])]),
+        )
+    ):
+        verify = {key: symptom[key] for key in ("expect", "target_text", "at_url")}
+        verify_note = (
+            "verify was not given; Argus rechecked the persistence failure it had just "
+            f"observed ({symptom['expect']} {_short(symptom['target_text'], 60)!r})."
+        )
+
     fresh_load = False
     if verify:
         try:
@@ -212,7 +236,7 @@ async def record_bug(
     screenshot_directive = ev.get("screenshot", "auto")
     screenshot_path: Optional[str] = None
     screenshot_label = None
-    warnings = [type_warning] if type_warning else []
+    warnings = [*([type_warning] if type_warning else []), *goal_warnings]
     if screenshot_directive != "skip":
         if screenshot_directive and (
             "/" in screenshot_directive or screenshot_directive.endswith(".png")
@@ -279,6 +303,38 @@ async def record_bug(
                 warnings.append(
                     receipt.get("evidence_warning") or "Verification screenshot was unavailable."
                 )
+
+    if (
+        symptom
+        and not verify_note
+        and receipt
+        and receipt.get("reproduced") is False
+        and not receipt.get("flaky")
+        and receipt.get("mode") != "replay"
+        and receipt.get("expect") in ("present", "absent")
+        and receipt["expect"] != symptom["expect"]
+        and not verify.get("clear_storage")
+        and " ".join(str(receipt.get("target_text", "")).split()).casefold()
+        == " ".join(symptom["target_text"][:120].split()).casefold()
+        and _resolve_url(s, receipt.get("at_url") or "") == symptom["at_url"]
+    ):
+        # verify named the state that was expected, not the symptom. The fresh
+        # loads already show the opposite, which is what verify_persistence saw.
+        verify_note = (
+            f"verify said expect={receipt['expect']!r}, the state that should hold; the "
+            f"symptom is the opposite. The same fresh loads show {symptom['expect']} "
+            f"{_short(symptom['target_text'], 60)!r}, as verify_persistence did, so the "
+            "finding is checked against that."
+        )
+        verify = {**verify, "expect": symptom["expect"]}
+        receipt = {
+            **receipt,
+            **receipt_verdict(receipt["observed_present"], symptom["expect"]),
+            "stated_expect": receipt["expect"],
+        }
+    if verify_note:
+        warnings.append(verify_note)
+        s._observed_symptom = None
 
     description, receipt = await _guard_capsule(s, description, receipt)
 
@@ -426,8 +482,11 @@ async def record_bug(
             "next_action": (
                 "Preserve this receipt; do not repeat the journey."
                 if verdict is True
-                else "If further evidence is needed, recheck this finding_id with verify. "
-                "Prefer fresh loads for persistence failures; do not repeat writes to force confirmation."
+                else "This finding is not confirmed. If its symptom can be read as text on a "
+                "page, call record_bug again with this finding_id, the same title and "
+                "severity, and verify stating the symptom as seen (expect is what the page "
+                "shows while the bug is there, not what it should show). Use fresh loads "
+                "for persistence failures; do not repeat writes to force confirmation."
             ),
             "finding": {
                 "title": title,
@@ -439,23 +498,30 @@ async def record_bug(
     )
 
 
-def _finding_goals(s: Session, evidence: dict) -> tuple[list[str], str | None]:
+def _finding_goals(s: Session, evidence: dict) -> tuple[list[str], str | None, list[str]]:
+    """(goals, error, warnings). A goal that matches none of the session's is
+    linkage, not evidence: the finding is kept without it, with a warning."""
     queries = evidence.get("goals", evidence.get("goal", []))
     if isinstance(queries, str):
         queries = [queries]
     if not isinstance(queries, list) or len(queries) > 20:
-        return [], "record_bug: goal/goals accepts at most 20 declared goals."
-    goals = []
+        return [], "record_bug: goal/goals accepts at most 20 declared goals.", []
+    goals: list[str] = []
+    warnings = []
     for query in queries:
         if not isinstance(query, str):
-            return [], "record_bug: each goal must be text."
+            return [], "record_bug: each goal must be text.", []
         index, error = _coverage_goal_index(s, query)
         if error:
-            return [], error.replace("coverage_update:", "record_bug:", 1)
+            warnings.append(
+                error.replace("coverage_update:", "goal not linked:", 1)[:400]
+                + " The finding is recorded without it."
+            )
+            continue
         goal = s.coverage_goals[index]["goal"]
         if goal not in goals:
             goals.append(goal)
-    return goals, None
+    return goals, None, warnings
 
 
 async def _guard_capsule(s: Session, description: str, receipt: dict | None) -> tuple:
