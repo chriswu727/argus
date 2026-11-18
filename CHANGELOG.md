@@ -52,6 +52,17 @@
   `AGENTS.md` and `docs/evaluation.md` describe running a pass unattended and
   how to accept it: deterministic scenarios in CI, and a host-level protocol
   with defective, fixed and never-defective builds that has not been run yet.
+- A host that reads only the structured result now gets every answer. Claude
+  Code shows the model the structured envelope and not the text, and tools
+  that answered in text, `regression_check` and `get_errors` among them,
+  reached it as `data: {}`: a real host called `regression_check`, saw
+  nothing, and re-tested by hand. `regression_check` now returns its results
+  in `data` (status per finding, counts, the reason when nothing is
+  journaled), and any other text-only result or error carries its text,
+  redacted, in `data.message`.
+- `capsule_save`, `capsule_restore` and `regression_check` report their
+  failures (no such capsule, a write that failed, not a web session) as
+  errors instead of completed results.
 
 ## Plugin updates - 2026-11-17 (0.13.1)
 
