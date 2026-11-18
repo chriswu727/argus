@@ -37,7 +37,18 @@ journaled finding with `title`, `severity`, `status` (`STILL-PRESENT`,
 checked page's path, without its query). With nothing journaled, `checked` is
 0 and `reason` is `no_journal`. Outside a web session it is an
 `invalid_argument` error. `argus-regression` keeps its own output and exit
-codes. SDK-level argument/schema validation and unknown-tool
+codes.
+
+Each `regression_check` call is kept with the session. `end_session` returns
+them as `data.regression`, and the HTML, JSON, JUnit and SARIF reports carry
+them, apart from the new findings: `checks` (calls made), `counts`, and per
+journaled finding its latest `status` with every earlier one in `history`.
+A later INCONCLUSIVE does not replace an earlier STILL-PRESENT in `history`.
+JUnit follows `argus-regression`: still present is a failure, no longer
+reproducing passes, inconclusive is skipped. SARIF uses `kind` `fail`, `pass`
+and `open`. A call with nothing journaled is reported as `reason: no_journal`.
+Rechecks are not findings: they are not counted in `summary.findings` and not
+journaled again. SDK-level argument/schema validation and unknown-tool
 errors remain standard MCP errors and may not contain this envelope.
 
 Since 0.10.0, successful compact/delta responses omit empty `recovery`,

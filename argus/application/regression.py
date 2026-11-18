@@ -8,6 +8,7 @@ from argus.application.context import current_runtime, runtime_scope
 from argus.application.manager import SessionManager
 from argus.domain.contracts import ErrorCode, OperationError, Rejection, ToolText
 from argus.domain.verification import receipt_outcome
+from argus.security import _redact
 
 from .coverage import _coverage_reference_url
 from .evidence import _journal_entries
@@ -159,6 +160,8 @@ async def regression_check() -> str:
     site = origin.rsplit("@", 1)[-1]
     entries = _journal_entries(origin, strict=True)
     if not entries:
+        s.regression_checks.append({"results": [], "reason": "no_journal"})
+        s.steps.append("regression_check: no journaled findings to recheck")
         return ToolText(
             f"regression_check: no journaled findings for {site}. Findings with a "
             "verify clause are journaled once record_bug confirms them.",
@@ -176,7 +179,10 @@ async def regression_check() -> str:
     lines = [f"Regression re-check for {site} — {len(entries)} journaled finding(s):", ""]
     counts = {"still_present": 0, "no_longer_reproduces": 0, "inconclusive": 0}
     results = []
-    for e in await check_entries(s, entries, s.url or ""):
+    keys = []
+    checked = await check_entries(s, entries, s.url or "")
+    for entry, e in zip(entries, checked, strict=True):
+        keys.append(entry["fingerprint"])
         if e["status"] == "STILL-PRESENT":
             status, tag, key = "STILL-PRESENT", "STILL-PRESENT       ", "still_present"
         elif e["status"] == "FIXED":
@@ -188,7 +194,9 @@ async def regression_check() -> str:
         else:
             status, tag, key = "INCONCLUSIVE", "INCONCLUSIVE        ", "inconclusive"
         counts[key] += 1
-        lines.append(f"  [{tag}] [{e.get('severity', '?').upper()}] {e.get('title', '')[:80]}")
+        lines.append(
+            f"  [{tag}] [{e.get('severity', '?').upper()}] {_redact(e.get('title', ''))[:80]}"
+        )
         if e.get("reason"):
             lines.append(f"    {e['reason']}")
         results.append(
@@ -208,6 +216,10 @@ async def regression_check() -> str:
         f"reproduce (likely fixed — confirm the surface still exists) · "
         f"{counts['inconclusive']} inconclusive."
     )
+    s.regression_checks.append(
+        {"results": [{**result, "key": key} for key, result in zip(keys, results, strict=True)]}
+    )
+    s.steps.append(f"regression_check: {len(results)} journaled finding(s) rechecked")
     return ToolText(
         "\n".join(lines),
         {"site": site, "checked": len(results), "counts": counts, "results": results},

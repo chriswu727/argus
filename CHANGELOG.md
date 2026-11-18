@@ -63,6 +63,14 @@
 - `capsule_save`, `capsule_restore` and `regression_check` report their
   failures (no such capsule, a write that failed, not a web session) as
   errors instead of completed results.
+- `regression_check` results now reach the report. A real host re-tested a
+  fix and handed the user a report with no recheck in it. `end_session` and
+  the HTML, JSON, JUnit and SARIF reports now show each journaled finding's
+  latest status (still present, no longer reproduces, inconclusive) with the
+  earlier ones, and a call with nothing journaled as such. They are kept
+  apart from new findings and are not journaled again. JUnit and SARIF never
+  count inconclusive as a pass. An HTML report with rechecks says "No new
+  findings recorded in this session" instead of "No bugs found".
 
 ## Plugin updates - 2026-11-17 (0.13.1)
 

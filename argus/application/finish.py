@@ -8,6 +8,7 @@ from argus.domain.coverage import FinalCoverageUpdate
 from argus.domain.models import (
     ExplorationResult,
 )
+from argus.security import _redact
 
 from .coverage import _apply_coverage_updates, _coverage_snapshot
 from .evidence import _journal_confirmed, _output_dir
@@ -32,6 +33,7 @@ async def _write_report(s: Session, warnings: list[str]) -> tuple[ExplorationRes
         constraints=s.constraints,
         coverage=_coverage_snapshot(s, duration),
         run_id=s.run_id,
+        regression=regression_summary(s),
     )
     reporter = current_runtime().reporter_factory()
     try:
@@ -41,6 +43,49 @@ async def _write_report(s: Session, warnings: list[str]) -> tuple[ExplorationRes
         report_path = ""
         warnings.append(f"report was not saved: {type(exc).__name__}: {str(exc)[:160]}")
     return result, report_path
+
+
+_REGRESSION_COUNT_KEYS = {
+    "STILL-PRESENT": "still_present",
+    "NO-LONGER-REPRODUCES": "no_longer_reproduces",
+    "INCONCLUSIVE": "inconclusive",
+}
+
+
+def regression_summary(s: Session) -> dict:
+    """The session's regression_check results for its report: the latest
+    status of each journaled finding, with every earlier status in order.
+
+    A later INCONCLUSIVE does not hide an earlier STILL-PRESENT: both are in
+    `history`, and `status` is only ever what the last check found.
+    """
+    if not s.regression_checks:
+        return {}
+    latest: dict[str, dict] = {}
+    history: dict[str, list[str]] = {}
+    for run in s.regression_checks:
+        for result in run["results"]:
+            latest[result["key"]] = result
+            history.setdefault(result["key"], []).append(result["status"])
+    findings = [
+        {
+            **{field: result.get(field) for field in ("title", "severity", "status", "runs")},
+            "reason": result.get("reason"),
+            "path": result.get("path"),
+            "history": history[key],
+        }
+        for key, result in latest.items()
+    ]
+    counts = {name: 0 for name in _REGRESSION_COUNT_KEYS.values()}
+    for finding in findings:
+        counts[_REGRESSION_COUNT_KEYS[finding["status"]]] += 1
+    summary = {"checks": len(s.regression_checks), "counts": counts, "findings": findings}
+    if not findings:
+        summary["reason"] = "no_journal"
+        summary["detail"] = (
+            "regression_check found no journaled findings for this site; nothing was rechecked."
+        )
+    return summary
 
 
 def _unfinished_goals(coverage: dict) -> list[str]:
@@ -60,7 +105,7 @@ async def save_abandoned_session() -> dict | None:
     """
     s = current_runtime().session
     goals = _unfinished_goals(_coverage_snapshot(s, 0)) if s.start_time is not None else []
-    if s.start_time is None or not (s.bugs or s.observations or goals):
+    if s.start_time is None or not (s.bugs or s.observations or s.regression_checks or goals):
         return None
     saved: dict = {
         "run_id": s.run_id,
@@ -70,7 +115,7 @@ async def save_abandoned_session() -> dict | None:
         "report_path": None,
         "warnings": [],
     }
-    if s.bugs or s.observations:
+    if s.bugs or s.observations or s.regression_checks:
         warning = await _journal_confirmed(s)
         if warning:
             saved["warnings"].append(warning)
@@ -184,6 +229,25 @@ async def end_session(coverage_updates: list[FinalCoverageUpdate] | None = None)
         lines.append("Bugs:")
         for bug in result.bugs:
             lines.append(f"  [{bug.severity.value.upper()}] {bug.title}")
+    if result.regression and not result.regression["findings"]:
+        lines.append("")
+        lines.append(
+            f"Regression re-check ({result.regression['checks']} run(s)): no journaled "
+            "findings for this site; nothing was rechecked."
+        )
+    elif result.regression:
+        counts = result.regression["counts"]
+        lines.append("")
+        lines.append(
+            f"Regression re-check (latest of {result.regression['checks']} run(s)): "
+            f"{counts['still_present']} still present · {counts['no_longer_reproduces']} no "
+            f"longer reproduce · {counts['inconclusive']} inconclusive"
+        )
+        for finding in result.regression["findings"]:
+            lines.append(
+                f"  [{finding['status']}] [{str(finding['severity']).upper()}] "
+                f"{_redact(str(finding['title']))[:80]}"
+            )
 
     return ToolText(
         "\n".join(lines),
@@ -192,6 +256,7 @@ async def end_session(coverage_updates: list[FinalCoverageUpdate] | None = None)
             "report_path": report_path or None,
             "warnings": warnings,
             "coverage": coverage,
+            "regression": result.regression or None,
             "summary": {
                 "tool_calls": result.tool_calls,
                 "actions": result.actions_taken,
