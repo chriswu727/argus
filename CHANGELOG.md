@@ -37,8 +37,9 @@
   finding to a bookkeeping slip. Without `verify`, it rechecks the symptom
   that check saw when the finding names the target text. With `verify`
   stating the expected state instead of the symptom, the same fresh loads
-  confirm the opposite and the receipt records both. A `goal` that matches
-  nothing is a warning, not a rejection.
+  confirm the opposite and the receipt records both. A `goal` named in a
+  session that declared none is dropped with a warning instead of rejecting
+  the finding.
 - The server instructions and the session protocol tell a host to find the
   app's address in the project before asking, and to report before changing
   code.

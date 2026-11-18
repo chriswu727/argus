@@ -59,8 +59,8 @@ async def test_real_stdio_handshake_and_local_page_journey(tmp_path):
             assert initialized.serverInfo.name == "argus"
             assert initialized.serverInfo.version == __version__
             # What every host reads before its first call.
-            assert "act before asking" in initialized.instructions
-            assert "Report what you found before changing any code" in initialized.instructions
+            assert "look before asking" in initialized.instructions
+            assert "Report before changing code" in initialized.instructions
             tools = await client.list_tools()
             assert len(tools.tools) == 29
             assert all(tool.outputSchema for tool in tools.tools)

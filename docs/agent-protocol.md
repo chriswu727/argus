@@ -153,8 +153,9 @@ loads. If `verify` names the same target and URL with the state that was
 expected, the fresh loads show the opposite and the finding is checked
 against the symptom; the receipt keeps the stated value as `stated_expect`.
 Either way a warning says so, and a finding that does not name the target is
-left as observed. A `goal` that matches none of the session's goals no longer
-rejects the finding: it is recorded without that link, with a warning.
+left as observed. In a session that declared no goals, a `goal` on a finding
+is dropped with a warning instead of rejecting the finding; where goals were
+declared, a name that matches none of them is still an error.
 For an observed match-to-mismatch transition it supplies `suggested_verify`: the inverse
 text predicate at the checked URL, carrying the same storage policy. Review the
 user requirement before passing it to `record_bug`. This is a fresh-load symptom

@@ -499,29 +499,27 @@ async def record_bug(
 
 
 def _finding_goals(s: Session, evidence: dict) -> tuple[list[str], str | None, list[str]]:
-    """(goals, error, warnings). A goal that matches none of the session's is
-    linkage, not evidence: the finding is kept without it, with a warning."""
+    """(goals, error, warnings). A goal that does not match one the session
+    declared is an error. In a session that declared none there is nothing to
+    link to, so the goal is dropped with a warning and the finding is kept."""
     queries = evidence.get("goals", evidence.get("goal", []))
     if isinstance(queries, str):
         queries = [queries]
     if not isinstance(queries, list) or len(queries) > 20:
         return [], "record_bug: goal/goals accepts at most 20 declared goals.", []
+    if any(not isinstance(query, str) for query in queries):
+        return [], "record_bug: each goal must be text.", []
+    if queries and not s.coverage_goals:
+        return [], None, ["goal not linked: this session declared no goals."]
     goals: list[str] = []
-    warnings = []
     for query in queries:
-        if not isinstance(query, str):
-            return [], "record_bug: each goal must be text.", []
         index, error = _coverage_goal_index(s, query)
         if error:
-            warnings.append(
-                error.replace("coverage_update:", "goal not linked:", 1)[:400]
-                + " The finding is recorded without it."
-            )
-            continue
+            return [], error.replace("coverage_update:", "record_bug:", 1), []
         goal = s.coverage_goals[index]["goal"]
         if goal not in goals:
             goals.append(goal)
-    return goals, None, warnings
+    return goals, None, []
 
 
 async def _guard_capsule(s: Session, description: str, receipt: dict | None) -> tuple:

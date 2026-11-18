@@ -509,9 +509,13 @@ async def test_a_delete_that_stayed_leaves_nothing_to_confirm(app, isolated_runt
     await host.call("end_session")
 
 
-async def test_a_goal_that_matches_nothing_does_not_cost_the_finding(app):
+async def test_a_goal_named_in_a_session_without_goals_does_not_cost_the_finding(app):
+    """Seen in a real run: the session had been restarted without goals, the
+    host still named one, and the whole finding was refused."""
     host = _Host()
-    check = await _failed_delete(host, app)
+    app.delete_persists = False
+    await _start(host, app.base + "/tasks")
+    check = await _delete_and_check(host, app)
     recorded, _ = await host.call(
         "record_bug",
         title=BUG["title"],
