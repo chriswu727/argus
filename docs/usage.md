@@ -36,11 +36,14 @@ claude mcp add argus -- uvx --from argus-testing argus-mcp
 ```
 
 Or install the [Claude plugin](https://github.com/chriswu727/argus/tree/main/plugins/claude),
-which pins the published runtime and adds a `/argus-testing:test` skill. Run its
-one-time warm-up command first, then
-`/plugin install argus-testing --marketplace chriswu727/argus`. Use the plugin
-instead of, not alongside, the manual connection.
-Claude plugin 0.13.0 and Codex plugin 0.13.0 both run Argus 0.13.0.
+which pins the published runtime and adds a `/argus-testing:test` skill:
+`/plugin install argus-testing --marketplace chriswu727/argus`. Its optional
+warm-up command fetches the dependencies and browser ahead of the first
+session. Use the plugin instead of, not alongside, the manual connection.
+With either plugin the agent runs the whole pass itself (finding the address,
+recovering from stale elements, timeouts and a failed session, re-testing after
+a fix from the journal) and reports the bugs with their evidence.
+Claude plugin 0.13.1 and Codex plugin 0.13.1 both run Argus 0.13.1.
 
 </details>
 
