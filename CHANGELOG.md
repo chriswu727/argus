@@ -13,7 +13,9 @@
   and what was not finished. They also apply when a feature was just finished
   and when a fix needs re-testing, which goes through the journal with
   `regression_check`. Exporting a test file is on request, not part of every
-  run, and the skills no longer ask the user to set replay variables.
+  run, and happens before `end_session`, because `export_test` reads the open
+  session's findings. The skills no longer ask the user to set replay
+  variables.
 
 ## 0.13.1 - 2026-11-12
 

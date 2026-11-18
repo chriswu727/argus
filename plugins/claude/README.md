@@ -83,7 +83,9 @@ paths, grouped as verified, observed, not reproduced or inconclusive, and what
 was not finished and why. A run that finds nothing says so. After a fix it
 re-tests the earlier findings from Argus's journal with `regression_check`;
 you do not configure anything for that. A Playwright regression test file is
-exported only when you ask for one.
+exported only when you ask for one. Ask with the request: the file is written
+before the testing session closes, and a finding from a closed session has to
+be reproduced again before it can be exported.
 
 ## Other example requests
 

@@ -111,9 +111,23 @@ Handle these yourself; none of them is a reason to stop or to ask the user.
 
 ## 4. Deliver
 
-Close with `end_session`, passing the final `coverage_updates` for the goals you
-exercised or found blocked, with the evidence you observed. Then tell the user,
-in plain language:
+**Only if the user asked for a regression test file** (to keep in CI, for
+example), export it first, while the session is open. `export_test` reads the
+findings of the current session, and `end_session` closes it: after that the
+call fails and the finding would have to be reproduced and recorded again in
+a new session. It works for a finding verified by a fresh-load text check and
+writes a Playwright test that fails while the bug is present. Pass `run=true`
+only when the user authorized repeating the journey's writes (for example on
+throwaway data), and report the TODO steps it lists rather than guessing them.
+Application values are private parameters: only set
+`save_private_values=true` when the user explicitly wants to retain local
+replay values; the JSON file it returns may contain credentials and must
+never be published or committed. Without such a request, skip this step:
+exporting is not part of every run.
+
+Then close with `end_session`, passing the final `coverage_updates` for the
+goals you exercised or found blocked, with the evidence you observed, and tell
+the user, in plain language:
 
 - What you tested: the journeys, and the address.
 - Each bug: what happens, who it affects and how badly, the steps to see it,
@@ -125,19 +139,10 @@ in plain language:
 - If nothing was found, say so and say what was exercised. Completing the run
   does not mean the application passed everything; it means these journeys
   showed no defect.
+- The paths of any test files you exported.
 
 Do not change the application's code unless the user asked for that. If fixing
 is part of your task, fix, then re-test as in section 5.
-
-`export_test` is for a user who wants a regression test file to keep, for
-example in CI; it is not part of every run. It works for a finding verified by
-a fresh-load text check and writes a Playwright test that fails while the bug
-is present. Pass `run=true` only when the user authorized repeating the
-journey's writes (for example on throwaway data), and report the TODO steps it
-lists rather than guessing them. Application values are private parameters:
-only set `save_private_values=true` when the user explicitly wants to retain
-local replay values; the JSON file it returns may contain credentials and must
-never be published or committed.
 
 ## 5. Re-test after a fix
 

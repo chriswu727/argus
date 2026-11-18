@@ -190,17 +190,36 @@ def test_both_skills_say_how_to_recover_without_repeating_a_write():
 def test_both_skills_report_evidence_and_what_was_not_finished():
     for skill in SKILLS:
         deliver = _sections(skill)["4. Deliver"]
-        assert deliver.index("`end_session`") < deliver.index("`export_test`"), skill
-        for part in ("What you tested", "where the evidence is", "What was not finished and why"):
+        for part in (
+            "What you tested",
+            "where the evidence is",
+            "What was not finished and why",
+            "The paths of any test files you exported.",
+        ):
             assert part in deliver, (skill, part)
         assert "Never present an observed finding as verified." in deliver, skill
+
+
+def test_both_skills_export_a_requested_file_before_closing_the_session():
+    """export_test reads the open session's findings, so a skill that closed
+    the session first would send the agent into a no_session error."""
+    for skill in SKILLS:
+        deliver = " ".join(_sections(skill)["4. Deliver"].split())
+        export = deliver.index("export it first, while the session is open")
+        close = deliver.index("Then close with `end_session`")
+        assert deliver.index("`export_test`") < close and export < close, skill
+        assert "`end_session` closes it: after that the call fails" in deliver, skill
+        # Every other mention of closing the session comes after the export step.
+        assert deliver.count("close with `end_session`") == 1, skill
 
 
 def test_both_skills_keep_exports_optional_and_private():
     for skill in SKILLS:
         text = skill.read_text()
-        deliver = _sections(skill)["4. Deliver"]
-        assert "it is not part of every run" in deliver, skill
+        deliver = " ".join(_sections(skill)["4. Deliver"].split())
+        assert deliver.startswith("**Only if the user asked for a regression test file**"), skill
+        assert "Without such a request, skip this step" in deliver, skill
+        assert "exporting is not part of every run" in deliver, skill
         assert "`run=true` only when the user authorized" in deliver, skill
         assert "only set `save_private_values=true` when the user explicitly" in deliver, skill
         assert "never be published or committed" in deliver, skill
