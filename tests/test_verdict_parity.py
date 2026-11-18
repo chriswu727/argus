@@ -70,10 +70,13 @@ def _lazy_page(height, reveal_after, text=TARGET):
     )
 
 
-def _virtual_list(rows, target_row, inner=False):
+_FRAMED = "<h1>Tasks</h1><iframe src='{src}' style='width:600px;height:400px'></iframe>"
+
+
+def _virtual_list(rows, target_row, inner=False, box_height=400):
     """A list that keeps only the rows crossing its viewport in the DOM, with no
     overscan. inner=True scrolls inside a fixed-height box instead of the window."""
-    box = "height:400px;overflow:auto" if inner else ""
+    box = f"height:{box_height}px;overflow:auto" if inner else ""
     scroller = "box" if inner else "window"
     top = "box.scrollTop" if inner else "scrollY"
     span = "box.clientHeight" if inner else "innerHeight"
@@ -132,7 +135,10 @@ def sites():
         pages: dict = {}
 
     class Other(_Pages):
-        pages = {"/frame": (200, "<p>Buy groceries</p>", None)}
+        pages = {
+            "/frame": (200, "<p>Buy groceries</p>", None),
+            "/list": (200, _virtual_list(40, 25), None),
+        }
 
     main, base = _serve(Main)
     other, other_base = _serve(Other)
@@ -278,6 +284,43 @@ CASES = {
     ),
     "inner_scroller_scanned_to_the_end": Case(
         {"/t": (200, _virtual_list(150, -1, inner=True), None)}, "absent"
+    ),
+    # A frame scrolls on its own: the page around it being at its end says
+    # nothing about the list inside.
+    "virtual_list_in_iframe": Case(
+        {
+            "/t": (200, _FRAMED.format(src="/list"), None),
+            "/list": (200, _virtual_list(40, 25), None),
+        },
+        "present",
+    ),
+    "virtual_list_in_cross_origin_iframe": Case(
+        {"/t": (200, _FRAMED.format(src="{other}/list"), None)}, "present"
+    ),
+    "virtual_list_in_nested_iframe": Case(
+        {
+            "/t": (200, _FRAMED.format(src="/outer"), None),
+            "/outer": (200, _FRAMED.format(src="/list"), None),
+            "/list": (200, _virtual_list(40, 25), None),
+        },
+        "present",
+    ),
+    "iframe_list_scanned_to_the_end": Case(
+        {
+            "/t": (200, _FRAMED.format(src="/list"), None),
+            "/list": (200, _virtual_list(40, -1), None),
+        },
+        "absent",
+    ),
+    # A box one row high: a step longer than the box would pass over row 1.
+    "virtual_list_in_one_row_scroller": Case(
+        {"/t": (200, _virtual_list(20, 1, inner=True, box_height=40), None)}, "present"
+    ),
+    "virtual_list_in_scroller_shorter_than_a_row": Case(
+        {"/t": (200, _virtual_list(12, 7, inner=True, box_height=24), None)}, "present"
+    ),
+    "one_row_scroller_scanned_to_the_end": Case(
+        {"/t": (200, _virtual_list(20, -1, inner=True, box_height=40), None)}, "absent"
     ),
     "agent_mock_active": Case(
         {"/t": (200, API_LIST, None)},

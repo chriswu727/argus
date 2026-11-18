@@ -122,7 +122,8 @@ async def _search_page(
     the viewport, so a row scrolled out of view is NOT in the DOM and reads as
     absent — which would let the receipt false-certify a deletion of a row that
     is actually still there. If the target isn't in the initial state, step the
-    window and every scrollable box through their content and re-check.
+    window and every scrollable box of every rendered frame through their
+    content and re-check.
     `searched` is False when max_scrolls ran out with content still
     unscrolled (an infinite feed, a very long list): absence is then unknown.
     """
@@ -130,11 +131,13 @@ async def _search_page(
     if check(target, initial_state):
         return True, True
     for _ in range(max_scrolls):
-        if not await s.browser.scan_step():
-            return False, True
+        moved = await s.browser.scan_step()
+        if not moved:
+            # None: a frame could not be scanned, so the end was not reached.
+            return False, moved is False
         if check(target, await s.browser.get_state()):
             return True, True
-    return False, not await s.browser.scan_step()
+    return False, await s.browser.scan_step() is False
 
 
 async def _present_with_scroll(

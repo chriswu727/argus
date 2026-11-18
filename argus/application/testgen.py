@@ -342,19 +342,49 @@ def _frames(page):
     return frames
 
 
+def _scan_step(page):
+    """Scroll one step further in the first rendered frame that has more to
+    show. True when something scrolled, False once every frame is at its end,
+    None when a frame could not be scanned."""
+    unscanned = []
+
+    def visit(frame):
+        try:
+            if frame.evaluate(SCAN_STEP_JS):
+                return True
+        except Exception:
+            if not frame.is_detached():
+                unscanned.append(frame)
+            return False
+        for child in frame.child_frames:
+            try:
+                shown = child.frame_element().is_visible()
+            except Exception:
+                shown = not child.is_detached()
+            if shown and visit(child):
+                return True
+        return False
+
+    if visit(page.main_frame):
+        page.wait_for_timeout(400)
+        return True
+    return None if unscanned else False
+
+
 def _search(target, page, frames):
     """(present, searched): scan like Argus's fresh-load check, so a row a
     virtualized or lazy list renders further down is still found. searched is
-    False when the budget ran out with content still unscrolled."""
+    False when the budget ran out with content still unscrolled, or a frame
+    could not be scanned."""
     if frames_present(target, frames):
         return True, True
     for _ in range(MAX_SCROLLS):
-        if not page.evaluate(SCAN_STEP_JS):
-            return False, True
-        page.wait_for_timeout(400)
+        moved = _scan_step(page)
+        if not moved:
+            return False, moved is False
         if frames_present(target, _frames(page)):
             return True, True
-    return False, not page.evaluate(SCAN_STEP_JS)
+    return False, _scan_step(page) is False
 
 
 def _check(page, response, requested, target, expect, login_page):

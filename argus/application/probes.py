@@ -161,8 +161,9 @@ async def verify_persistence(
             )
         elif check["reason"] == "unsearched":
             verdict = (
-                "Target not found, but the page is longer than the search covers and was "
-                "not scrolled to its end — absence cannot establish persistence. Check a "
+                "Target not found, but the page, a frame or a scrollable list in it is longer "
+                "than the search covers and was not scrolled to its end — absence cannot "
+                "establish persistence. Check a "
                 "filtered, searched or paged view that would show the text."
             )
         elif check["reason"] == "moved":

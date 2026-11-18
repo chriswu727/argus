@@ -69,9 +69,10 @@ LOGIN_WORDS = (
     "로그인",
 )
 
-# Steps of the in-page scan (scan_step_js.js) spent looking for a row a lazy or
-# virtualized list has not rendered. A scan that ends with content still
-# unscrolled has not searched the page, so it cannot report the text absent.
+# Steps of the scan (scan_step_js.js, run in every rendered frame) spent
+# looking for a row a lazy or virtualized list has not rendered. A scan that
+# ends with content still unscrolled, or with a frame it could not scan, has
+# not searched the page, so it cannot report the text absent.
 MAX_SCROLLS = 30
 
 # Added by mail and ad links; a server that drops them still serves the same page.
@@ -313,9 +314,9 @@ def reason_text(code: str, status: int | None = None, landed: str = "") -> str:
         return "clean load did not settle — absence is not reliable evidence"
     if code == "unsearched":
         return (
-            "the page is longer than the search covers and was not scrolled to its end — "
-            "absence is not reliable evidence; check a filtered, searched or paged view "
-            "that would show the text"
+            "the page, a frame or a scrollable list in it is longer than the search covers "
+            "and was not scrolled to its end — absence is not reliable evidence; check a "
+            "filtered, searched or paged view that would show the text"
         )
     return code
 
