@@ -48,10 +48,10 @@ off unless `ARGUS_PROGRESS_NOTIFICATIONS=1`.
   and does not reverse one the caller stated; a condition given in `verify`
   or in the evidence fields is checked as given. A `goal` named in a session that declared none is
   dropped with a warning instead of rejecting the finding.
-- `docs/evaluation.md` records the first host-level run (Claude Code with a
-  small model, six trials in its final round, before this release): what
-  finished without a person, what did not use Argus at all, and what the run
-  cannot show. It is not a success rate.
+- `docs/evaluation.md` records two small host-level runs (Claude Code with a
+  small model, one synthetic to-do app with a seeded defect): what finished
+  without a person, what did not use Argus at all, the defects they found in
+  Argus, and what they cannot show. They are not a success rate.
 - The server instructions and the session protocol tell a host to find the
   app's address in the project before asking, and to report before changing
   code.
@@ -60,6 +60,31 @@ off unless `ARGUS_PROGRESS_NOTIFICATIONS=1`.
   `AGENTS.md` and `docs/evaluation.md` describe running a pass unattended and
   how to accept it: deterministic scenarios in CI, and a host-level protocol
   with defective, fixed and never-defective builds.
+- A host that reads only the structured result now gets every answer. Claude
+  Code shows the model the structured envelope and not the text, and tools
+  that answered in text, `regression_check` and `get_errors` among them,
+  reached it as `data: {}`: a real host called `regression_check`, saw
+  nothing, and re-tested by hand. `regression_check` now returns its results
+  in `data` (status per finding, counts, the reason when nothing is
+  journaled), and any other text-only result or error carries its text,
+  redacted, in `data.message`.
+- `capsule_save`, `capsule_restore` and `regression_check` report their
+  failures (no such capsule, a write that failed, not a web session) as
+  errors instead of completed results.
+- `regression_check` results now reach the report. A real host re-tested a
+  fix and handed the user a report with no recheck in it. `end_session` and
+  the HTML, JSON, JUnit and SARIF reports now show each journaled finding's
+  latest status (still present, no longer reproduces, inconclusive) with the
+  earlier ones, and a call with nothing journaled as such. They are kept
+  apart from new findings and are not journaled again. JUnit and SARIF never
+  count inconclusive as a pass. An HTML report with rechecks says "No new
+  findings recorded in this session" instead of "No bugs found".
+
+- Both plugin test skills, in the next plugin update: to find the app's
+  address, read the README and start scripts first and never print or read a
+  whole `.env`; if nothing else gives the address, look up only the host or
+  port variable. A real host had run `cat .env` for this. This is guidance to
+  the agent; it cannot stop a host from reading a file.
 
 ## Plugin updates - 2026-11-17 (0.13.1)
 

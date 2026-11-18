@@ -258,3 +258,4 @@ class ExplorationResult:
     coverage: Dict = field(default_factory=dict)
     timestamp: datetime = field(default_factory=datetime.now)
     run_id: str = field(default_factory=new_run_id)
+    regression: Dict = field(default_factory=dict)

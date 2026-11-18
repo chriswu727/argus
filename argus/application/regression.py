@@ -6,9 +6,11 @@ from urllib.parse import urlparse
 from argus.access import canonical_origin
 from argus.application.context import current_runtime, runtime_scope
 from argus.application.manager import SessionManager
-from argus.domain.contracts import ErrorCode, OperationError
+from argus.domain.contracts import ErrorCode, OperationError, Rejection, ToolText
 from argus.domain.verification import receipt_outcome
+from argus.security import _redact
 
+from .coverage import _coverage_reference_url
 from .evidence import _journal_entries
 from .lifecycle import start_session
 from .session import _require_session
@@ -152,33 +154,73 @@ async def regression_check() -> str:
     """
     s = _require_session()
     if s.mode != "web" or s.browser is None or not s.browser.has_page:
-        return "regression_check: this tool is web-mode only."
+        return Rejection("regression_check: this tool is web-mode only.")
     origin = urlparse(s.browser.current_url).netloc or urlparse(s.url or "").netloc or "default"
+    # The journal is keyed by host and port; credentials never belong in a result.
+    site = origin.rsplit("@", 1)[-1]
     entries = _journal_entries(origin, strict=True)
     if not entries:
-        return (
-            f"regression_check: no journaled findings for {origin}. Findings with a "
-            "verify clause are journaled once record_bug confirms them."
+        s.regression_checks.append({"results": [], "reason": "no_journal"})
+        s.steps.append("regression_check: no journaled findings to recheck")
+        return ToolText(
+            f"regression_check: no journaled findings for {site}. Findings with a "
+            "verify clause are journaled once record_bug confirms them.",
+            {
+                "site": site,
+                "checked": 0,
+                "counts": {"still_present": 0, "no_longer_reproduces": 0, "inconclusive": 0},
+                "results": [],
+                "reason": "no_journal",
+                "detail": "No confirmed findings are journaled for this site; a finding is "
+                "journaled when record_bug confirms it. Nothing was rechecked.",
+            },
         )
 
-    lines = [f"Regression re-check for {origin} — {len(entries)} journaled finding(s):", ""]
-    still = gone = incon = 0
-    for e in await check_entries(s, entries, s.url or ""):
+    lines = [f"Regression re-check for {site} — {len(entries)} journaled finding(s):", ""]
+    counts = {"still_present": 0, "no_longer_reproduces": 0, "inconclusive": 0}
+    results = []
+    keys = []
+    checked = await check_entries(s, entries, s.url or "")
+    for entry, e in zip(entries, checked, strict=True):
+        keys.append(entry["fingerprint"])
         if e["status"] == "STILL-PRESENT":
-            tag = "STILL-PRESENT       "
-            still += 1
+            status, tag, key = "STILL-PRESENT", "STILL-PRESENT       ", "still_present"
         elif e["status"] == "FIXED":
-            tag = "NO-LONGER-REPRODUCES"
-            gone += 1
+            status, tag, key = (
+                "NO-LONGER-REPRODUCES",
+                "NO-LONGER-REPRODUCES",
+                "no_longer_reproduces",
+            )
         else:
-            tag = "INCONCLUSIVE        "
-            incon += 1
-        lines.append(f"  [{tag}] [{e.get('severity', '?').upper()}] {e.get('title', '')[:80]}")
+            status, tag, key = "INCONCLUSIVE", "INCONCLUSIVE        ", "inconclusive"
+        counts[key] += 1
+        lines.append(
+            f"  [{tag}] [{e.get('severity', '?').upper()}] {_redact(e.get('title', ''))[:80]}"
+        )
         if e.get("reason"):
             lines.append(f"    {e['reason']}")
+        results.append(
+            {
+                "title": str(e.get("title", ""))[:120],
+                "severity": e.get("severity", "?"),
+                "status": status,
+                "runs": e.get("runs"),
+                "reason": e.get("reason"),
+                # Path only: a query string can carry tokens.
+                "path": _coverage_reference_url(e.get("url") or ""),
+            }
+        )
     lines.append("")
     lines.append(
-        f"{still} still present · {gone} no longer reproduce (likely fixed — "
-        f"confirm the surface still exists) · {incon} inconclusive."
+        f"{counts['still_present']} still present · {counts['no_longer_reproduces']} no longer "
+        f"reproduce (likely fixed — confirm the surface still exists) · "
+        f"{counts['inconclusive']} inconclusive."
     )
-    return "\n".join(lines)
+    s.regression_checks.append(
+        {"results": [{**result, "key": key} for key, result in zip(keys, results, strict=True)]}
+    )
+    s.steps.append(f"regression_check: {len(results)} journaled finding(s) rechecked")
+    return ToolText(
+        "\n".join(lines),
+        {"site": site, "checked": len(results), "counts": counts, "results": results},
+    )

@@ -278,3 +278,15 @@ def test_both_skills_say_what_a_real_host_got_wrong():
         assert "never before you have closed the session and reported" in text, skill
         assert "`record_bug`'s `verify` takes the symptom" in text, skill
         assert "Finding a bug is not a reason to stop or to start fixing." in text, skill
+
+
+def test_both_skills_keep_environment_files_out_of_the_conversation():
+    """A real host ran `cat .env` to find the app's address. The skills now
+    send it to the README and start scripts first, and only to one host or
+    port variable if nothing else gives the address."""
+    for skill in SKILLS:
+        scope = " ".join(_sections(skill)["1. Settle the scope yourself"].split())
+        assert "`.env`)" not in scope and "README, `.env`" not in scope, skill
+        assert "do not print or read one whole" in scope, skill
+        assert "leave every other value out of the conversation" in scope, skill
+        assert scope.index("the README") < scope.index("Environment files"), skill

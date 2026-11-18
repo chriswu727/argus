@@ -16,17 +16,32 @@ def render_junit(r: ExplorationResult) -> str:
     import xml.etree.ElementTree as ET
 
     findings = [b.to_dict() for b in r.bugs]
+    rechecks = (r.regression or {}).get("findings", [])
     failures = sum(1 for f in findings if receipt_outcome(f.get("reproduction")) is not False)
+    failures += sum(1 for f in rechecks if f["status"] == "STILL-PRESENT")
     suite = ET.Element(
         "testsuite",
         {
             "name": "argus",
-            "tests": str(len(findings)),
+            "tests": str(len(findings) + len(rechecks)),
             "failures": str(failures),
             "hostname": r.url or "",
             "time": f"{r.duration_seconds or 0:.1f}",
         },
     )
+    if r.regression:
+        properties = ET.SubElement(suite, "properties")
+        ET.SubElement(
+            properties,
+            "property",
+            {"name": "regression_checks", "value": str(r.regression["checks"])},
+        )
+        if r.regression.get("reason"):
+            ET.SubElement(
+                properties,
+                "property",
+                {"name": "regression_reason", "value": r.regression["reason"]},
+            )
     for f in findings:
         verdict = receipt_outcome(f.get("reproduction"))
         tier = (
@@ -64,6 +79,26 @@ def render_junit(r: ExplorationResult) -> str:
         else:
             fail = ET.SubElement(tc, "failure", {"message": f["title"][:200], "type": f["type"]})
             fail.text = "\n".join(body_lines)
+    # The same mapping as argus-regression: still present fails, no longer
+    # reproducing passes, inconclusive is skipped (never a pass).
+    for f in rechecks:
+        tc = ET.SubElement(
+            suite,
+            "testcase",
+            {
+                "classname": f"argus.regression.{f['severity']}",
+                "name": f"[{f['status']}] {f['title']}"[:250],
+            },
+        )
+        if f["status"] == "STILL-PRESENT":
+            fail = ET.SubElement(
+                tc, "failure", {"message": "known bug still present", "type": "regression"}
+            )
+            fail.text = f"{f['title']}\nruns={f.get('runs')}\npath={f.get('path')}"
+        elif f["status"] == "INCONCLUSIVE":
+            ET.SubElement(
+                tc, "skipped", {"message": f"symptom check inconclusive: {f.get('reason') or ''}"}
+            )
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_safe(
         ET.tostring(suite, encoding="unicode")
     )

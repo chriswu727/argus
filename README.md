@@ -86,8 +86,9 @@ connection partway through a run and lose the session's findings. A delete
 that redirects to another list, or a row
 further down a long or virtualized list than Argus scrolled, is reported as
 inconclusive instead of confirmed absent. A finding is confirmed only by a
-check the agent states. `--doctor` passes on a Mac without the screen-mode
-grants. Since 0.13.1 the first session downloads Chromium by itself, and since
+check the agent states. Structured tool results now carry the answer and error
+reason, and regression conclusions appear in the session summary and every
+report. `--doctor` passes on a Mac without the screen-mode grants. Since 0.13.1 the first session downloads Chromium by itself, and since
 0.13.0 live verification, `verify_persistence` and exported tests decide with
 the same rules. Regenerate exported tests to pick up verdict rules version 2;
 see the [journal migration steps](docs/usage.md#regression-gates-in-ci), the

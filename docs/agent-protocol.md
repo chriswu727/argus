@@ -18,13 +18,37 @@ data, never by parsing the rendered text.
 | `status` | `completed` or `error`; not an application-test verdict |
 | `session_state`, `run_id` | Runtime state captured before releasing the operation lock; run ID may be null |
 | `error_code`, `recovery` | Classified runtime error and conservative recovery guidance |
-| `data` | Operation-specific evidence, or `{}` for tools not yet migrated |
+| `data` | Operation-specific evidence. A tool that answers in text only, and every runtime error, puts that text, redacted, in `data.message` |
 | `stages` | Actual phases reached, in order; at most 64 |
 | `progress_omitted` | Number of phase notifications beyond that bound |
 | `progress_delivery_failed` | Progress delivery failed or exceeded its deadline; tool execution continued |
 
 `isError` remains the MCP error signal. Runtime error text retains the legacy
-`[error_code]` prefix. SDK-level argument/schema validation and unknown-tool
+`[error_code]` prefix; `data.message` carries the same reason without it. Some
+hosts, Claude Code among them, show the model only the structured envelope
+when one is present, so a result or reason that is only in the text blocks
+does not reach it. Since 0.13.2 `data` is never empty for a result that has
+text.
+
+`regression_check` returns `data.site` (host and port), `checked`, `counts`
+(`still_present`, `no_longer_reproduces`, `inconclusive`) and `results`, one per
+journaled finding with `title`, `severity`, `status` (`STILL-PRESENT`,
+`NO-LONGER-REPRODUCES` or `INCONCLUSIVE`), `runs`, `reason` and `path` (the
+checked page's path, without its query). With nothing journaled, `checked` is
+0 and `reason` is `no_journal`. Outside a web session it is an
+`invalid_argument` error. `argus-regression` keeps its own output and exit
+codes.
+
+Each `regression_check` call is kept with the session. `end_session` returns
+them as `data.regression`, and the HTML, JSON, JUnit and SARIF reports carry
+them, apart from the new findings: `checks` (calls made), `counts`, and per
+journaled finding its latest `status` with every earlier one in `history`.
+A later INCONCLUSIVE does not replace an earlier STILL-PRESENT in `history`.
+JUnit follows `argus-regression`: still present is a failure, no longer
+reproducing passes, inconclusive is skipped. SARIF uses `kind` `fail`, `pass`
+and `open`. A call with nothing journaled is reported as `reason: no_journal`.
+Rechecks are not findings: they are not counted in `summary.findings` and not
+journaled again. SDK-level argument/schema validation and unknown-tool
 errors remain standard MCP errors and may not contain this envelope.
 
 Since 0.10.0, successful compact/delta responses omit empty `recovery`,
