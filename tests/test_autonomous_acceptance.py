@@ -393,3 +393,30 @@ async def test_a_restart_that_fails_still_says_where_the_findings_went(app, isol
     assert "Goals it left unfinished (pass them as goals to continue): Delete a task" in text
     ended, text = await host.call("end_session")
     assert ended["status"] == "completed"
+
+
+async def test_a_requested_test_file_is_exported_before_the_session_is_closed(app):
+    """A user who wants a regression test file gets it while the finding's
+    session is open; a closed session has no findings left to export."""
+    host = _Host()
+    app.delete_persists = False
+    await _start(host, app.base + "/tasks", goals=["Delete a task"])
+    check = await _delete_and_check(host, app)
+    recorded, _ = await host.call(
+        "record_bug",
+        title="Deleted task comes back after reload",
+        severity="high",
+        evidence={"expected": "the task stays deleted", "actual": "it is listed again"},
+        verify=check["suggested_verify"],
+    )
+    finding_id = recorded["data"]["finding_id"]
+    exported, text = await host.call("export_test", finding_id=finding_id)
+    assert exported["status"] == "completed", text
+    test_file = Path(exported["data"]["path"])
+    assert test_file.is_file() and "def test_argus_finding" in test_file.read_text()
+    ended, _ = await host.call("end_session")
+    assert ended["data"]["summary"]["findings"] == 1
+    assert test_file.is_file()
+
+    late, text = await host.call("export_test", finding_id=finding_id)
+    assert late["status"] == "error" and late["error_code"] == "no_session", text

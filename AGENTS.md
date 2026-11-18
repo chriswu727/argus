@@ -82,6 +82,8 @@ outside the task.
 - **After a fix**: start a session and call `regression_check`. When the bug
   was a change that did not stay, repeat that action once on the fixed build
   first, because the old data is still there.
+- **A test file the user asked for**: call `export_test` before `end_session`.
+  It reads the open session's findings; a closed session has none to export.
 - **Report**: the journeys tested, each bug with impact, steps and evidence
   paths, what was not finished and why. Inconclusive stays inconclusive, and a
   run with no defects is a normal result.
