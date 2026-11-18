@@ -17,11 +17,15 @@ Two rules hold for the whole run:
 ## 1. Settle the scope yourself
 
 - **Address.** Take it from the arguments or the conversation. Otherwise find
-  it: the dev server you or the user already started, the project's start
-  script and port (`package.json`, `Makefile`, `docker-compose.yml`, the
-  README, `.env`), or the framework default. If the app is not running and
-  starting it is part of the work you were given, start it with the project's
-  own command. Ask only when none of this gives an address.
+  it, in this order: a dev server you or the user already started, the
+  README, the project's start script and its port (`package.json`,
+  `Makefile`, `docker-compose.yml`), or the framework default. Environment
+  files such as `.env` hold credentials and tokens: do not print or read one
+  whole. Only if nothing else gives the address, look up the single host or
+  port variable you need (for example with `grep -E '^(HOST|PORT)='`) and
+  leave every other value out of the conversation. If the app is not running
+  and starting it is part of the work you were given, start it with the
+  project's own command. Ask only when none of this gives an address.
 - **Goals.** Turn the request into three to six user journeys. For "test the
   app", cover the main flows. For a feature that was just built or changed,
   cover that feature and the flows next to it. Each journey should include

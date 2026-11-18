@@ -72,6 +72,12 @@
   count inconclusive as a pass. An HTML report with rechecks says "No new
   findings recorded in this session" instead of "No bugs found".
 
+- Both plugin test skills, in the next plugin update: to find the app's
+  address, read the README and start scripts first and never print or read a
+  whole `.env`; if nothing else gives the address, look up only the host or
+  port variable. A real host had run `cat .env` for this. This is guidance to
+  the agent; it cannot stop a host from reading a file.
+
 ## Plugin updates - 2026-11-17 (0.13.1)
 
 - Claude plugin 0.13.1 and Codex plugin 0.13.1 pin the published Argus 0.13.1
