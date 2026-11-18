@@ -40,6 +40,9 @@
   confirm the opposite and the receipt records both. A `goal` named in a
   session that declared none is dropped with a warning instead of rejecting
   the finding.
+- `docs/evaluation.md` records the first host-level run (Claude Code with a
+  small model, six trials in the final round): what finished without a person,
+  what did not use Argus at all, and what the run cannot show.
 - The server instructions and the session protocol tell a host to find the
   app's address in the project before asking, and to report before changing
   code.

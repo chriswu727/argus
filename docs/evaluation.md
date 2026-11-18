@@ -299,8 +299,9 @@ login. `tests/test_first_run_browser.py` covers the first-use browser download.
 These calls are scripted. They show that a host has what it needs at each
 step, not that a model takes the step.
 
-**Host layer (not yet run; needs separate authorization because it uses model
-subscriptions).** Use the real plugin in a real host, a fresh conversation per
+**Host layer (needs separate authorization because it uses model
+subscriptions; one small run is recorded below).** Use the real plugin in a
+real host, a fresh conversation per
 trial, and only these three requests, with no testing instructions added:
 
 1. "Test the app." (the app is running, or startable from the project)
@@ -333,6 +334,61 @@ Rules, so the result means something:
 - A trial that runs out of budget is reported as unfinished with what it
   covered. Do not rerun it until it passes, and do not drop it.
 - Report every trial. Small samples show problems; they do not prove rates.
+
+### Host run of 2026-11-17
+
+One run, authorized by the maintainer with a small model. It found defects;
+it is far too small to state a completion or detection rate.
+
+Setup: Claude Code 2.1.111, `--model haiku` (resolved to
+`claude-haiku-4-5-20251001`), the Claude plugin loaded with `--plugin-dir`
+and its launcher pointed at a source snapshot (the work was not released), the
+user's own settings, hooks and plugins left out, one request per trial and
+nobody answering the agent. The app was a small to-do list whose defective
+build shows a deleted task as gone but never saves the delete. Requests were
+sent in Chinese: "test this app", "the delete feature is done, check it",
+"the problem from before is fixed, test it again". The harness and
+transcripts are kept outside this repository.
+
+Final round, on the code of the acceptance-fixes change:
+
+| Request | Build | App | Outcome |
+|---|---|---|---|
+| Test this app | defective | running | Finished alone. Found the delete, Argus confirmed it 2/2, it reached the report and the journal, the answer had impact, steps and the report path. 14 Argus calls, no dropped connection. |
+| Test this app | never defective | running | Finished alone. Five journeys with reload checks, report written, nothing found, no false positive. |
+| Feature is done, check it | defective | stopped | Argus not used. The agent read the 150-line source, saw the missing save, tried to edit the file twice and asked for permission. The defect was named; nothing went through Argus. |
+| Feature is done, check it | never defective | stopped | Argus not used. Checked with curl and the source; correct "no problem". |
+| It is fixed, test again (it was not) | defective | running | Repeated the delete and the reload check, answered "not fixed". `regression_check` not used. |
+| It is fixed, test again | fixed | running | Repeated the delete and the reload check, answered "fixed". `regression_check` not used. |
+
+What the earlier rounds showed, before the fixes they led to:
+
+- The server was restarted twice in one trial and the session's finding was
+  gone from Argus's report and journal. Cause: the progress-notification race
+  described in the [protocol](agent-protocol.md#progress-transport). With the
+  TypeScript MCP SDK 1.29.0 as client and no model, 300 fast calls gave one
+  "unknown token" error before the fix and none after. Across the trials, 2
+  drops in 33 Argus calls before and none in 69 after.
+- "Test this app" was answered with three questions and no tool call.
+- A real defect stayed unconfirmed twice: once `verify` was left out, once it
+  stated the expected state instead of the symptom.
+- The agent began editing the app before reporting.
+
+What this run does not show:
+
+- That a host uses Argus when asked to check a finished feature. On this
+  small single-file app the model read the code instead in three of six such
+  trials across the rounds. That is the host's choice, and a larger app may
+  go differently; it was not tried.
+- That a host re-tests from the journal. Both re-test trials walked the
+  journey again and never called `regression_check`.
+- Anything about other models, other hosts, apps with a login, long runs, or
+  rates. Each cell was run once in the final round, and the same request gave
+  different behaviour from round to round. The transcripts were judged by the
+  author of the changes, not by an independent reviewer.
+
+Cost as the host reported it: about 0.04 to 0.21 USD per trial, roughly 1.4
+USD for all rounds. One round was cut short by the subscription's usage limit.
 
 ## Independent adjudication
 
