@@ -1,5 +1,5 @@
 [project]
 name = "argus-testing-plugin-runtime"
-version = "0.13.0"
+version = "0.13.1"
 requires-python = ">=3.12,<3.13"
-dependencies = ["argus-testing==0.13.0"]
+dependencies = ["argus-testing==0.13.1"]

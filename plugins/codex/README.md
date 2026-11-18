@@ -13,15 +13,17 @@ in OpenAI's plugin directory.
 
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and make
 `uv` available to Codex. The launcher selects Python 3.12 and runs the exact
-published `argus-testing==0.13.0` release from the bundled `uv.lock`, which pins
+published `argus-testing==0.13.1` release from the bundled `uv.lock`, which pins
 dependency versions, sources, and hashes, in a virtual environment under the
 installed plugin directory.
 
-Before the first session, warm uv's cache and install the matching Chromium
-browser. This works from any directory:
+The first testing session downloads the matching Chromium browser by itself
+(one time, about 150 MB). To have everything in place beforehand, warm uv's
+cache and install the browser ahead; this is optional and works from any
+directory:
 
 ```bash
-uvx --python 3.12 --from argus-testing==0.13.0 --with playwright==1.64.1 python -m playwright install chromium
+uvx --python 3.12 --from argus-testing==0.13.1 --with playwright==1.64.1 python -m playwright install chromium
 ```
 
 The warm-up pins Argus and Playwright; uv resolves the other dependencies afresh
@@ -44,11 +46,17 @@ checks the browser and report directory if the first session fails.
 
 ## Test an application
 
-The bundled `argus-test` skill guides a session: it agrees the scope and asks
-before anything with real-world effects, checks the environment, tests, rechecks
-symptoms on fresh loads, and reports findings grouped as verified, observed, not
-reproduced, or inconclusive. Ask Codex to test an application you are authorized
-to exercise, for example:
+The bundled `argus-test` skill runs a session from start to report. It finds
+the address from the conversation, the project's start script or a running dev
+server, turns the request into a few user journeys, runs them within a time
+budget, and rechecks symptoms on fresh loads. It handles the browser download,
+stale elements, slow pages, timeouts and a failed session itself, and asks you
+only for what it cannot get: a login it was not given, or a decision outside
+the task. You get the journeys it tested, each bug with its impact, steps and
+evidence paths, grouped as verified, observed, not reproduced or inconclusive,
+and what was not finished and why. After a fix it re-tests the earlier
+findings from Argus's journal with `regression_check`. Ask Codex to test an
+application you are authorized to exercise, for example:
 "Test http://localhost:3000. Check saving, state after refresh, invalid input, and
 cross-page consistency. Report reproducible issues with evidence."
 
