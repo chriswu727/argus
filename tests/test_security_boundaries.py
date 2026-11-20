@@ -5,6 +5,7 @@ import re
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -172,6 +173,20 @@ def test_file_policy_resolves_symlinks_and_denies_by_default(tmp_path):
             policy.check_file(path)
     with pytest.raises(OperationError):
         AccessPolicy().check_url(inside.as_uri())
+
+
+def test_file_urls_map_to_local_paths(tmp_path):
+    # On Windows a file URL's path is "/C:/..."; read as a path it is invalid.
+    page = tmp_path / "with space" / "page.html"
+    page.parent.mkdir()
+    page.write_text("synthetic")
+    policy = AccessPolicy(file_roots=(tmp_path,))
+    uri = page.as_uri()
+    for url in [uri, "file://localhost" + urlsplit(uri).path]:
+        policy.check_url(url)
+        assert policy.storage_scope(url) == ("file", str(page.resolve()))
+    with pytest.raises(OperationError):
+        AccessPolicy(file_roots=(tmp_path / "other",)).check_url(uri)
 
 
 @pytest.mark.parametrize(
