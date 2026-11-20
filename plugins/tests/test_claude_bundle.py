@@ -26,10 +26,10 @@ BUNDLE = ROOT / "plugins" / "claude"
 
 
 def test_plugin_pins_the_published_runtime_and_safe_profile():
-    manifest = json.loads((BUNDLE / ".claude-plugin" / "plugin.json").read_text())
-    project = tomllib.loads((BUNDLE / "pyproject.toml").read_text())["project"]
-    lock = tomllib.loads((BUNDLE / "uv.lock").read_text())
-    config = json.loads((BUNDLE / ".mcp.json").read_text())
+    manifest = json.loads((BUNDLE / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    project = tomllib.loads((BUNDLE / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    lock = tomllib.loads((BUNDLE / "uv.lock").read_text(encoding="utf-8"))
+    config = json.loads((BUNDLE / ".mcp.json").read_text(encoding="utf-8"))
     assert manifest["name"] == "argus-testing"
     assert manifest["license"] == "MIT"
     assert config == {
@@ -68,31 +68,33 @@ def test_plugin_pins_the_published_runtime_and_safe_profile():
 
 
 def test_marketplace_lists_this_bundle():
-    marketplace = json.loads((ROOT / ".claude-plugin" / "marketplace.json").read_text())
-    manifest = json.loads((BUNDLE / ".claude-plugin" / "plugin.json").read_text())
+    marketplace = json.loads(
+        (ROOT / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8")
+    )
+    manifest = json.loads((BUNDLE / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
     (entry,) = marketplace["plugins"]
     assert entry["name"] == manifest["name"]
     assert entry["source"] == "./plugins/claude"
     install = f"/plugin install {manifest['name']} --marketplace chriswu727/argus"
-    assert install in (BUNDLE / "README.md").read_text()
-    assert install in (ROOT / "docs/usage.md").read_text()
-    assert "[Claude plugin](plugins/claude)" in (ROOT / "README.md").read_text()
+    assert install in (BUNDLE / "README.md").read_text(encoding="utf-8")
+    assert install in (ROOT / "docs/usage.md").read_text(encoding="utf-8")
+    assert "[Claude plugin](plugins/claude)" in (ROOT / "README.md").read_text(encoding="utf-8")
 
 
 def test_warm_up_command_matches_the_lock():
-    lock = tomllib.loads((BUNDLE / "uv.lock").read_text())
+    lock = tomllib.loads((BUNDLE / "uv.lock").read_text(encoding="utf-8"))
     runtime = next(package for package in lock["package"] if package["name"] == "argus-testing")
     playwright = next(package for package in lock["package"] if package["name"] == "playwright")
     command = (
         f"uvx --python 3.12 --from argus-testing=={runtime['version']} "
         f"--with playwright=={playwright['version']} python -m playwright install chromium"
     )
-    assert command in (BUNDLE / "README.md").read_text()
+    assert command in (BUNDLE / "README.md").read_text(encoding="utf-8")
 
 
 def test_skill_installs_the_browser_into_the_servers_locked_environment():
-    skill = (BUNDLE / "skills" / "test" / "SKILL.md").read_text()
-    server = json.loads((BUNDLE / ".mcp.json").read_text())["mcpServers"]["argus"]
+    skill = (BUNDLE / "skills" / "test" / "SKILL.md").read_text(encoding="utf-8")
+    server = json.loads((BUNDLE / ".mcp.json").read_text(encoding="utf-8"))["mcpServers"]["argus"]
     assert skill.startswith("---\ndescription: ")
     launcher = " ".join(server["args"][: server["args"].index("argus-mcp")])
     command = (
@@ -101,11 +103,11 @@ def test_skill_installs_the_browser_into_the_servers_locked_environment():
         + " python -m playwright install chromium"
     )
     assert command in skill
-    assert "/argus-testing:test" in (BUNDLE / "README.md").read_text()
+    assert "/argus-testing:test" in (BUNDLE / "README.md").read_text(encoding="utf-8")
 
 
 def test_plugin_documents_local_execution_and_privacy():
-    readme = (BUNDLE / "README.md").read_text()
+    readme = (BUNDLE / "README.md").read_text(encoding="utf-8")
     assert "## Privacy Policy" in readme
     assert "https://github.com/chriswu727/argus/blob/main/PRIVACY.md" in readme
     assert "They do not execute in claude.ai web chat" in readme
@@ -114,8 +116,8 @@ def test_plugin_documents_local_execution_and_privacy():
 
 @pytest.mark.asyncio
 async def test_plugin_launch_command_handshake(tmp_path):
-    project = tomllib.loads((BUNDLE / "pyproject.toml").read_text())["project"]
-    config = json.loads((BUNDLE / ".mcp.json").read_text())["mcpServers"]["argus"]
+    project = tomllib.loads((BUNDLE / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    config = json.loads((BUNDLE / ".mcp.json").read_text(encoding="utf-8"))["mcpServers"]["argus"]
     config["args"] = [
         argument.replace("${CLAUDE_PLUGIN_ROOT}", str(BUNDLE)) for argument in config["args"]
     ]
@@ -148,7 +150,7 @@ async def test_plugin_launch_command_handshake(tmp_path):
 
 
 def test_launcher_is_isolated_and_cleans_up(tmp_path):
-    server = json.loads((BUNDLE / ".mcp.json").read_text())["mcpServers"]["argus"]
+    server = json.loads((BUNDLE / ".mcp.json").read_text(encoding="utf-8"))["mcpServers"]["argus"]
     args = server["args"][: server["args"].index("argus-mcp")]
     args = [arg.replace("${CLAUDE_PLUGIN_ROOT}", str(BUNDLE)) for arg in args]
     probe = "import json, sys; print(json.dumps({'prefix': sys.prefix}))"
@@ -177,12 +179,15 @@ def test_launcher_rejects_a_stale_lock_without_running_the_command(tmp_path):
     bundle = tmp_path / "plugin"
     shutil.copytree(BUNDLE, bundle)
     project = bundle / "pyproject.toml"
-    dependency = tomllib.loads(project.read_text())["project"]["dependencies"][0]
+    dependency = tomllib.loads(project.read_text(encoding="utf-8"))["project"]["dependencies"][0]
     project.write_text(
-        project.read_text().replace(f'dependencies = ["{dependency}"]', "dependencies = []")
+        project.read_text(encoding="utf-8").replace(
+            f'dependencies = ["{dependency}"]', "dependencies = []"
+        ),
+        encoding="utf-8",
     )
     lock_before = (bundle / "uv.lock").read_bytes()
-    server = json.loads((bundle / ".mcp.json").read_text())["mcpServers"]["argus"]
+    server = json.loads((bundle / ".mcp.json").read_text(encoding="utf-8"))["mcpServers"]["argus"]
     args = server["args"][: server["args"].index("argus-mcp")]
     args = [arg.replace("${CLAUDE_PLUGIN_ROOT}", str(bundle)) for arg in args]
     marker = tmp_path / "command-ran"

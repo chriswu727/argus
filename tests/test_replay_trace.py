@@ -79,7 +79,8 @@ async def test_form_paste_and_selection_never_persist_input_values(tmp_path):
     page.write_text(
         '<input placeholder="Password" type="password">'
         f'<select aria-label="Choice"><option value="{secret}">Private option</option></select>'
-        "<button>Save</button>"
+        "<button>Save</button>",
+        encoding="utf-8",
     )
     await _start(page.as_uri())
     try:

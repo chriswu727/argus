@@ -441,7 +441,9 @@ def test_sarif_export_valid_and_carries_verdict():
     d = tempfile.mkdtemp()
     Reporter().generate(res, d)
     sf = [f for f in os.listdir(d) if f.endswith(".sarif")][0]
-    doc = json.load(open(os.path.join(d, sf)))  # parses => valid JSON + escaping OK
+    doc = json.load(
+        open(os.path.join(d, sf), encoding="utf-8")
+    )  # parses => valid JSON + escaping OK
     assert doc["version"] == "2.1.0"
     run = doc["runs"][0]
     assert run["tool"]["driver"]["name"] == "Argus"
@@ -508,7 +510,7 @@ def test_machine_readable_export_json_and_junit():
     jf = [f for f in os.listdir(d) if f.endswith(".json")][0]
     xf = [f for f in os.listdir(d) if f.endswith(".junit.xml")][0]
 
-    doc = json.load(open(os.path.join(d, jf)))
+    doc = json.load(open(os.path.join(d, jf), encoding="utf-8"))
     assert doc["summary"] == {
         "total": 3,
         "verified": 1,
@@ -549,7 +551,7 @@ def test_generated_report_uses_lightweight_preview_assets(tmp_path):
     )
 
     report = Path(Reporter().generate(result, str(tmp_path / "reports")))
-    html = report.read_text()
+    html = report.read_text(encoding="utf-8")
     previews = list((report.parent / "report-assets").rglob("*.webp"))
 
     assert "data:image" not in html
@@ -576,7 +578,7 @@ def test_portable_report_still_supports_single_file_images(tmp_path):
     )
 
     report = Reporter().generate(result, str(tmp_path / "reports"), portable=True)
-    assert "data:image/png;base64," in Path(report).read_text()
+    assert "data:image/png;base64," in Path(report).read_text(encoding="utf-8")
 
 
 def test_edge_case_hint_once_per_field_type():
@@ -636,7 +638,7 @@ def test_regression_artifact_json_and_junit():
     base = _write_regression_artifact(d, "http://x", results)
     assert base and os.path.exists(base + ".json") and os.path.exists(base + ".junit.xml")
 
-    j = json.load(open(base + ".json"))
+    j = json.load(open(base + ".json", encoding="utf-8"))
     assert j["summary"] == {"total": 3, "still_present": 1, "fixed": 1, "inconclusive": 1}
 
     root = ET.parse(base + ".junit.xml").getroot()

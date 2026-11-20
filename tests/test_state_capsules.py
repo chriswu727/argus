@@ -63,7 +63,7 @@ async def test_capsule_live_roundtrip():
             m.capsule_save, name="acct", liveness_marker="Welcome Alice"
         )
         path = next((m.runtime.settings.output_dir / ".argus" / "capsules").glob("*/*.json"))
-        assert json.loads(path.read_text())["schema_version"] == 1
+        assert json.loads(path.read_text(encoding="utf-8"))["schema_version"] == 1
         if os.name == "posix":
             assert path.stat().st_mode & 0o777 == 0o600
         # "Log out", confirm the marker is gone, then restore.

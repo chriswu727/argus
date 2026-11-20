@@ -99,7 +99,7 @@ async def test_exported_test_fails_while_the_bug_exists_and_passes_once_fixed(
 
         exported = await _fn("export_test")(finding_id, run=True, save_private_values=True)
         assert exported.data["run"]["outcome"] == "fails_on_symptom", exported
-        source = open(exported.data["path"]).read()
+        source = open(exported.data["path"], encoding="utf-8").read()
         assert "_in_row(page, values[" in source
         assert task not in source
         assert "_check(page, response, check_url, values[" in source
@@ -295,13 +295,14 @@ async def test_a_stopped_run_kills_the_test_and_what_it_started(tmp_path, how):
         "import os, subprocess, sys, time\n"
         "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
         f"open({str(pids)!r}, 'w').write(f'{{os.getpid()}} {{child.pid}}')\n"
-        "time.sleep(60)\n"
+        "time.sleep(60)\n",
+        encoding="utf-8",
     )
     loop = asyncio.get_running_loop()
     if how == "cancel":
         task = asyncio.ensure_future(run_exported_test(script, 60))
         for _ in range(100):
-            if pids.exists() and pids.read_text():
+            if pids.exists() and pids.read_text(encoding="utf-8"):
                 break
             await asyncio.sleep(0.1)
         started = loop.time()
@@ -314,7 +315,7 @@ async def test_a_stopped_run_kills_the_test_and_what_it_started(tmp_path, how):
         assert result["outcome"] == "errored" and "timed out" in result["detail"]
     assert loop.time() - started < 15  # stopped, not waited out
     await asyncio.sleep(0.2)
-    for pid in map(int, pids.read_text().split()):
+    for pid in map(int, pids.read_text(encoding="utf-8").split()):
         try:
             os.kill(pid, 0)
         except ProcessLookupError:
@@ -390,7 +391,7 @@ async def test_the_exported_check_scrolls_like_the_verifier(tmp_path):
             filename="t.py",
         )
         script = tmp_path / "t.py"
-        script.write_text(source)
+        script.write_text(source, encoding="utf-8")
         # The row exists further down, so the "missing" symptom is not present.
         assert (await run_exported_test(script, 90, secrets=secrets))["outcome"] == "passes"
     finally:
@@ -586,7 +587,7 @@ async def test_unnamed_hidden_or_switch_inputs_replay_in_a_browser(tmp_path, row
             filename="t.py",
         )
         script = tmp_path / "t.py"
-        script.write_text(source)
+        script.write_text(source, encoding="utf-8")
         # The click reaches the right input, so the "not kept" symptom is gone.
         assert (await run_exported_test(script, 90, secrets=secrets))["outcome"] == "passes"
     finally:
@@ -680,7 +681,10 @@ async def test_going_back_is_recorded_replayed_and_exported(isolated_runtime):
             verify={"expect": "present", "target_text": "Page A", "at_url": base + "/a"},
         )
         exported = await _fn("export_test")(recorded.data["finding_id"], run=True)
-        assert 'page.go_back(wait_until="domcontentloaded")' in open(exported.data["path"]).read()
+        assert (
+            'page.go_back(wait_until="domcontentloaded")'
+            in open(exported.data["path"], encoding="utf-8").read()
+        )
         assert exported.data["run"]["outcome"] == "fails_on_symptom", exported
     finally:
         await _fn("end_session")()
@@ -858,7 +862,7 @@ async def test_exported_text_steps_target_the_visible_copy(tmp_path):
             filename="t.py",
         )
         script = tmp_path / "t.py"
-        script.write_text(source)
+        script.write_text(source, encoding="utf-8")
         # Without the visibility filter both steps hit a strict-mode error.
         assert (await run_exported_test(script, 90, secrets=secrets))["outcome"] == "passes"
     finally:
@@ -947,7 +951,7 @@ async def test_drags_and_storage_writes_make_an_export_incomplete(isolated_runti
         manual = exported.data["manual_steps"]
         assert any("step 1: unsupported action" in note for note in manual), manual
         assert any("step 2: unsupported action" in note for note in manual), manual
-        source = open(exported.data["path"]).read()
+        source = open(exported.data["path"], encoding="utf-8").read()
         assert "ARGUS_INCOMPLETE_TEST" in source and "secret-flag-value" not in source
     finally:
         await _fn("end_session")()
@@ -997,7 +1001,7 @@ async def test_a_network_mock_makes_an_export_incomplete_without_leaking_its_bod
         assert exported.data["run"]["outcome"] == "incomplete", exported
         manual = exported.data["manual_steps"]
         assert any("step 1: unsupported action" in note for note in manual), manual
-        source = open(exported.data["path"]).read()
+        source = open(exported.data["path"], encoding="utf-8").read()
         assert "ARGUS_INCOMPLETE_TEST" in source
         assert "mock-body-secret" not in source and "prompt-secret" not in source
     finally:
@@ -1021,8 +1025,15 @@ def test_exported_file_embeds_the_package_verdict_rules_and_collector_verbatim()
         resolve_input=lambda action: None,
         filename="t.py",
     )
-    rules = files("argus.domain").joinpath("verdict.py").read_bytes()
-    collector = files("argus.adapters.scripts").joinpath("collect_text_js.js").read_bytes()
+    # The export embeds the sources as text, with "\n" line endings; a Windows
+    # checkout can have CRLF on disk.
+    rules = files("argus.domain").joinpath("verdict.py").read_bytes().replace(b"\r\n", b"\n")
+    collector = (
+        files("argus.adapters.scripts")
+        .joinpath("collect_text_js.js")
+        .read_bytes()
+        .replace(b"\r\n", b"\n")
+    )
     encoded = source.encode("utf-8")
     assert encoded.count(rules) == 1
     assert encoded.count(b"COLLECT_TEXT_JS = r'''" + collector + b"'''") == 1

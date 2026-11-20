@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+Windows fixes, found by running the test suite on Windows 11. No new tools.
+
+- Argus reads its packaged browser scripts as UTF-8. With the default
+  Windows encoding, `import argus.mcp_server` raised `UnicodeDecodeError` on
+  Chinese, Japanese and Korean systems, so `argus-mcp` and both plugins could
+  not start; on other code pages the scripts were garbled, including the
+  iframe marker that `observe` shows. The version read from `pyproject.toml`
+  and the `argus.screen.validate --json` output also use UTF-8 now.
+- `file://` pages work on Windows. The URL path (`/C:/dir/page.html`) was
+  used as a filesystem path, so `start_session`, navigation and the file
+  access policy failed with `OSError` for every local file page. Other
+  platforms are unchanged.
+- Tests that need symlinks skip when Windows does not allow creating them,
+  and tests no longer assume LF checkouts, `HOME` as the home directory or
+  `fcntl`. The scripted evaluation smoke passes the variables a Windows
+  child process needs.
+
 ## Plugin updates - 2026-11-18 (0.13.2)
 
 - Claude plugin 0.13.2 and Codex plugin 0.13.2 pin the published Argus 0.13.2

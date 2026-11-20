@@ -175,7 +175,9 @@ async def _start(host, url, **arguments):
 
 def _journal(runtime) -> list:
     files = list((Path(runtime.settings.output_dir) / ".argus" / "journal").glob("*.json"))
-    return [entry for file in files for entry in json.loads(file.read_text())["entries"]]
+    return [
+        entry for file in files for entry in json.loads(file.read_text(encoding="utf-8"))["entries"]
+    ]
 
 
 async def _delete_and_check(host, app):
@@ -216,7 +218,9 @@ async def test_a_delete_that_does_not_stay_is_found_reported_and_rechecked(app, 
         ],
     )
     report = Path(ended["data"]["report_path"])
-    assert report.is_file() and "Deleted task comes back after reload" in report.read_text()
+    assert report.is_file() and "Deleted task comes back after reload" in report.read_text(
+        encoding="utf-8"
+    )
     assert ended["data"]["summary"]["findings"] == 1
     assert host.errors == 0
     discovery_calls = host.calls
@@ -333,7 +337,9 @@ async def test_after_a_timeout_the_write_is_checked_and_nothing_found_is_lost(
     assert previous["findings"] == 1
     assert previous["unfinished_goals"] == ["Save a note", "Change the plan"]
     report = Path(previous["report_path"])
-    assert report.is_file() and "Deleted task comes back after reload" in report.read_text()
+    assert report.is_file() and "Deleted task comes back after reload" in report.read_text(
+        encoding="utf-8"
+    )
     assert "was not ended" in text and str(report) in text
 
     # The save did happen. Seeing that, the host does not send it again.
@@ -370,7 +376,7 @@ async def test_a_page_behind_a_login_is_reported_as_blocked_not_as_a_bug(app, is
     summary = ended["data"]["coverage"]["summary"]
     assert summary["blocked"] == 1 and ended["data"]["summary"]["findings"] == 0
     assert "Unfinished goals: Delete a task" in text
-    report = Path(ended["data"]["report_path"]).read_text()
+    report = Path(ended["data"]["report_path"]).read_text(encoding="utf-8")
     assert "no account was provided" in report
     assert _journal(isolated_runtime) == []
 
@@ -417,7 +423,7 @@ async def test_a_requested_test_file_is_exported_before_the_session_is_closed(ap
     exported, text = await host.call("export_test", finding_id=finding_id)
     assert exported["status"] == "completed", text
     test_file = Path(exported["data"]["path"])
-    assert test_file.is_file() and "def test_argus_finding" in test_file.read_text()
+    assert test_file.is_file() and "def test_argus_finding" in test_file.read_text(encoding="utf-8")
     ended, _ = await host.call("end_session")
     assert ended["data"]["summary"]["findings"] == 1
     assert test_file.is_file()
@@ -620,7 +626,7 @@ async def test_no_finding_is_verified_by_inference_over_stdio(app, tmp_path, cas
             recorded = await call("record_bug", arguments)
             ended = await call("end_session", {})
     assert recorded["verdict"] in {"not_reproduced", "inconclusive"}, recorded
-    report = json.loads(Path(ended["report_path"]).with_suffix(".json").read_text())
+    report = json.loads(Path(ended["report_path"]).with_suffix(".json").read_text(encoding="utf-8"))
     assert [finding["title"] for finding in report["findings"]] == [arguments["title"]]
     journal = Path(tmp_path / "reports" / ".argus" / "journal")
     assert not list(journal.glob("*.json"))

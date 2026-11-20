@@ -169,7 +169,9 @@ async def test_real_stdio_handshake_and_local_page_journey(tmp_path):
             assert ended.structuredContent["data"]["report_path"]
             assert ended.structuredContent["data"]["coverage"]["goals"][0]["status"] == "exercised"
     assert len(list((tmp_path / "reports").glob("report_*.json"))) == 1
-    exported = json.loads(next((tmp_path / "reports").glob("report_*.json")).read_text())
+    exported = json.loads(
+        next((tmp_path / "reports").glob("report_*.json")).read_text(encoding="utf-8")
+    )
     assert exported["findings"][0]["expected"] == "Expected contract state"
     assert exported["findings"][0]["actual"] == "Observed contract state"
     assert exported["findings"][0]["coverage_goals"] == ["inspect page"]
@@ -203,7 +205,8 @@ async def test_delta_stdio_resync_images_and_negative_persistence(tmp_path):
     page.write_text(
         '<html><body><label>Name<input id="name"></label><button onclick="document.getElementById(\'status\').textContent=\'Saved Morgan\'">Save</button><p id="status">Not saved</p>'
         + "".join(f"<button>Item {i}</button>" for i in range(40))
-        + "</body></html>"
+        + "</body></html>",
+        encoding="utf-8",
     )
     parameters = StdioServerParameters(
         command=sys.executable,

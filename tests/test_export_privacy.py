@@ -70,7 +70,8 @@ async def test_subprocess_output_is_never_reflected(tmp_path, channel):
     script = tmp_path / "failure.py"
     script.write_text(
         f"import sys\nprint({(private + quote(private, safe=''))!r}, file=sys.{channel})\n"
-        "sys.exit(1)\n"
+        "sys.exit(1)\n",
+        encoding="utf-8",
     )
     result = await run_exported_test(script, 10, secrets={"ARGUS_URL_1": private})
     assert result["outcome"] == "errored"
@@ -88,7 +89,9 @@ async def test_subprocess_output_is_never_reflected(tmp_path, channel):
 )
 async def test_inconclusive_marker_maps_to_fixed_reason_text(tmp_path, line, outcome, reason):
     script = tmp_path / "inconclusive.py"
-    script.write_text(f"import sys\nprint({line!r}, file=sys.stderr)\nsys.exit(1)\n")
+    script.write_text(
+        f"import sys\nprint({line!r}, file=sys.stderr)\nsys.exit(1)\n", encoding="utf-8"
+    )
     result = await run_exported_test(script, 10)
     assert result["outcome"] == outcome
     assert "SYNTHETIC_PRIVATE" not in json.dumps(result)
@@ -114,7 +117,7 @@ async def test_real_browser_navigation_errors_hide_url_in_tool_and_standalone_ou
     )
     assert not notes
     path = tmp_path / "test_regression.py"
-    path.write_text(source)
+    path.write_text(source, encoding="utf-8")
     result = await run_exported_test(path, 30, secrets=secrets)
     assert result["outcome"] == "errored"
     assert private not in json.dumps(result)
@@ -194,14 +197,14 @@ async def test_tool_result_filename_and_manual_steps_do_not_echo_application_dat
     )
     from pathlib import Path
 
-    source = Path(result.data["path"]).read_text()
+    source = Path(result.data["path"]).read_text(encoding="utf-8")
     assert private not in source + str(result) + json.dumps(result.data)
     assert Path(result.data["path"]).name == "test_argus_synthetic-run_1.py"
 
     if save_values:
         values_path = Path(result.data["private_values_path"])
-        assert json.loads(values_path.read_text())["values"]["ARGUS_URL_1"] == url
-        assert values_path.parent.joinpath(".gitignore").read_text() == "*\n"
+        assert json.loads(values_path.read_text(encoding="utf-8"))["values"]["ARGUS_URL_1"] == url
+        assert values_path.parent.joinpath(".gitignore").read_text(encoding="utf-8") == "*\n"
         if os.name == "posix":
             assert values_path.stat().st_mode & 0o777 == 0o600
             assert values_path.parent.stat().st_mode & 0o777 == 0o700
@@ -234,12 +237,16 @@ def test_private_values_file_is_opt_in_scoped_and_environment_overrides_it(tmp_p
                 "ARGUS_TEXT_1": "private-text",
                 "PATH": "untrusted",
             }
-        )
+        ),
+        encoding="utf-8",
     )
     namespace = {"__name__": "generated"}
     exec(compile(source, "t.py", "exec"), namespace)
-    payload = {"export_id": namespace["EXPORT_ID"], "values": json.loads(values_path.read_text())}
-    values_path.write_text(json.dumps(payload))
+    payload = {
+        "export_id": namespace["EXPORT_ID"],
+        "values": json.loads(values_path.read_text(encoding="utf-8")),
+    }
+    values_path.write_text(json.dumps(payload), encoding="utf-8")
     monkeypatch.setenv("ARGUS_VALUES_FILE", str(values_path))
     monkeypatch.setenv("ARGUS_EXPORT_ID", namespace["EXPORT_ID"])
     monkeypatch.setenv("ARGUS_URL_1", "https://override.test/")
@@ -272,7 +279,7 @@ async def test_invalid_private_values_fail_with_safe_diagnostics(
         filename="t.py",
     )
     path = tmp_path / "t.py"
-    path.write_text(source)
+    path.write_text(source, encoding="utf-8")
     values_path = tmp_path / "private.json"
     namespace = {"__name__": "generated"}
     exec(compile(source, "t.py", "exec"), namespace)
@@ -280,7 +287,7 @@ async def test_invalid_private_values_fail_with_safe_diagnostics(
         saved = json.dumps({"export_id": namespace["EXPORT_ID"], "values": json.loads(saved)})
     except json.JSONDecodeError:
         pass
-    values_path.write_text(saved)
+    values_path.write_text(saved, encoding="utf-8")
     monkeypatch.setenv("ARGUS_VALUES_FILE", str(values_path))
     monkeypatch.delenv("ARGUS_URL_1", raising=False)
     result = await run_exported_test(path, 10)

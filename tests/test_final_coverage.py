@@ -54,7 +54,7 @@ async def test_final_coverage_preserves_goal_windows_and_unlisted_goals(isolated
     assert untouched == {"goal": "delete name", "status": "untested", "evidence": ""}
     assert result.value.data["summary"]["tool_calls"] == 1
     exported = json.loads(
-        next(isolated_runtime.settings.output_dir.glob("report_*.json")).read_text()
+        next(isolated_runtime.settings.output_dir.glob("report_*.json")).read_text(encoding="utf-8")
     )
     assert exported["coverage"]["goals"] == [first, second, untouched]
     assert not session.active

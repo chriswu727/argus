@@ -23,7 +23,8 @@ async def test_visible_text_inspection_and_safe_layout_signals(tmp_path, monkeyp
           <button id="tiny">Go</button>
         </main>
         <footer>© Yichen Wu <a href="#profile">LinkedIn</a></footer>
-        """
+        """,
+        encoding="utf-8",
     )
     monkeypatch.setenv("ARGUS_OUTPUT_DIR", str(tmp_path / "reports"))
     m.runtime.settings = replace(m.runtime.settings, output_dir=Path(str(tmp_path / "reports")))

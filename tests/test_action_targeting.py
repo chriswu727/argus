@@ -80,7 +80,7 @@ _FETCH_PAGE = """<html><body><div id="out">start</div><script>
 
 async def test_suspended_mock_does_not_fire_on_clean_reload():
     serve_dir = tempfile.mkdtemp()
-    (Path(serve_dir) / "page.html").write_text(_FETCH_PAGE)
+    (Path(serve_dir) / "page.html").write_text(_FETCH_PAGE, encoding="utf-8")
     handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=serve_dir)
 
     class _Server(socketserver.ThreadingTCPServer):

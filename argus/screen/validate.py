@@ -195,7 +195,7 @@ def main() -> int:
     print(render_text(report))
     if args.json:
         args.json.parent.mkdir(parents=True, exist_ok=True)
-        args.json.write_text(json.dumps(report, indent=2, default=str))
+        args.json.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
         print(f"\nJSON written: {args.json}")
     return 0 if report.get("ok") else 1
 

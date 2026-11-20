@@ -6,8 +6,21 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 from urllib.parse import unquote, urlsplit
+from urllib.request import url2pathname
 
 from argus.domain.contracts import ErrorCode, OperationError
+
+
+def _file_url_path(path: str) -> str:
+    """Filesystem path for the path part of a local file: URL.
+
+    On Windows that part is "/C:/dir/page.html", which is not a valid path;
+    url2pathname turns it into "C:\\dir\\page.html". Elsewhere it is unquoted
+    as before.
+    """
+    if os.name == "nt":
+        return url2pathname(path)
+    return unquote(path)
 
 
 def canonical_origin(url: str) -> tuple[str, str, int]:
@@ -96,7 +109,7 @@ class AccessPolicy:
         if parsed.scheme == "file":
             if parsed.netloc not in {"", "localhost"}:
                 raise OperationError(ErrorCode.PERMISSION, "Remote file URLs are not allowed.")
-            self.check_file(unquote(parsed.path))
+            self.check_file(_file_url_path(parsed.path))
             return
         try:
             origin = canonical_origin(url)
@@ -113,5 +126,5 @@ class AccessPolicy:
         self.check_url(url)
         parsed = urlsplit(url)
         if parsed.scheme == "file":
-            return "file", str(self.check_file(unquote(parsed.path)))
+            return "file", str(self.check_file(_file_url_path(parsed.path)))
         return canonical_origin(url)

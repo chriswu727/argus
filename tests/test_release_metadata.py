@@ -9,9 +9,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_release_metadata_stays_in_sync():
-    project = tomllib.loads((ROOT / "pyproject.toml").read_text())
-    server = json.loads((ROOT / "server.json").read_text())
-    glama = json.loads((ROOT / "glama.json").read_text())
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    server = json.loads((ROOT / "server.json").read_text(encoding="utf-8"))
+    glama = json.loads((ROOT / "glama.json").read_text(encoding="utf-8"))
     version = project["project"]["version"]
 
     assert project["project"]["requires-python"] == ">=3.11"
@@ -33,7 +33,7 @@ def test_release_metadata_stays_in_sync():
         term in server["description"].lower()
         for term in ("testing mcp", "coding agents", "bugs", "evidence")
     )
-    assert f"mcp-name: {server['name']}" in (ROOT / "README.md").read_text()
+    assert f"mcp-name: {server['name']}" in (ROOT / "README.md").read_text(encoding="utf-8")
     assert "chriswu727" in glama["maintainers"]
     from argus import __version__
     from argus.bootstrap import create_runtime
@@ -50,7 +50,7 @@ def test_usage_reference_covers_every_public_tool_profile():
     from argus.entrypoints.mcp.server import tool_names
     from argus.mcp_server import mcp
 
-    readme = (ROOT / "docs/usage.md").read_text()
+    readme = (ROOT / "docs/usage.md").read_text(encoding="utf-8")
     documented_tools = set(re.findall(r"`([a-z][a-z0-9_]*)`", readme))
     full_tools = set(mcp._tool_manager._tools)
 
@@ -61,16 +61,16 @@ def test_usage_reference_covers_every_public_tool_profile():
 
 
 def test_release_documentation_is_current_and_english():
-    project = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     version = project["project"]["version"]
-    readme = (ROOT / "README.md").read_text()
-    usage = (ROOT / "docs/usage.md").read_text()
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    usage = (ROOT / "docs/usage.md").read_text(encoding="utf-8")
     assert f"**{version}**" in readme
-    agent_install = (ROOT / "llms-install.md").read_text()
+    agent_install = (ROOT / "llms-install.md").read_text(encoding="utf-8")
     assert f"The current release is {version}." in agent_install
     assert f"argus-testing=={version}" in agent_install
-    assert f"## {version} - " in (ROOT / "CHANGELOG.md").read_text()
-    overhead = json.loads((ROOT / "examples/response-overhead.json").read_text())
+    assert f"## {version} - " in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    overhead = json.loads((ROOT / "examples/response-overhead.json").read_text(encoding="utf-8"))
     assert overhead["argus_version"] == version
     assert f"{overhead['aggregate']['reduction_percent']:.2f}%" in usage
     included = project["tool"]["hatch"]["build"]["targets"]["sdist"]["only-include"]
@@ -79,13 +79,13 @@ def test_release_documentation_is_current_and_english():
     assert not (ROOT / "README.zh-CN.md").exists()
     assert "docs/usage.md" in readme
     for path in [*ROOT.glob("*.md"), *ROOT.glob("docs/*.md")]:
-        assert not re.search(r"[\u3400-\u9fff]", path.read_text()), path.name
+        assert not re.search(r"[\u3400-\u9fff]", path.read_text(encoding="utf-8")), path.name
 
 
 def test_client_install_examples_start_the_published_stdio_server():
-    readme = (ROOT / "README.md").read_text()
-    agent_install = (ROOT / "llms-install.md").read_text()
-    example = json.loads((ROOT / "examples" / "mcp-config.json").read_text())
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    agent_install = (ROOT / "llms-install.md").read_text(encoding="utf-8")
+    example = json.loads((ROOT / "examples" / "mcp-config.json").read_text(encoding="utf-8"))
     expected = {"command": "uvx", "args": ["--from", "argus-testing", "argus-mcp"]}
 
     assert example["mcpServers"]["argus"] == expected
@@ -95,7 +95,7 @@ def test_client_install_examples_start_the_published_stdio_server():
     assert "codex mcp add argus -- uvx --from argus-testing argus-mcp" in agent_install
     assert "web` profile with 29 tools" in agent_install
 
-    usage = (ROOT / "docs/usage.md").read_text()
+    usage = (ROOT / "docs/usage.md").read_text(encoding="utf-8")
     cursor_url = re.search(r"https://cursor\.com/install-mcp\?name=argus&config=[^)]+", usage)
     assert cursor_url is not None
     encoded = parse_qs(urlparse(cursor_url.group()).query)["config"][0]
@@ -103,7 +103,7 @@ def test_client_install_examples_start_the_published_stdio_server():
 
 
 def test_docker_image_installs_only_chromium_dependencies():
-    dockerfile = (ROOT / "Dockerfile").read_text()
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
 
     assert "playwright install --with-deps chromium" in dockerfile
     assert "playwright install-deps" not in dockerfile

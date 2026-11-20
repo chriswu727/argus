@@ -66,7 +66,8 @@ async def test_regression_cli_exit_codes(tmp_path, monkeypatch):
                     },
                 }
             ]
-        )
+        ),
+        encoding="utf-8",
     )
     try:
         code = await _run_regression(base + "/", str(tmp_path), headless=True)
