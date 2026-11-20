@@ -27,7 +27,7 @@ _NETWORK_ENV = {
 
 
 def load(path: Path) -> dict:
-    return json.loads(path.read_text())
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def test_manifest_and_server_follow_the_agent_plugins_schema():
@@ -74,7 +74,7 @@ def test_codex_and_claude_bundles_pin_the_same_runtime():
     manifest = load(BUNDLE / "plugin.json")
     claude = load(CLAUDE / ".claude-plugin" / "plugin.json")
     assert manifest["name"] == claude["name"]
-    project = tomllib.loads((BUNDLE / "pyproject.toml").read_text())["project"]
+    project = tomllib.loads((BUNDLE / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     assert project["dependencies"] == [f"argus-testing=={manifest['version']}"]
 
 
@@ -88,17 +88,17 @@ def test_codex_marketplace_lists_this_bundle_and_docs_show_install():
         "category": "Developer Tools",
     }
     install = f"codex plugin add {entry['name']}@{marketplace['name']}"
-    assert "[Codex plugin](plugins/codex)" in (ROOT / "README.md").read_text()
+    assert "[Codex plugin](plugins/codex)" in (ROOT / "README.md").read_text(encoding="utf-8")
     for readme in (BUNDLE / "README.md", ROOT / "docs/usage.md"):
-        text = readme.read_text()
+        text = readme.read_text(encoding="utf-8")
         assert "codex plugin marketplace add chriswu727/argus" in text and install in text
 
 
 def test_codex_skill_declares_itself_and_pins_the_locked_browser():
-    skill = (BUNDLE / "skills" / "argus-test" / "SKILL.md").read_text()
+    skill = (BUNDLE / "skills" / "argus-test" / "SKILL.md").read_text(encoding="utf-8")
     assert skill.startswith("---\nname: argus-test\ndescription: ")
     manifest = load(BUNDLE / "plugin.json")
-    lock = tomllib.loads((BUNDLE / "uv.lock").read_text())
+    lock = tomllib.loads((BUNDLE / "uv.lock").read_text(encoding="utf-8"))
     playwright = next(package for package in lock["package"] if package["name"] == "playwright")
     assert (
         f"uvx --python 3.12 --from argus-testing=={manifest['version']} "
@@ -113,7 +113,7 @@ def test_both_skills_give_valid_test_action_expectations():
         BUNDLE / "skills" / "argus-test" / "SKILL.md",
         CLAUDE / "skills" / "test" / "SKILL.md",
     ):
-        text = skill.read_text()
+        text = skill.read_text(encoding="utf-8")
         assert "`test_action` with an `expect` prediction" in text
         examples = [json.loads(m) for m in re.findall(r"`(\{.*?\})`", text)]
         assert examples
@@ -126,7 +126,7 @@ def test_both_skills_ask_for_a_visual_review_kept_as_observations():
         BUNDLE / "skills" / "argus-test" / "SKILL.md",
         CLAUDE / "skills" / "test" / "SKILL.md",
     ):
-        text = skill.read_text()
+        text = skill.read_text(encoding="utf-8")
         for tool in ("`screenshot`", "`check_layout`", "`record_observation`"):
             assert tool in text, (skill, tool)
         assert "use `record_bug` with `verify`\nonly when a text check" in text
@@ -140,7 +140,7 @@ SKILLS = (
 
 def _sections(skill):
     """Section title -> text, for the numbered sections of a skill."""
-    parts = re.split(r"^## (\d\. .*)$", skill.read_text(), flags=re.M)
+    parts = re.split(r"^## (\d\. .*)$", skill.read_text(encoding="utf-8"), flags=re.M)
     return dict(zip(parts[1::2], parts[2::2], strict=True))
 
 
@@ -155,14 +155,16 @@ def test_both_skills_give_the_same_procedure():
 
 def test_both_skills_trigger_on_testing_finished_work_and_fixes():
     for skill in SKILLS:
-        description = skill.read_text().split("description: ", 1)[1].split("\n", 1)[0]
+        description = (
+            skill.read_text(encoding="utf-8").split("description: ", 1)[1].split("\n", 1)[0]
+        )
         for occasion in ("asks to test", "before the work is called done", "has been fixed"):
             assert occasion in description, (skill, occasion)
 
 
 def test_both_skills_find_the_address_and_handle_setup_without_the_user():
     for skill in SKILLS:
-        text = skill.read_text()
+        text = skill.read_text(encoding="utf-8")
         scope = _sections(skill)["1. Settle the scope yourself"]
         assert "Ask only when none of this gives an address." in scope, skill
         assert "a login you were not\n  given" in scope, skill
@@ -184,7 +186,9 @@ def test_both_skills_say_how_to_recover_without_repeating_a_write():
             "report it as inconclusive",
         ):
             assert step in recover, (skill, step)
-        assert "A page with no defects is a normal\nresult" in skill.read_text(), skill
+        assert "A page with no defects is a normal\nresult" in skill.read_text(encoding="utf-8"), (
+            skill
+        )
 
 
 def test_both_skills_report_evidence_and_what_was_not_finished():
@@ -215,7 +219,7 @@ def test_both_skills_export_a_requested_file_before_closing_the_session():
 
 def test_both_skills_keep_exports_optional_and_private():
     for skill in SKILLS:
-        text = skill.read_text()
+        text = skill.read_text(encoding="utf-8")
         deliver = " ".join(_sections(skill)["4. Deliver"].split())
         assert deliver.startswith("**Only if the user asked for a regression test file**"), skill
         assert "Without such a request, skip this step" in deliver, skill
@@ -271,8 +275,10 @@ def test_both_skills_say_what_a_real_host_got_wrong():
     real: it asked instead of looking, passed the expected state as the
     symptom, and started fixing before it had reported."""
     for skill in SKILLS:
-        text = " ".join(skill.read_text().split())
-        description = skill.read_text().split("description: ", 1)[1].split("\n", 1)[0]
+        text = " ".join(skill.read_text(encoding="utf-8").split())
+        description = (
+            skill.read_text(encoding="utf-8").split("description: ", 1)[1].split("\n", 1)[0]
+        )
         assert "Load it before asking the user where the app is" in description, skill
         assert "Do not open by asking where the app is or what to test." in text, skill
         assert "never before you have closed the session and reported" in text, skill

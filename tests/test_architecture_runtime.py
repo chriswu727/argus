@@ -182,7 +182,7 @@ def test_input_vault_and_all_report_formats_exclude_input_values(isolated_runtim
     result = ExplorationResult("https://example.test", [bug], [], 1, 0, [])
     Reporter().generate(result, str(tmp_path))
     for path in tmp_path.glob("report_*.*"):
-        assert secret not in path.read_text()
+        assert secret not in path.read_text(encoding="utf-8")
     exported = bug.to_dict()["replay_steps"]
     with pytest.raises(ValueError, match="fresh input"):
         InputVault().resolve(exported)
@@ -208,7 +208,7 @@ def test_settings_reject_invalid_limits(values):
 def test_custom_report_exporter_has_an_explicit_extension_point(tmp_path):
     result = ExplorationResult("https://example.test", [], [], 0, 0, [])
     Reporter(exporters={"txt": lambda value: value.run_id}).generate(result, str(tmp_path))
-    assert (tmp_path / f"report_{result.run_id}.txt").read_text() == result.run_id
+    assert (tmp_path / f"report_{result.run_id}.txt").read_text(encoding="utf-8") == result.run_id
 
 
 async def test_verifier_registry_extension_and_invalid_input(isolated_runtime):
@@ -268,7 +268,7 @@ def test_application_import_graph_has_no_cycles():
     for path in root.glob("*.py"):
         dependencies = set()
         visitor = RuntimeImports()
-        visitor.visit(ast.parse(path.read_text()))
+        visitor.visit(ast.parse(path.read_text(encoding="utf-8")))
         for node in visitor.imports:
             if not node.module:
                 continue
@@ -292,20 +292,20 @@ def test_application_does_not_access_private_backend_state():
 
     root = Path(__file__).resolve().parents[1] / "argus"
     for path in (root / "application").glob("*.py"):
-        for node in ast.walk(ast.parse(path.read_text())):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.Attribute) and node.attr.startswith("_"):
                 receiver = ast.unparse(node.value)
                 assert not receiver.endswith((".browser", ".screen")), (path, node.lineno)
     for path in (root / "domain").glob("*.py"):
-        for node in ast.walk(ast.parse(path.read_text())):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.ImportFrom):
                 assert not any(
                     part in (node.module or "")
                     for part in ("application", "adapters", "mcp", "playwright")
                 )
     for path in (root / "application").glob("*.py"):
-        assert "mcp.server" not in path.read_text()
-    assert "mcp_server" not in (root / "cli.py").read_text()
+        assert "mcp.server" not in path.read_text(encoding="utf-8")
+    assert "mcp_server" not in (root / "cli.py").read_text(encoding="utf-8")
 
 
 def test_repository_code_does_not_use_compatibility_modules():
@@ -323,7 +323,7 @@ def test_repository_code_does_not_use_compatibility_modules():
     ]:
         if path.parent == root / "argus" and path.stem in shims:
             continue
-        for match in pattern.finditer(path.read_text()):
+        for match in pattern.finditer(path.read_text(encoding="utf-8")):
             module = match.group(1) or match.group(2)
             top_level = match.group(1) or path.parent == root / "argus"
             if module in shims and top_level:

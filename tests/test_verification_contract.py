@@ -122,7 +122,7 @@ async def test_full_predicate_survives_record_journal_export(isolated_runtime, c
         assert entries[0]["verify"]["target_text"] == target
         exported = await export_test(recorded.data["finding_id"], run=True)
         assert exported.data["run"]["outcome"] == "fails_on_symptom", exported
-        assert target not in Path(exported.data["path"]).read_text()
+        assert target not in Path(exported.data["path"]).read_text(encoding="utf-8")
         handler.body = "<h1>Tasks</h1><p>all clean</p>"
         results = await check_entries(isolated_runtime.session, entries, base)
         assert results[0]["status"] == "FIXED"
@@ -273,7 +273,7 @@ async def test_real_mixed_receipt_keeps_cli_artifacts_inconclusive(
         assert results[0]["status"] == "INCONCLUSIVE"
         assert RegressionRun(results).exit_code == 3
         artifact = _write_regression_artifact(str(tmp_path), base, results)
-        doc = json.loads(Path(artifact + ".json").read_text())
+        doc = json.loads(Path(artifact + ".json").read_text(encoding="utf-8"))
         assert doc["summary"]["fixed"] == 0
         assert doc["summary"]["inconclusive"] == 1
         assert ET.parse(artifact + ".junit.xml").find("testcase/skipped") is not None
@@ -394,5 +394,5 @@ async def test_truncated_row_context_requires_translation_before_replay(tmp_path
         secrets=secrets,
     )
     assert any("complete, unambiguous locator" in note for note in notes)
-    path.write_text(source)
+    path.write_text(source, encoding="utf-8")
     assert (await run_exported_test(path, 10, secrets=secrets))["outcome"] == "incomplete"

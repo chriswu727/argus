@@ -40,7 +40,7 @@ def test_atomic_write_replaces_content_without_temp_files(tmp_path):
     atomic_write_text(target, "first")
     atomic_write_text(target, "second")
 
-    assert target.read_text() == "second"
+    assert target.read_text(encoding="utf-8") == "second"
     assert list(tmp_path.glob("*.tmp")) == []
 
 
@@ -69,11 +69,11 @@ def test_stale_storage_lock_is_recovered(tmp_path):
 
 def test_journal_reads_legacy_list_and_writes_versioned_document(tmp_path):
     path = tmp_path / "journal.json"
-    path.write_text(json.dumps([{"title": "legacy"}]))
+    path.write_text(json.dumps([{"title": "legacy"}]), encoding="utf-8")
     assert read_journal(path) == [{"title": "legacy"}]
 
     write_journal(path, [{"title": "current"}])
-    document = json.loads(path.read_text())
+    document = json.loads(path.read_text(encoding="utf-8"))
     assert document == {
         "schema_version": 1,
         "entries": [{"title": "current"}],

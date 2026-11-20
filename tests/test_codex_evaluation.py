@@ -10,13 +10,15 @@ from mcp.client.stdio import stdio_client
 
 from argus_lab.evaluation.agent_fixture import agent_fixture
 from argus_lab.evaluation.browser_baseline import BrowserBaseline
-from argus_lab.evaluation.codex_runner import clean_environment, command
 from argus_lab.evaluation.gateway import CallBudget
 
 
 def test_codex_command_disallows_keys_shell_web_plugins_and_uses_subscription(
     tmp_path, monkeypatch
 ):
+    pytest.importorskip("fcntl", reason="argus_lab.evaluation.codex_runner is POSIX-only")
+    from argus_lab.evaluation.codex_runner import clean_environment, command
+
     monkeypatch.setenv("OPENAI_API_KEY", "SYNTHETIC_SECRET")
     monkeypatch.setenv("CODEX_API_KEY", "SYNTHETIC_SECRET")
     assert "SYNTHETIC_SECRET" not in json.dumps(clean_environment())
@@ -155,4 +157,4 @@ async def test_evaluation_gateway_real_stdio_without_model(tmp_path, arm):
                 )
                 assert exhausted.isError and "exhausted" in exhausted.content[0].text
         assert any(event["method"] == "POST" for event in events)
-    assert len((tmp_path / "tools.jsonl").read_text().splitlines()) == 5
+    assert len((tmp_path / "tools.jsonl").read_text(encoding="utf-8").splitlines()) == 5

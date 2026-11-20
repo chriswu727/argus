@@ -76,21 +76,25 @@ async def _record(call, url):
 def _reports(report_path):
     path = Path(report_path)
     return (
-        path.read_text(),
-        json.loads(path.with_suffix(".json").read_text()),
+        path.read_text(encoding="utf-8"),
+        json.loads(path.with_suffix(".json").read_text(encoding="utf-8")),
         ET.parse(path.with_suffix(".junit.xml")).getroot(),
-        "".join(p.read_text() for p in path.parent.glob(path.stem + ".*")),
+        "".join(p.read_text(encoding="utf-8") for p in path.parent.glob(path.stem + ".*")),
     )
 
 
 def _sarif_run(report_path):
-    (run,) = json.loads(Path(report_path).with_suffix(".sarif").read_text())["runs"]
+    (run,) = json.loads(Path(report_path).with_suffix(".sarif").read_text(encoding="utf-8"))["runs"]
     return run
 
 
 def _journal(tmp_path):
     folder = tmp_path / "reports" / ".argus" / "journal"
-    return [e for p in folder.glob("*.json") for e in json.loads(p.read_text())["entries"]]
+    return [
+        e
+        for p in folder.glob("*.json")
+        for e in json.loads(p.read_text(encoding="utf-8"))["entries"]
+    ]
 
 
 async def test_repeated_rechecks_keep_the_latest_status_and_the_history(site, tmp_path):

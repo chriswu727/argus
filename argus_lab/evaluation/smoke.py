@@ -14,6 +14,14 @@ from playwright.async_api import async_playwright
 from .fixture import REVISION, fixture_server
 from .models import Budget, Case, Dataset, Finding, Trial
 
+# A Windows child needs SYSTEMROOT for sockets, LOCALAPPDATA for Playwright's
+# browser cache, and the profile and temp directories.
+_WINDOWS_ENV = (
+    ("SYSTEMROOT", "SYSTEMDRIVE", "LOCALAPPDATA", "APPDATA", "USERPROFILE", "TEMP", "TMP")
+    if os.name == "nt"
+    else ()
+)
+
 
 async def run_smoke() -> Dataset:
     cases = [
@@ -59,6 +67,7 @@ async def run_smoke() -> Dataset:
                             env = {
                                 key: os.environ[key]
                                 for key in ("HOME", "PATH", "PLAYWRIGHT_BROWSERS_PATH")
+                                + _WINDOWS_ENV
                                 if key in os.environ
                             }
                             env["ARGUS_OUTPUT_DIR"] = str(Path(directory) / case.id)

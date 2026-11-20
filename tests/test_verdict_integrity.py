@@ -252,7 +252,7 @@ def test_moved_from_compares_pages_not_anchors():
 async def test_regression_rejects_a_url_that_selects_no_journal(tmp_path, url):
     path = tmp_path / ".argus" / "journal" / "default.json"
     path.parent.mkdir(parents=True)
-    path.write_text(json.dumps({"schema_version": 1, "entries": []}))
+    path.write_text(json.dumps({"schema_version": 1, "entries": []}), encoding="utf-8")
     assert await _run_regression(url, str(tmp_path)) == 2
 
 
@@ -260,14 +260,16 @@ async def test_regression_rejects_a_url_that_selects_no_journal(tmp_path, url):
 async def test_journal_entry_with_a_wrong_type_is_a_storage_error(tmp_path, field, value):
     path = tmp_path / ".argus" / "journal" / "example.test.json"
     path.parent.mkdir(parents=True)
-    path.write_text(json.dumps({"schema_version": 1, "entries": [{**_entry(), field: value}]}))
+    path.write_text(
+        json.dumps({"schema_version": 1, "entries": [{**_entry(), field: value}]}), encoding="utf-8"
+    )
     assert await _run_regression("http://example.test/", str(tmp_path)) == 2
 
 
 async def test_regression_names_origins_that_do_have_journals(tmp_path, capsys):
     path = tmp_path / ".argus" / "journal" / "127.0.0.1_3000.json"
     path.parent.mkdir(parents=True)
-    path.write_text(json.dumps({"schema_version": 1, "entries": [_entry()]}))
+    path.write_text(json.dumps({"schema_version": 1, "entries": [_entry()]}), encoding="utf-8")
     assert await _run_regression("http://localhost:3000/", str(tmp_path)) == 0
     assert "127.0.0.1_3000" in capsys.readouterr().out.replace("\n", "")
 
@@ -284,7 +286,9 @@ def test_regression_artifacts_are_redacted_and_well_formed(tmp_path):
         }
     ]
     artifact = _write_regression_artifact(str(tmp_path), "http://example.test/", results)
-    text = Path(artifact + ".json").read_text() + Path(artifact + ".junit.xml").read_text()
+    text = Path(artifact + ".json").read_text(encoding="utf-8") + Path(
+        artifact + ".junit.xml"
+    ).read_text(encoding="utf-8")
     assert "SECRETTOKEN123" not in text
     assert ET.parse(artifact + ".junit.xml").find("testcase/failure") is not None
 

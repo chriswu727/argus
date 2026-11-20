@@ -95,7 +95,7 @@ async def test_exported_row_ignores_textarea_content(isolated_runtime, row_app, 
         }[change]
         handler.posts.clear()
         exported = await export_test(recorded.data["finding_id"], run=True)
-        assert SECRET not in Path(exported.data["path"]).read_text()
+        assert SECRET not in Path(exported.data["path"]).read_text(encoding="utf-8")
         if change == "edited":
             assert handler.posts == ["Beta"], exported
             assert exported.data["run"]["outcome"] == "fails_on_symptom", exported

@@ -30,9 +30,9 @@ def collection(tmp_path):
             "report": {"findings": [{"evidence_calls": [2, 3]}]},
         }
         (directory / "attempt.json").write_text("{}")
-        (directory / "result.json").write_text(json.dumps(raw))
+        (directory / "result.json").write_text(json.dumps(raw), encoding="utf-8")
         (directory / "tools.jsonl").write_text(
-            "\n".join(json.dumps({"call": n, "is_error": False}) for n in (1, 2))
+            "\n".join(json.dumps({"call": n, "is_error": False}) for n in (1, 2)), encoding="utf-8"
         )
         reviews[directory.name] = {
             "findings": [
@@ -58,7 +58,7 @@ def test_review_can_correct_citations_without_rewriting_model_answer(collection)
     directory, reviews = collection
     dataset = assemble(directory, reviews)
     assert dataset.trials[0].findings[0].evidence == ["run-000/call-1", "run-000/call-2"]
-    raw = json.loads((directory / "run-000/result.json").read_text())
+    raw = json.loads((directory / "run-000/result.json").read_text(encoding="utf-8"))
     assert raw["report"]["findings"][0]["evidence_calls"] == [2, 3]
 
 
@@ -83,9 +83,9 @@ def test_unsupported_claim_and_failed_trial_remain_in_dataset(collection):
     directory, reviews = collection
     reviews["run-000"]["findings"][0].update(matched_bug=None, evidence_calls=[])
     path = directory / "run-000/result.json"
-    raw = json.loads(path.read_text())
+    raw = json.loads(path.read_text(encoding="utf-8"))
     raw.update(completed=False, error="timeout")
-    path.write_text(json.dumps(raw))
+    path.write_text(json.dumps(raw), encoding="utf-8")
     dataset = assemble(directory, reviews)
     assert not dataset.trials[0].completed
     assert dataset.trials[0].findings[0].matched_bug is None

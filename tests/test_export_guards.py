@@ -100,7 +100,7 @@ def _export(tmp_path, base, *, journey=None, target="Deleted task comes back", e
         resolve_input=lambda action: None,
         filename=path.name,
     )
-    path.write_text(source)
+    path.write_text(source, encoding="utf-8")
     return path, notes, secrets
 
 
@@ -280,7 +280,7 @@ async def test_url_environment_replays_navigation_and_fresh_check(
         for value in ("synthetic-check", "synthetic-nav", "synthetic-start", "synthetic-auth")
     )
     path = tmp_path / "regression.py"
-    path.write_text(source)
+    path.write_text(source, encoding="utf-8")
     monkeypatch.setenv("ARGUS_BASE_URL", base)
     result = await run_exported_test(path, 30, secrets=secrets)
     assert result["outcome"] == "fails_on_symptom", result
@@ -363,7 +363,8 @@ async def test_values_from_another_export_stop_before_writes(
     if channel == "file":
         values_file = tmp_path / "private.json"
         values_file.write_text(
-            json.dumps({"export_id": a_values["ARGUS_EXPORT_ID"], "values": a_values})
+            json.dumps({"export_id": a_values["ARGUS_EXPORT_ID"], "values": a_values}),
+            encoding="utf-8",
         )
         monkeypatch.setenv("ARGUS_VALUES_FILE", str(values_file))
         result = await run_exported_test(b, 30)

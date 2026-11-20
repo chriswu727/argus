@@ -164,7 +164,10 @@ def test_file_policy_resolves_symlinks_and_denies_by_default(tmp_path):
     outside = tmp_path / "outside.txt"
     outside.write_text("synthetic")
     link = approved / "linked.txt"
-    link.symlink_to(outside)
+    try:
+        link.symlink_to(outside)
+    except OSError as exc:  # Windows without Developer Mode or admin rights
+        pytest.skip(f"cannot create a symlink here: {exc.strerror}")
     policy = AccessPolicy(file_roots=(approved,))
     assert policy.check_file(inside) == inside
     policy.check_url(inside.as_uri())
@@ -289,25 +292,25 @@ async def test_evidence_tools_cannot_import_unapproved_files(isolated_runtime, t
 
 def test_container_only_copies_packaging_inputs():
     root = Path(__file__).resolve().parents[1]
-    dockerfile = (root / "Dockerfile").read_text()
+    dockerfile = (root / "Dockerfile").read_text(encoding="utf-8")
     assert "COPY . ." not in dockerfile
     assert "COPY pyproject.toml README.md LICENSE ./" in dockerfile
     assert "COPY argus/ ./argus/" in dockerfile
     assert "'pip>=26.2.1' 'setuptools>=83.0.0'" in dockerfile
-    patterns = (root / ".dockerignore").read_text().splitlines()
+    patterns = (root / ".dockerignore").read_text(encoding="utf-8").splitlines()
     assert {".env", ".env.*", "**/.env", "**/.env.*", ".argus", "**/.argus"} <= set(patterns)
 
 
 def test_workflows_pin_actions_and_gate_on_dependency_audit():
     root = Path(__file__).resolve().parents[1]
     for name in ["ci.yml", "release.yml"]:
-        workflow = (root / ".github" / "workflows" / name).read_text()
+        workflow = (root / ".github" / "workflows" / name).read_text(encoding="utf-8")
         actions = re.findall(r"uses:\s+([^\s]+)", workflow)
         assert actions and all(re.fullmatch(r"[^@]+@[0-9a-f]{40}", value) for value in actions)
         assert "python -m pip_audit --vulnerability-service osv" in workflow
         assert "--ignore-vuln" not in workflow
         assert "setuptools>=83.0.0" in workflow
-    release = (root / ".github/workflows/release.yml").read_text()
+    release = (root / ".github/workflows/release.yml").read_text(encoding="utf-8")
     assert "/releases/latest/" not in release
     assert release.index("sha256sum --check") < release.index("tar xzf mcp-publisher.tar.gz")
 

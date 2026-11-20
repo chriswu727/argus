@@ -147,9 +147,9 @@ async def test_status_mismatch_explains_itself_in_exported_coverage(
         [{"goal": "delete task", "status": "exercised", "evidence": "Item page still loads"}]
     )
     report = next(isolated_runtime.settings.output_dir.glob("report_*.json"))
-    (exported,) = json.loads(report.read_text())["coverage"]["goals"][0]["evidence_refs"][
-        "verifications"
-    ]
+    (exported,) = json.loads(report.read_text(encoding="utf-8"))["coverage"]["goals"][0][
+        "evidence_refs"
+    ]["verifications"]
     assert {key: exported[key] for key in check if key in exported} == check
     assert exported["expect_status"] == 404 and exported["status_matches"] is False
 

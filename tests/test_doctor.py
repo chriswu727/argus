@@ -67,7 +67,10 @@ def test_headless_shell_only_installs_pass(monkeypatch, tmp_path):
     if not shell.is_dir():
         pytest.skip("matching Chromium headless shell is not installed")
     for source in [shell, *browsers.glob("ffmpeg-*")]:
-        (tmp_path / source.name).symlink_to(source)
+        try:
+            (tmp_path / source.name).symlink_to(source)
+        except OSError as exc:  # Windows without Developer Mode or admin rights
+            pytest.skip(f"cannot create a symlink here: {exc.strerror}")
     monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path))
     checks = doctor.check_browser()
     assert all(check.ok for check in checks)

@@ -13,10 +13,12 @@ from argus_lab.evaluation.scoring import compare
 @pytest.mark.parametrize("cohort,count", [("pilot", 8), ("optimized", 20)])
 def test_published_agent_datasets_are_complete_and_rescorable(cohort, count):
     source = Path(__file__).parents[1] / "examples" / f"agent-evaluation-{cohort}.json"
-    dataset = Dataset.model_validate_json(source.read_text())
+    dataset = Dataset.model_validate_json(source.read_text(encoding="utf-8"))
     assert len(dataset.trials) == count
     assert compare(dataset)["paired_trials"] == count // 2
-    evidence = json.loads(source.with_name(f"agent-evaluation-{cohort}-evidence.json").read_text())
+    evidence = json.loads(
+        source.with_name(f"agent-evaluation-{cohort}-evidence.json").read_text(encoding="utf-8")
+    )
     assert len(evidence["runs"]) == count
     for trial in dataset.trials:
         for finding in trial.findings:
@@ -117,13 +119,15 @@ def test_compare_cli_round_trip(tmp_path, monkeypatch, capsys):
 
     source = tmp_path / "trials.json"
     output = tmp_path / "validated.json"
-    source.write_text(json.dumps(dataset_payload()))
+    source.write_text(json.dumps(dataset_payload()), encoding="utf-8")
     monkeypatch.setattr(
         "sys.argv", ["evaluation", "--compare", str(source), "--output", str(output)]
     )
     assert main() == 0
     assert json.loads(capsys.readouterr().out)["paired_trials"] == 1
-    assert Dataset.model_validate_json(output.read_text()).experiment == "paired-check"
+    assert (
+        Dataset.model_validate_json(output.read_text(encoding="utf-8")).experiment == "paired-check"
+    )
 
 
 def test_compare_cli_rejects_invalid_pairs_without_echoing_data(tmp_path, monkeypatch, capsys):
@@ -133,7 +137,7 @@ def test_compare_cli_rejects_invalid_pairs_without_echoing_data(tmp_path, monkey
     payload["trials"].pop()
     payload["experiment"] = "SYNTHETIC_PRIVATE_EXPERIMENT"
     source = tmp_path / "invalid.json"
-    source.write_text(json.dumps(payload))
+    source.write_text(json.dumps(payload), encoding="utf-8")
     monkeypatch.setattr("sys.argv", ["evaluation", "--compare", str(source)])
     with pytest.raises(SystemExit) as error:
         main()

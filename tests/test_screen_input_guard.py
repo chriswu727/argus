@@ -171,6 +171,7 @@ def test_app_lookup_needs_an_exact_or_unique_match(bound):
 
 def test_abort_file_path_is_expanded(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))  # what expanduser reads on Windows
     monkeypatch.setenv("ARGUS_SCREEN_ABORT_FILE", "~/.argus/abort")
     assert safety.abort_file_path() == tmp_path / ".argus" / "abort"
     safety.prepare_abort_location()

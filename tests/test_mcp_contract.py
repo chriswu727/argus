@@ -183,7 +183,7 @@ async def test_observations_and_tool_calls_are_reported(tmp_path, monkeypatch):
     assert "Observations: 1" in ended
 
     report_json = next(output_dir.glob("report_*.json"))
-    payload = json.loads(report_json.read_text())
+    payload = json.loads(report_json.read_text(encoding="utf-8"))
     assert payload["review_mode"] == "visual"
     assert payload["tool_calls"] == 4
     assert payload["observations"][0]["title"] == "Heading feels visually crowded"
@@ -245,7 +245,7 @@ async def test_session_contract_requires_evidence_and_reaches_reports(tmp_path, 
         if m.runtime.session.active:
             await end()
 
-    payload = json.loads(next(output_dir.glob("report_*.json")).read_text())
+    payload = json.loads(next(output_dir.glob("report_*.json")).read_text(encoding="utf-8"))
     assert payload["constraints"] == ["Do not submit external forms"]
     goal = payload["coverage"]["goals"][0]
     assert goal["goal"] == "Change the account settings and verify persistence"
@@ -259,7 +259,7 @@ async def test_session_contract_requires_evidence_and_reaches_reports(tmp_path, 
     assert refs["findings"][0]["title"] == "Settings page is understandable"
     assert payload["coverage"]["time_budget"]["minutes"] == 5
     assert any(path.endswith("settings.html") for path in payload["coverage"]["pages"]["visited"])
-    report_html = next(output_dir.glob("report_*.html")).read_text()
+    report_html = next(output_dir.glob("report_*.html")).read_text(encoding="utf-8")
     assert "Coverage Contract" in report_html
     assert "Settings value remained visible after a fresh load." in report_html
     assert "Tested URLs" in report_html
