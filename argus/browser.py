@@ -92,7 +92,9 @@ def _response_body_capture_reason(
     return None
 
 
-_ROW_TEXT_JS = files("argus.adapters.scripts").joinpath("row_text_js.js").read_text().strip()
+_ROW_TEXT_JS = (
+    files("argus.adapters.scripts").joinpath("row_text_js.js").read_text(encoding="utf-8").strip()
+)
 
 # JS snippet to extract visible interactive elements from the page.
 # Walks open shadow roots too: querySelectorAll does not cross shadow
@@ -103,7 +105,7 @@ _ROW_TEXT_JS = files("argus.adapters.scripts").joinpath("row_text_js.js").read_t
 _EXTRACT_ELEMENTS_JS = (
     files("argus.adapters.scripts")
     .joinpath("extract_elements_js.js")
-    .read_text()
+    .read_text(encoding="utf-8")
     .replace("ARGUS_ROW_TEXT_JS", _ROW_TEXT_JS, 1)
 )
 
@@ -111,7 +113,7 @@ _EXTRACT_ELEMENTS_JS = (
 _EXTRACT_PAGE_CONTENT_JS = (
     files("argus.adapters.scripts")
     .joinpath("extract_page_content_js.js")
-    .read_text()
+    .read_text(encoding="utf-8")
     .replace("ARGUS_ROW_TEXT_JS", _ROW_TEXT_JS, 1)
 )
 
@@ -120,16 +122,28 @@ _EXTRACT_PAGE_CONTENT_JS = (
 # stacking, truncation), accessibility metadata, and outer HTML. Used by
 # the inspect_element tool when the agent suspects a visual / a11y bug
 # on a specific surface.
-_INSPECT_ELEMENT_JS = files("argus.adapters.scripts").joinpath("inspect_element_js.js").read_text()
-
-_FIND_VISIBLE_ELEMENT_JS = (
-    files("argus.adapters.scripts").joinpath("find_visible_element_js.js").read_text()
+_INSPECT_ELEMENT_JS = (
+    files("argus.adapters.scripts").joinpath("inspect_element_js.js").read_text(encoding="utf-8")
 )
 
-_CHECK_LAYOUT_JS = files("argus.adapters.scripts").joinpath("check_layout_js.js").read_text()
-_COLLECT_TEXT_JS = files("argus.adapters.scripts").joinpath("collect_text_js.js").read_text()
-_SCAN_STEP_JS = files("argus.adapters.scripts").joinpath("scan_step_js.js").read_text()
-_REF_ENGINE_JS = files("argus.adapters.scripts").joinpath("ref_engine_js.js").read_text()
+_FIND_VISIBLE_ELEMENT_JS = (
+    files("argus.adapters.scripts")
+    .joinpath("find_visible_element_js.js")
+    .read_text(encoding="utf-8")
+)
+
+_CHECK_LAYOUT_JS = (
+    files("argus.adapters.scripts").joinpath("check_layout_js.js").read_text(encoding="utf-8")
+)
+_COLLECT_TEXT_JS = (
+    files("argus.adapters.scripts").joinpath("collect_text_js.js").read_text(encoding="utf-8")
+)
+_SCAN_STEP_JS = (
+    files("argus.adapters.scripts").joinpath("scan_step_js.js").read_text(encoding="utf-8")
+)
+_REF_ENGINE_JS = (
+    files("argus.adapters.scripts").joinpath("ref_engine_js.js").read_text(encoding="utf-8")
+)
 
 # Traced steps that replay does not repeat; a journey through one diverges
 # instead of silently skipping a step that may have caused the symptom.
@@ -167,7 +181,9 @@ _IFRAME_SELECTOR_JS = """el => {
 
 # JS snippet for performance metrics (on-demand).
 _EXTRACT_PERFORMANCE_JS = (
-    files("argus.adapters.scripts").joinpath("extract_performance_js.js").read_text()
+    files("argus.adapters.scripts")
+    .joinpath("extract_performance_js.js")
+    .read_text(encoding="utf-8")
 )
 
 

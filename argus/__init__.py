@@ -14,7 +14,7 @@ def _resolve_version() -> str:
     try:
         pp = Path(__file__).resolve().parent.parent / "pyproject.toml"
         if pp.exists():
-            for line in pp.read_text().splitlines():
+            for line in pp.read_text(encoding="utf-8").splitlines():
                 key, sep, val = line.partition("=")
                 if sep and key.strip() == "version" and val.strip():
                     return val.strip().strip('"').strip("'")
